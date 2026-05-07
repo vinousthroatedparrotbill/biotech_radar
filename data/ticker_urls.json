@@ -1,0 +1,1022 @@
+{
+  "VRTX": {
+    "ir_url": "https://investors.vrtx.com/news-events/events-presentations",
+    "pipeline_url": "https://www.vrtx.com/our-science/pipeline/"
+  },
+  "REGN": {
+    "ir_url": "https://investor.regeneron.com/",
+    "pipeline_url": "https://www.regeneron.com/medicines/our-medicines"
+  },
+  "MRNA": {
+    "ir_url": "https://investors.modernatx.com#",
+    "pipeline_url": "https://www.modernatx.com/research/product-pipeline"
+  },
+  "DAWN": {
+    "ir_url": "https://ir.dayonebio.com/static-files/e2fdf637-a90b-4c46-bcd4-a818b9cd633f",
+    "pipeline_url": "http://www.dayonebio.com/our-science/pipeline/"
+  },
+  "ACLX": {
+    "ir_url": "https://ir.arcellx.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.arcellx.com/pipeline-focus-area/"
+  },
+  "GILD": {
+    "ir_url": "https://investors.gilead.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.gilead.com/science/pipeline"
+  },
+  "NVS": {
+    "ir_url": "https://www.novartis.com/investors/financial-data/quarterly-results",
+    "pipeline_url": "https://www.novartis.com/about/therapeutic-areas"
+  },
+  "ABBV": {
+    "ir_url": "https://investors.abbvie.com/events-and-presentations/upcoming-events",
+    "pipeline_url": "https://www.abbvie.com/science/pipeline.html"
+  },
+  "JNJ": {
+    "ir_url": "https://www.investor.jnj.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.investor.jnj.com/pipeline/Innovative-Medicine-pipeline/default.aspx"
+  },
+  "AMGN": {
+    "ir_url": "http://investors.amgen.com/news-and-events/presentations",
+    "pipeline_url": "https://www.amgen.com/science"
+  },
+  "UNH": {
+    "ir_url": "https://www.unitedhealthgroup.com/careers/en/job-seeker-resources/events.html"
+  },
+  "AZN": {
+    "ir_url": "https://www.astrazeneca.com/investor-relations/results-and-presentations.html",
+    "pipeline_url": "https://www.astrazeneca.com/our-therapy-areas/pipeline.html"
+  },
+  "TMO": {
+    "ir_url": "https://ir.thermofisher.com/investors/news-events/news/default.aspx"
+  },
+  "MRK": {
+    "ir_url": "https://www.merck.com/investor-relations/events-and-presentations/",
+    "pipeline_url": "https://www.merck.com/stories/rob-davis-on-strengthening-our-pipeline-through-business-development/"
+  },
+  "PFE": {
+    "ir_url": "https://investors.pfizer.com/Investors/news-events/default.aspx",
+    "pipeline_url": "https://www.pfizer.com/science/drug-product-pipeline"
+  },
+  "SYK": {
+    "ir_url": "https://www.stryker.com/ir/en/index.html"
+  },
+  "ABT": {
+    "ir_url": "https://www.abbott.com/en-us/investors#"
+  },
+  "CVS": {
+    "ir_url": "https://investors.cvshealth.com/events-and-presentations/default.aspx"
+  },
+  "BMY": {
+    "ir_url": "https://www.bms.com/investors/events-and-presentations.html",
+    "pipeline_url": "https://www.bms.com/patient-and-caregivers/our-medicines.html"
+  },
+  "DHR": {
+    "ir_url": "https://investors.danaher.com/events-presentations",
+    "pipeline_url": "https://www.danaher.com/science"
+  },
+  "NVO": {
+    "ir_url": "javascript:void(0)",
+    "pipeline_url": "https://www.novonordisk.com/science-and-technology/r-d-pipeline.html"
+  },
+  "GSK": {
+    "ir_url": "https://www.gsk.com/en-gb/investors/speeches-and-presentations/",
+    "pipeline_url": "https://www.gsk.com/en-gb/innovation/pipeline/"
+  },
+  "MCK": {
+    "ir_url": "https://investor.mckesson.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.mckesson.com/commitments/public-policy/expand-trial-access/"
+  },
+  "HCA": {
+    "ir_url": "https://investor.hcahealthcare.com/events-and-presentations/default.aspx"
+  },
+  "TAK": {
+    "ir_url": "https://www.takeda.com/investors/financial-results/quarterly-results/",
+    "pipeline_url": "https://www.takeda.com/science/pipeline"
+  },
+  "CI": {
+    "ir_url": "https://investors.thecignagroup.com/events-and-presentations/default.aspx"
+  },
+  "BSX": {
+    "ir_url": "https://www.bostonscientific.com/events-and-presentations"
+  },
+  "ELV": {
+    "ir_url": "https://ir.elevancehealth.com/events-and-presentations/default.aspx"
+  },
+  "SNY": {
+    "ir_url": "https://www.sanofi.com",
+    "pipeline_url": "https://www.sanofi.com/en/our-science/our-pipeline"
+  },
+  "ARGX": {
+    "ir_url": "https://argenx.com/investors/events-presentations",
+    "pipeline_url": "https://argenx.com/pipeline#immunology-solutions"
+  },
+  "IDXX": {
+    "ir_url": "https://www.idexx.com/news-events/presentations"
+  },
+  "BDX": {
+    "ir_url": "https://www.bd.com/en-us/resource-and-education/event-landing-page"
+  },
+  "ZTS": {
+    "ir_url": "https://investor.zoetis.com/events-and-presentations/default.aspx"
+  },
+  "COR": {
+    "ir_url": "https://investor.cencora.com/presentations-and-events/default.aspx",
+    "pipeline_url": "https://www.cencora.com/resources/pharma/biosimilars-pipeline-report-for-understanding-the-growing-market"
+  },
+  "EW": {
+    "ir_url": "https://ir.edwards.com/events-presentations/default.aspx"
+  },
+  "HLN": {
+    "ir_url": "https://www.haleon.com/investors/results-reports-presentations"
+  },
+  "ALNY": {
+    "ir_url": "https://investors.alnylam.com/events",
+    "pipeline_url": "https://www.alnylam.com/our-science/making-our-medicines"
+  },
+  "WAT": {
+    "ir_url": "https://www.waters.com/nextgen/global/about-waters/investors.html"
+  },
+  "TEVA": {
+    "pipeline_url": "https://www.tevapharm.com/news-and-media/latest-news/teva-delivers-strong-q1-2026-results-driven-by-innovative-portfolio-growth-and-disciplined-execution/"
+  },
+  "ALC": {
+    "ir_url": "https://investor.alcon.com/news-and-events/events-and-presentations/default.aspx"
+  },
+  "ONC": {
+    "ir_url": "https://beonemedicines.com/contact-us/report-adverse-event/",
+    "pipeline_url": "https://beonemedicines.com/science/pipeline/"
+  },
+  "CAH": {
+    "ir_url": "https://ir.cardinalhealth.com/events-presentations/default.aspx",
+    "pipeline_url": "https://www.cardinalhealth.com/en/services/manufacturer/biopharmaceutical/real-world-evidence-and-insights/our-research.html"
+  },
+  "RVMD": {
+    "ir_url": "https://ir.revmed.com/events-and-presentations",
+    "pipeline_url": "https://www.revmed.com/pipeline/"
+  },
+  "NTRA": {
+    "ir_url": "https://investor.natera.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.natera.com/oncology/signatera-advanced-cancer-detection/research-pipeline/"
+  },
+  "VEEV": {
+    "ir_url": "https://s206.q4cdn.com/200001835/files/doc_earnings/2026/q4/presentation/VEEV-Q4-26-Earnings-Presentation.pdf",
+    "pipeline_url": "https://www.veeva.com/products/veeva-disclosures/"
+  },
+  "PHG": {
+    "ir_url": "https://www.results.philips.com/"
+  },
+  "BIIB": {
+    "ir_url": "https://investors.biogen.com/events-presentations/events",
+    "pipeline_url": "https://www.biogen.com/science-and-innovation/pipeline.html"
+  },
+  "CNC": {
+    "ir_url": "https://investors.centene.com/events-presentations"
+  },
+  "INSM": {
+    "ir_url": "https://investor.insmed.com/events",
+    "pipeline_url": "https://www.insmed.com/science/pipeline/"
+  },
+  "GEHC": {
+    "ir_url": "https://investor.gehealthcare.com/static-files/ef435a1d-8997-4ee9-93a2-7a378efd7ca9"
+  },
+  "RPRX": {
+    "ir_url": "https://www.royaltypharma.com/wp-content/uploads/2025/03/Investor-Day-Consolidated-Slides-vFinal.pdf",
+    "pipeline_url": "https://www.royaltypharma.com/our-firm/our-portfolio/"
+  },
+  "ILMN": {
+    "ir_url": "https://investor.illumina.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.illumina.com/informatics/infrastructure-pipeline-setup.html"
+  },
+  "STE": {
+    "ir_url": "https://www.steris.com/static-files/85eca44d-78c1-40f2-8313-5428b625ae0f"
+  },
+  "ROIV": {
+    "ir_url": "https://investor.roivant.com/news-events/events",
+    "pipeline_url": "https://roivant.com/pipeline"
+  },
+  "IQV": {
+    "ir_url": "https://ir.iqvia.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.iqvia.com/solutions/research-and-development/early-phase-clinical-trials"
+  },
+  "WST": {
+    "ir_url": "https://investor.westpharma.com/event-and-presentations"
+  },
+  "LH": {
+    "ir_url": "https://ir.labcorp.com/news-and-events/recent-past-presentations",
+    "pipeline_url": "https://www.labcorp.com/patients/tests/trials"
+  },
+  "DGX": {
+    "ir_url": "https://ir.questdiagnostics.com/events-and-presentations/default.aspx",
+    "pipeline_url": "javascript:void(0)"
+  },
+  "BNTX": {
+    "ir_url": "https://investors.biontech.de/de/events-presentations",
+    "pipeline_url": "https://www.biontech.de/de/de/home/pipeline-and-products/pipeline.html#pumitamig"
+  },
+  "ASND": {
+    "ir_url": "https://investors.ascendispharma.com/events-and-presentations",
+    "pipeline_url": "https://ascendispharma.com/pipeline/"
+  },
+  "THC": {
+    "ir_url": "https://investor.tenethealth.com/events-and-presentations/default.aspx"
+  },
+  "SMMT": {
+    "ir_url": "https://smmttx.com/investor-information/summit-presentations/default.aspx",
+    "pipeline_url": "https://smmttx.com/pipeline/default.aspx"
+  },
+  "JAZZ": {
+    "ir_url": "https://investor.jazzpharma.com/investors/events-presentations",
+    "pipeline_url": "https://www.jazzpharma.com/medicines/our-medicines"
+  },
+  "INCY": {
+    "ir_url": "https://investor.incyte.com/events-presentations",
+    "pipeline_url": "https://www.incyte.com/what-we-do/pharmaceutical-portfolio"
+  },
+  "ZBH": {
+    "ir_url": "https://investor.zimmerbiomet.com/news-and-events/events-and-presentations",
+    "pipeline_url": "https://www.zimmerbiomet.com/en/products-and-solutions/zb-edge/mixed-reality-portfolio.html"
+  },
+  "NBIX": {
+    "ir_url": "https://www.neurocrine.com/investors/webcasts-presentations/",
+    "pipeline_url": "https://www.neurocrine.com/pipeline/"
+  },
+  "VTRS": {
+    "ir_url": "https://investor.viatris.com/events-and-presentations",
+    "pipeline_url": "https://www.viatris.com/en/science#pipeline"
+  },
+  "PEN": {
+    "ir_url": "https://www.penumbrainc.com/investors/events/"
+  },
+  "BBIO": {
+    "ir_url": "https://investor.bridgebio.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://bridgebio.com/pipeline"
+  },
+  "DVA": {
+    "ir_url": "https://investors.davita.com/news-releases/"
+  },
+  "SOLV": {
+    "ir_url": "https://investors.solventum.com/news-events/events-presentations"
+  },
+  "MDGL": {
+    "ir_url": "https://ir.madrigalpharma.com/events-and-presentations",
+    "pipeline_url": "https://www.madrigalpharma.com/our-medicine/"
+  },
+  "ELAN": {
+    "ir_url": "https://investor.elanco.com/events-and-presentations/default.aspx"
+  },
+  "ALGN": {
+    "ir_url": "https://www.aligntech.com/events"
+  },
+  "RGC": {
+    "ir_url": "https://regencellbioscience.com/investor-relations/"
+  },
+  "IONS": {
+    "ir_url": "https://ir.ionis.com/events-and-presentations/upcoming-events",
+    "pipeline_url": "https://www.ionis.com/science-and-innovation/pipeline"
+  },
+  "SNN": {
+    "ir_url": "https://www.smith-nephew.com/en/who-we-are/investors/reports-and-presentations",
+    "pipeline_url": "https://www.smith-nephew.com/en/news/2026/03/02/sn-to-feature-leading-rotator-cuff-repair-portfolio-at-aaos-2026"
+  },
+  "MEDP": {
+    "ir_url": "https://investor.medpace.com/events-presentations",
+    "pipeline_url": "https://www.medpace.com/wp-content/uploads/2023/03/DEI-Whitepaper011923.pdf"
+  },
+  "GH": {
+    "ir_url": "https://investors.guardanthealth.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://guardanthealth.com/products/tests-for-patients-with-early-and-advanced-stage-cancer/"
+  },
+  "EXEL": {
+    "ir_url": "https://ir.exelixis.com/event-calendar",
+    "pipeline_url": "https://www.exelixis.com/clinical-trials-pipeline/"
+  },
+  "GMED": {
+    "ir_url": "https://www.investors.globusmedical.com/financial-information/quarterly-results",
+    "pipeline_url": "https://www.globusmedical.com/healthcare-professionals/power-portfolio/"
+  },
+  "RDY": {
+    "ir_url": "https://www.drreddys.com/investor"
+  },
+  "AXSM": {
+    "pipeline_url": "https://www.axsome.com/axs-portfolio/pipeline"
+  },
+  "ARWR": {
+    "ir_url": "https://ir.arrowheadpharma.com/events-and-presentations",
+    "pipeline_url": "https://arrowheadpharma.com/en-us/our-medicines"
+  },
+  "FMS": {
+    "ir_url": "https://www.freseniusmedicalcare.com/en/healthcare-professionals/services-and-resources/events-congresses/"
+  },
+  "COO": {
+    "ir_url": "https://investor.coopercos.com/events-and-presentations"
+  },
+  "BMRN": {
+    "ir_url": "https://investors.biomarin.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.biomarin.com/science/research-pipeline/"
+  },
+  "PODD": {
+    "ir_url": "https://investors.insulet.com/events-and-presentations/default.aspx"
+  },
+  "ENSG": {
+    "ir_url": "https://investor.ensigngroup.net/events-and-presentations/default.aspx"
+  },
+  "BTSG": {
+    "ir_url": "https://ir.brightspringhealth.com/news-events/events"
+  },
+  "RVTY": {
+    "ir_url": "https://ir.revvity.com/events-and-presentations/default.aspx"
+  },
+  "TEM": {
+    "ir_url": "https://investors.tempus.com/news-events/presentations",
+    "pipeline_url": "https://www.tempus.com/oncology/clinical-trial-matching/"
+  },
+  "ABVX": {
+    "ir_url": "https://www.abivax.com/news-and-events/presentations",
+    "pipeline_url": "https://www.abivax.com/pipeline/"
+  },
+  "CYTK": {
+    "ir_url": "https://ir.cytokinetics.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.cytokinetics.com/medicines-research/pipeline/"
+  },
+  "MASI": {
+    "ir_url": "https://investor.masimo.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.masimo.com/company/product-portfolio/"
+  },
+  "BAX": {
+    "ir_url": "https://investor.baxter.com/investors/events-and-news/default.aspx"
+  },
+  "PRAX": {
+    "ir_url": "https://investors.praxismedicines.com/events-and-presentations",
+    "pipeline_url": "https://praxismedicines.com#pipeline"
+  },
+  "ICLR": {
+    "ir_url": "https://investor.iconplc.com/events-presentations",
+    "pipeline_url": "https://www.iconplc.com/solutions/decentralised-clinical-trials"
+  },
+  "CRL": {
+    "pipeline_url": "https://www.criver.com/products-services/discovery-services/pharmacology-studies"
+  },
+  "KRYS": {
+    "ir_url": "http://ir.krystalbio.com/events-and-presentations/events",
+    "pipeline_url": "https://www.krystalbio.com/science/pipeline/"
+  },
+  "HALO": {
+    "ir_url": "https://ir.halozyme.com/events-and-presentations/default.aspx"
+  },
+  "IBRX": {
+    "ir_url": "https://ir.immunitybio.com/company/events-and-presentations",
+    "pipeline_url": "https://immunitybio.com/pipeline/"
+  },
+  "PCVX": {
+    "ir_url": "https://investors.vaxcyte.com/events-and-presentations",
+    "pipeline_url": "https://vaxcyte.com/pipeline/"
+  },
+  "HSIC": {
+    "ir_url": "https://investor.henryschein.com/events-presentations/default.aspx",
+    "pipeline_url": "https://www.henryschein.com/us-en/medical/c/browsesupplies"
+  },
+  "NUVL": {
+    "ir_url": "https://investors.nuvalent.com/image/Nuvalent_Overview_April_28_2026_vFINAL.pdf",
+    "pipeline_url": "https://nuvalent.com/pipeline"
+  },
+  "TECH": {
+    "ir_url": "https://investors.bio-techne.com/presentations",
+    "pipeline_url": "https://www.bio-techne.com/diagnostics/controls-reagents"
+  },
+  "BIO": {
+    "ir_url": "https://investors.bio-rad.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.bio-rad.com/ko-kr/clinical-diagnostics/events/ensuring-transfusion-safety?ID=Ensuring-Transfusion_1776983257"
+  },
+  "GKOS": {
+    "ir_url": "https://investors.glaukos.com/events-and-presentations/default.aspx"
+  },
+  "ATR": {
+    "ir_url": "https://investors.aptar.com/events-and-presentations/default.aspx"
+  },
+  "HQY": {
+    "ir_url": "https://ir.healthequity.com/events-and-presentations",
+    "pipeline_url": "https://www.healthequity.com/assist-portfolio"
+  },
+  "KYMR": {
+    "ir_url": "https://investors.kymeratx.com/news-events/presentations",
+    "pipeline_url": "https://www.kymeratx.com/science-innovation/pipeline/"
+  },
+  "TGTX": {
+    "ir_url": "http://ir.tgtherapeutics.com/financial-information/quarterly-results",
+    "pipeline_url": "https://www.tgtherapeutics.com/our-pipeline/"
+  },
+  "QGEN": {
+    "ir_url": "https://corporate.qiagen.com/investor-relations/overview/"
+  },
+  "CELC": {
+    "ir_url": "https://ir.celcuity.com/events-presentations",
+    "pipeline_url": "https://www.celcuity.com/our-pipeline/"
+  },
+  "SYRE": {
+    "ir_url": "https://ir.spyre.com/static-files/bef305db-59e6-49a1-a6cc-42625cc51ba9",
+    "pipeline_url": "https://www.spyre.com/pipeline"
+  },
+  "APGE": {
+    "ir_url": "https://investors.apogeetherapeutics.com/static-files/e9ca62f0-8c9f-4240-8b84-d10a1cb4f707",
+    "pipeline_url": "https://www.apogeetherapeutics.com/pipeline"
+  },
+  "MIRM": {
+    "ir_url": "https://ir.mirumpharma.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.mirumpharma.com/our-science/pipeline/"
+  },
+  "PTGX": {
+    "ir_url": "https://www.protagonist-inc.com#",
+    "pipeline_url": "https://www.protagonist-inc.com/product-pipeline"
+  },
+  "RYTM": {
+    "ir_url": "https://ir.rhythmtx.com/events-presentations",
+    "pipeline_url": "https://rhythmtx.com/clinical-trials/"
+  },
+  "BRKR": {
+    "ir_url": "https://www.bruker.com/en/news-and-events.html"
+  },
+  "COGT": {
+    "ir_url": "https://investors.cogentbio.com/presentations",
+    "pipeline_url": "https://www.cogentbio.com/pipelines-targets/#pipeline"
+  },
+  "RGEN": {
+    "ir_url": "https://investors.repligen.com/events-and-presentations/default.aspx"
+  },
+  "BLTE": {
+    "ir_url": "https://investors.belitebio.com/presentations-events/presentations",
+    "pipeline_url": "https://www.belitebio.com/#pipeline"
+  },
+  "BLCO": {
+    "ir_url": "https://ir.bausch.com/investors/events-presentations",
+    "pipeline_url": "https://www.bausch.com/product-innovation/pipeline/"
+  },
+  "IMVT": {
+    "ir_url": "https://immunovant.com/investors/news-events/overview",
+    "pipeline_url": "https://immunovant.com/our-science/pipeline-and-therapeutic-areas"
+  },
+  "OSCR": {
+    "ir_url": "https://ir.hioscar.com/news-events-presentations/events-presentations/default.aspx"
+  },
+  "ALKS": {
+    "ir_url": "https://investor.alkermes.com/investor-events-presentations",
+    "pipeline_url": "https://www.alkermes.com/research-and-development/pipeline"
+  },
+  "CGON": {
+    "ir_url": "https://ir.cgoncology.com/static-files/beade5aa-7fb2-473a-a7f3-ba0aec234323",
+    "pipeline_url": "https://cgoncology.com/pipeline/"
+  },
+  "CHE": {
+    "ir_url": "https://www.chemed.com/news-events/events-and-presentations"
+  },
+  "CNTA": {
+    "ir_url": "https://investors.centessa.com/events-presentations",
+    "pipeline_url": "https://centessa.com/programspipeline/"
+  },
+  "XENE": {
+    "ir_url": "https://investor.xenon-pharma.com/publications",
+    "pipeline_url": "https://www.xenon-pharma.com/pipeline#our-pipeline"
+  },
+  "LNTH": {
+    "ir_url": "https://investor.lantheus.com/news-events/presentations",
+    "pipeline_url": "https://www.lantheus.com/pipeline/"
+  },
+  "PTCT": {
+    "ir_url": "http://ir.ptcbio.com/events-presentations",
+    "pipeline_url": "https://www.ptcbio.com/our-pipeline/"
+  },
+  "CAI": {
+    "ir_url": "https://investor.carislifesciences.com/news-events/presentations",
+    "pipeline_url": "https://www.carislifesciences.com/research/pipeline/"
+  },
+  "SRRK": {
+    "ir_url": "https://investors.scholarrock.com/investors-media/events-presentations",
+    "pipeline_url": "https://scholarrock.com/our-pipeline/"
+  },
+  "APLS": {
+    "ir_url": "https://investors.apellis.com/events-and-presentations",
+    "pipeline_url": "https://apellis.com/our-science/our-pipeline/"
+  },
+  "CORT": {
+    "ir_url": "https://ir.corcept.com/static-files/d0b1037c-c319-492c-a865-899e4c7fde45",
+    "pipeline_url": "https://www.corcept.com/pipeline-and-clinical-trials/"
+  },
+  "PACS": {
+    "ir_url": "https://ir.pacs.com/news-events/presentations"
+  },
+  "INDV": {
+    "ir_url": "https://www.indivior.com/static-files/203a9eab-3082-4a7e-866b-fcec4d76c975",
+    "pipeline_url": "https://www.indivior.com/our-science"
+  },
+  "CRSP": {
+    "ir_url": "https://ir.crisprtx.com/#",
+    "pipeline_url": "https://crisprtx.com/pipeline"
+  },
+  "JAN": {
+    "ir_url": "https://ir.janusreit.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.janusreit.com/properties"
+  },
+  "STVN": {
+    "ir_url": "https://ir.stevanatogroup.com/company-information/presentations"
+  },
+  "NVST": {
+    "ir_url": "https://investors.envistaco.com/events",
+    "pipeline_url": "https://envistaco.com/en/businesses"
+  },
+  "SHC": {
+    "ir_url": "https://investors.soterahealth.com/events-and-presentations"
+  },
+  "DOCS": {
+    "ir_url": "https://investors.doximity.com/presentations/default.aspx"
+  },
+  "RDNT": {
+    "ir_url": "https://www.radnet.com/files/corporate/assets/investor-relations/Investor%20Presentation-12-2-2024.pdf"
+  },
+  "CRNX": {
+    "ir_url": "https://ir.crinetics.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://crinetics.com/pipeline/"
+  },
+  "LGND": {
+    "ir_url": "https://investor.ligand.com/news-and-events/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.ligand.com/royalty-portfolio#key-pipeline-products"
+  },
+  "KNSA": {
+    "ir_url": "https://investors.kiniksa.com/news-events/events",
+    "pipeline_url": "https://www.kiniksa.com/medicines-and-pipeline"
+  },
+  "DNTH": {
+    "ir_url": "https://investor.dianthustx.com/news-events/events-presentations",
+    "pipeline_url": "https://dianthustx.com/approach-and-pipeline/"
+  },
+  "TVTX": {
+    "ir_url": "https://ir.travere.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://travere.com/our-science/our-pipeline/"
+  },
+  "ORKA": {
+    "ir_url": "https://ir.orukatx.com/news-events/events-presentations",
+    "pipeline_url": "https://orukatx.com/our-pipeline/"
+  },
+  "IRTC": {
+    "ir_url": "https://investors.irhythmtech.com/financials/quarterly-results/default.aspx"
+  },
+  "MANE": {
+    "ir_url": "https://ir.veradermics.com/news-events/presentations",
+    "pipeline_url": "https://www.veradermics.com/clinical-trials/"
+  },
+  "FOLD": {
+    "pipeline_url": "https://amicusrx.com/our-medicines/"
+  },
+  "TLX": {
+    "ir_url": "https://ir.telixpharma.com/events-presentations",
+    "pipeline_url": "https://telixpharma.com/our-portfolio/pipeline/"
+  },
+  "EWTX": {
+    "ir_url": "https://investors.edgewisetx.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://edgewisetx.com/science/pipeline/"
+  },
+  "AMRX": {
+    "ir_url": "https://investors.amneal.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://amneal.com/pipeline/"
+  },
+  "ALHC": {
+    "ir_url": "https://ir.alignmenthealth.com/news-events/events-and-presentations"
+  },
+  "BLLN": {
+    "ir_url": "https://investors.billiontoone.com/news-events/events-presentations"
+  },
+  "WAY": {
+    "ir_url": "http://investors.waystar.com/news-events/presentations"
+  },
+  "VKTX": {
+    "ir_url": "https://ir.vikingtherapeutics.com/corporatepresentation",
+    "pipeline_url": "https://vikingtherapeutics.com/pipeline/overview/"
+  },
+  "ACAD": {
+    "ir_url": "https://ir.acadia.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.acadia.com/en-us/pipeline"
+  },
+  "TWST": {
+    "ir_url": "https://www.twistbioscience.com/",
+    "pipeline_url": "https://www.twistbioscience.com/"
+  },
+  "MMSI": {
+    "ir_url": "https://www.merit.com/investors/events-presentations/"
+  },
+  "LQDA": {
+    "ir_url": "https://www.liquidia.com/investors/events-and-presentations",
+    "pipeline_url": "https://www.liquidia.com/pipeline-and-products"
+  },
+  "LIVN": {
+    "ir_url": "https://investor.livanova.com/news-and-events/events-and-presentations",
+    "pipeline_url": "https://www.livanova.com/en-us/therapeutic-areas"
+  },
+  "NAMS": {
+    "ir_url": "https://ir.newamsterdampharma.com/news-events/events-and-presentations",
+    "pipeline_url": "https://www.newamsterdampharma.com/obicetrapibta8995/"
+  },
+  "CPRX": {
+    "ir_url": "https://ir.catalystpharma.com/events-and-presentations/default.aspx"
+  },
+  "OGN": {
+    "ir_url": "https://www.organon.com/investor-relations/events-and-presentations/"
+  },
+  "BEAM": {
+    "ir_url": "https://beamtx.com/science/presentations-and-publications/",
+    "pipeline_url": "https://beamtx.com/pipeline/"
+  },
+  "TNGX": {
+    "ir_url": "https://ir.tangotx.com/news-events/events-presentations",
+    "pipeline_url": "https://www.tangotx.com/pipeline/"
+  },
+  "ERAS": {
+    "ir_url": "https://www.erasca.com/science/#presentations",
+    "pipeline_url": "https://www.erasca.com/pipeline/"
+  },
+  "VCYT": {
+    "ir_url": "https://investor.veracyte.com/events-presentations",
+    "pipeline_url": "https://www.veracyte.com/innovation/technology-pipeline/"
+  },
+  "OPCH": {
+    "ir_url": "https://investors.optioncarehealth.com/events-and-presentations/upcoming-events"
+  },
+  "KLRA": {
+    "ir_url": "https://www.kailera.com/publications-posters/",
+    "pipeline_url": "https://www.kailera.com/our-pipeline/"
+  },
+  "RCUS": {
+    "ir_url": "https://investors.arcusbio.com/investors-and-media/events-and-presentations/events-calendar/default.aspx",
+    "pipeline_url": "https://arcusbio.com/our-science/pipeline/"
+  },
+  "DYN": {
+    "ir_url": "https://www.dyne-tx.com/our-forcetm-publications/",
+    "pipeline_url": "https://www.dyne-tx.com/pipeline/"
+  },
+  "ARQT": {
+    "ir_url": "https://investors.arcutis.com/news-and-presentations/news-releases",
+    "pipeline_url": "https://www.arcutis.com/pipeline/"
+  },
+  "DNLI": {
+    "ir_url": "https://investors.denalitherapeutics.com/static-files/27ea39ef-d701-4f4b-9a40-567bc1e0bf2f",
+    "pipeline_url": "https://www.denalitherapeutics.com/product-and-pipeline/"
+  },
+  "TXG": {
+    "ir_url": "https://investors.10xgenomics.com/events-and-presentations/default.aspx"
+  },
+  "ICUI": {
+    "ir_url": "https://ir.icumed.com/presentations",
+    "pipeline_url": "https://www.icumed.com/landing-pages/portfolio-optimization-program/"
+  },
+  "SUPN": {
+    "ir_url": "https://ir.supernus.com/events-and-presentations",
+    "pipeline_url": "https://www.supernus.com/research-development"
+  },
+  "GPCR": {
+    "pipeline_url": "https://structuretx.com#pipeline-section"
+  },
+  "LFST": {
+    "ir_url": "https://investor.lifestance.com/news-and-events/events-and-presentations"
+  },
+  "ITGR": {
+    "ir_url": "https://investor.integer.net/news-events/webcasts-presentations/default.aspx"
+  },
+  "PRVA": {
+    "ir_url": "https://ir.priviahealth.com/news-and-events/events-and-presentations"
+  },
+  "CON": {
+    "ir_url": "https://ir.concentra.com/news-events/presentations"
+  },
+  "KOD": {
+    "ir_url": "https://ir.kodiak.com/events-and-presentations/events",
+    "pipeline_url": "https://kodiak.com/our-pipeline/"
+  },
+  "NKTR": {
+    "ir_url": "https://ir.nektar.com/static-files/e317e01a-9ea7-49c8-bfd7-47cd910f8872",
+    "pipeline_url": "https://www.nektar.com/our-pipeline/"
+  },
+  "TARS": {
+    "ir_url": "https://tarsusrx.com#",
+    "pipeline_url": "https://tarsusrx.com#ourPipeline"
+  },
+  "VERA": {
+    "ir_url": "https://ir.veratx.com/news-events/presentations",
+    "pipeline_url": "https://veratx.com/science/atacicept-in-igan/#phase-3"
+  },
+  "IRON": {
+    "ir_url": "https://ir.discmedicine.com/events-presentations",
+    "pipeline_url": "https://www.discmedicine.com/pipeline"
+  },
+  "SLNO": {
+    "ir_url": "https://investors.soleno.life/presentations/investor-presentations",
+    "pipeline_url": "https://soleno.life/our-medicine/"
+  },
+  "GRAL": {
+    "ir_url": "https://investors.grail.com/news-events/presentations"
+  },
+  "IMNM": {
+    "ir_url": "https://investors.immunome.com/#",
+    "pipeline_url": "https://immunome.com/pipeline/"
+  },
+  "HTFL": {
+    "ir_url": "https://ir.heartflow.com/news-events/news-releases"
+  },
+  "PBH": {
+    "ir_url": "https://ir.prestigebrands.com/events-presentations/events"
+  },
+  "NHC": {
+    "ir_url": "https://nhccare.com/investor-relations/"
+  },
+  "CLDX": {
+    "ir_url": "https://ir.celldex.com/events-presentations",
+    "pipeline_url": "https://celldex.com/pipeline/"
+  },
+  "IDYA": {
+    "ir_url": "https://ir.ideayabio.com/events",
+    "pipeline_url": "https://www.ideayabio.com/pipeline/"
+  },
+  "DFTX": {
+    "ir_url": "https://ir.definiumtx.com/news-events/presentations",
+    "pipeline_url": "https://definiumtx.com/#pipeline"
+  },
+  "LMAT": {
+    "ir_url": "https://ir.lemaitre.com/overview-presentations"
+  },
+  "TMDX": {
+    "ir_url": "https://investors.transmedics.com/presentations"
+  },
+  "MLYS": {
+    "ir_url": "https://ir.mineralystx.com/news-events/presentations",
+    "pipeline_url": "https://mineralystx.com/pipeline/"
+  },
+  "SRPT": {
+    "ir_url": "https://investorrelations.sarepta.com/events-presentations",
+    "pipeline_url": "https://www.sarepta.com/products-pipeline"
+  },
+  "RARE": {
+    "ir_url": "https://ir.ultragenyx.com/events-presentations",
+    "pipeline_url": "https://www.ultragenyx.com/our-research/pipeline/"
+  },
+  "PAHC": {
+    "ir_url": "https://investors.pahc.com/events-and-presentations/default.aspx"
+  },
+  "ADMA": {
+    "ir_url": "https://ir.admabiologics.com/company-info/presentation",
+    "pipeline_url": "https://www.admabiologics.com/science-tech/pipeline"
+  },
+  "ZLAB": {
+    "ir_url": "https://ir.zailaboratory.com/?auth_token=b06dd996-21e5-4118-9a4d-3ea82a18aa8b#",
+    "pipeline_url": "https://www.zailaboratory.com/rd/"
+  },
+  "RLAY": {
+    "ir_url": "https://ir.relaytx.com/corporate-presentation",
+    "pipeline_url": "https://www.relaytx.com/pipeline/"
+  },
+  "ACHC": {
+    "ir_url": "https://www.acadiahealthcare.com/investors/presentations/"
+  },
+  "AXGN": {
+    "ir_url": "https://ir.axogeninc.com/news-events/presentations"
+  },
+  "GRDN": {
+    "ir_url": "https://investors.guardianpharmacy.com/events-and-presentations/default.aspx"
+  },
+  "ADPT": {
+    "ir_url": "https://investors.adaptivebiotech.com/news-events/presentations",
+    "pipeline_url": "https://www.adaptivebiotech.com/pipeline/#diagnostics"
+  },
+  "AUPH": {
+    "ir_url": "https://www.auriniapharma.com/investors#",
+    "pipeline_url": "https://www.auriniapharma.com/science/pipeline"
+  },
+  "XRAY": {
+    "ir_url": "https://investor.dentsplysirona.com/news-events/events-presentations"
+  },
+  "OCUL": {
+    "ir_url": "https://investors.ocutx.com/events-presentations",
+    "pipeline_url": "https://www.ocutx.com/pipeline/"
+  },
+  "BCRX": {
+    "ir_url": "https://ir.biocryst.com/news-events/events",
+    "pipeline_url": "https://www.biocryst.com/rare-disease-pharmaceuticals/"
+  },
+  "INBX": {
+    "ir_url": "https://inhibrx.com/inhibrx-biosciences-inc-investors/",
+    "pipeline_url": "https://inhibrx.com/pipeline/"
+  },
+  "BHC": {
+    "ir_url": "https://ir.bauschhealth.com/events-and-presentations/2026",
+    "pipeline_url": "https://www.bauschhealth.com/r-d/our-pipeline/"
+  },
+  "ZYME": {
+    "ir_url": "https://ir.zymeworks.com/events-and-presentations",
+    "pipeline_url": "https://www.zymeworks.com/pipeline/"
+  },
+  "STOK": {
+    "ir_url": "https://investor.stoketherapeutics.com/events-and-presentations",
+    "pipeline_url": "https://www.stoketherapeutics.com/pipeline/"
+  },
+  "SEM": {
+    "ir_url": "https://www.selectmedical.com/investor-relations/"
+  },
+  "TYRA": {
+    "ir_url": "https://ir.tyra.bio/static-files/9e7fea03-ab88-463a-a74f-bdf10c4a01d6",
+    "pipeline_url": "https://tyra.bio/pipeline/"
+  },
+  "ESTA": {
+    "ir_url": "https://investors.establishmentlabs.com/events-and-presentations/default.aspx"
+  },
+  "MESO": {
+    "ir_url": "http://investorsmedia.mesoblast.com/events",
+    "pipeline_url": "https://www.mesoblast.com/product-candidates/clinical-trials"
+  },
+  "CAPR": {
+    "ir_url": "https://www.capricor.com/investors/news-events/presentations",
+    "pipeline_url": "https://www.capricor.com/pipeline"
+  },
+  "ANAB": {
+    "ir_url": "https://ir.anaptysbio.com/presentations-and-events"
+  },
+  "AAPG": {
+    "pipeline_url": "https://www.ascentage.cn/products/pipeline/"
+  },
+  "OMCL": {
+    "ir_url": "https://ir.omnicell.com/events-and-presentations/default.aspx"
+  },
+  "NBTX": {
+    "ir_url": "https://ir.nanobiotix.com/news-events/events-and-presentations",
+    "pipeline_url": "https://www.nanobiotix.com/pipeline/"
+  },
+  "NEOG": {
+    "ir_url": "https://investors.neogen.com/events-and-presentations/default.aspx"
+  },
+  "TSHA": {
+    "ir_url": "https://ir.tayshagtx.com/news-events/events-presentations",
+    "pipeline_url": "https://tayshagtx.com/pipeline/"
+  },
+  "SION": {
+    "ir_url": "https://investors.sionnatx.com/news-events/presentations",
+    "pipeline_url": "https://www.sionnatx.com/pipeline/"
+  },
+  "GENB": {
+    "ir_url": "https://investors.generatebiomedicines.com/events-presentations/",
+    "pipeline_url": "https://generatebiomedicines.com/pipeline"
+  },
+  "PHVS": {
+    "ir_url": "https://ir.pharvaris.com/static-files/b6413d0d-189d-420b-a1cd-b0c715e31fa7",
+    "pipeline_url": "https://pharvaris.com/pipeline/"
+  },
+  "TRVI": {
+    "ir_url": "https://ir.trevitherapeutics.com/news-events/presentations",
+    "pipeline_url": "https://www.trevitherapeutics.com/pipeline/"
+  },
+  "SGRY": {
+    "ir_url": "http://ir.surgerypartners.com/events-and-presentations/presentations"
+  },
+  "ANIP": {
+    "ir_url": "https://investor.anipharmaceuticals.com/events-presentations"
+  },
+  "NVCR": {
+    "ir_url": "https://investor.novocure.com/static-files/cd2bdb4e-7540-45a7-8d82-73d2b61ebea8",
+    "pipeline_url": "https://www.novocure.com/our-pipeline"
+  },
+  "HRMY": {
+    "ir_url": "https://ir.harmonybiosciences.com/news-events/investor-calendar",
+    "pipeline_url": "https://www.harmonybiosciences.com/science/"
+  },
+  "IOVA": {
+    "ir_url": "https://ir.iovance.com/news-events/events-presentations",
+    "pipeline_url": "https://www.iovance.com/clinical-pipeline/"
+  },
+  "PVLA": {
+    "ir_url": "https://ir.palvellatx.com/news-events/events-presentations",
+    "pipeline_url": "https://palvellatx.com/pipeline"
+  },
+  "GLPG": {
+    "ir_url": "https://www.glpg.com/webcasts-events/",
+    "pipeline_url": "https://www.glpg.com/innovation/pipeline/"
+  },
+  "VCEL": {
+    "ir_url": "http://investors.vcel.com/events-presentations",
+    "pipeline_url": "https://www.vcel.com/clinical-development#pipeline"
+  },
+  "RAPP": {
+    "ir_url": "https://investors.rapportrx.com/news-events/presentations",
+    "pipeline_url": "https://www.rapportrx.com/pipeline/"
+  },
+  "MD": {
+    "ir_url": "https://www.pediatrix.com/about/investors"
+  },
+  "VRDN": {
+    "ir_url": "https://investors.viridiantherapeutics.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.viridiantherapeutics.com/pipeline/"
+  },
+  "RXRX": {
+    "ir_url": "https://ir.recursion.com/news-events/presentations",
+    "pipeline_url": "https://www.recursion.com/pipeline"
+  },
+  "NUVB": {
+    "ir_url": "https://investors.nuvationbio.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://nuvationbio.com/our-medicine/"
+  },
+  "SNDA": {
+    "ir_url": "https://investors.sonidaseniorliving.com/events-and-presentations/default.aspx"
+  },
+  "AMLX": {
+    "ir_url": "https://investors.amylyx.com/events-presentations",
+    "pipeline_url": "https://amylyx.com/pipeline"
+  },
+  "NRIX": {
+    "ir_url": "https://ir.nurixtx.com/%20",
+    "pipeline_url": "https://www.nurixtx.com/advancing-our-pipeline/"
+  },
+  "ASTH": {
+    "ir_url": "https://ir.astranahealth.com/company-information/presentations"
+  },
+  "OCS": {
+    "ir_url": "https://investors.oculis.com/events",
+    "pipeline_url": "https://oculis.com/pipeline/"
+  },
+  "IXHL": {
+    "ir_url": "https://ir.incannex.com/news-events/news-releases",
+    "pipeline_url": "https://incannex.com/pipeline-combination-therapies/"
+  },
+  "PRGO": {
+    "ir_url": "https://investor.perrigo.com/presentations",
+    "pipeline_url": "https://www.perrigo.com/sample-self-care-product-portfolio"
+  },
+  "ARDX": {
+    "ir_url": "https://ir.ardelyx.com/news-and-events/events-and-presentations",
+    "pipeline_url": "https://ardelyx.com/science/pipeline/"
+  },
+  "NTLA": {
+    "ir_url": "https://www.intelliatx.com/our-science/publications-and-presentations/",
+    "pipeline_url": "https://www.intelliatx.com/pipeline/"
+  },
+  "AORT": {
+    "ir_url": "https://investors.artivion.com/static-files/ad2ce704-bb0f-498b-abe0-1646367072af"
+  },
+  "GLUE": {
+    "ir_url": "https://www.monterosatx.com/presentations",
+    "pipeline_url": "https://www.monterosatx.com/pipeline/"
+  },
+  "UFPT": {
+    "ir_url": "https://ufpt.com/wp-content/uploads/2026/03/UFP-Technologies-Investor-Presentation_March-2026.pdf"
+  },
+  "IMCR": {
+    "ir_url": "https://www.immunocore.com/investors/events-presentations",
+    "pipeline_url": "https://www.immunocore.com/pipeline-portfolio/pipeline"
+  },
+  "ALMR": {
+    "ir_url": "https://investors.alamarbio.com/news-events/presentations"
+  },
+  "AGIO": {
+    "ir_url": "https://investor.agios.com/news-events/events-presentations",
+    "pipeline_url": "https://www.agios.com/our-medicines/"
+  },
+  "INVA": {
+    "ir_url": "https://investor.inva.com/presentations-events"
+  },
+  "AHCO": {
+    "ir_url": "https://adapthealth.com/pages/events"
+  },
+  "PGEN": {
+    "ir_url": "https://investors.precigen.com/events-presentations",
+    "pipeline_url": "https://precigen.com/pipeline/"
+  },
+  "BCAX": {
+    "ir_url": "https://ir.bicara.com/news-events/events-and-presentations"
+  },
+  "MBX": {
+    "ir_url": "https://investors.mbxbio.com/news-events/presentations",
+    "pipeline_url": "https://mbxbio.com/our-pipeline/"
+  },
+  "ABCL": {
+    "ir_url": "https://investors.abcellera.com/events/default.aspx",
+    "pipeline_url": "https://www.abcellera.com/pipeline"
+  },
+  "GHRS": {
+    "ir_url": "https://investor.ghres.com/news-events/presentations",
+    "pipeline_url": "https://www.ghres.com/our-work/pipeline"
+  },
+  "ATAI": {
+    "ir_url": "https://ir.ataibeckley.com/news-events/presentations",
+    "pipeline_url": "https://www.ataibeckley.com/our-work/pipeline"
+  },
+  "NVAX": {
+    "ir_url": "https://ir.novavax.com/node/3809",
+    "pipeline_url": "https://www.novavax.com#"
+  },
+  "BHVN": {
+    "ir_url": "https://ir.biohaven.com/events-presentations/events",
+    "pipeline_url": "https://www.biohaven.com/pipeline/"
+  },
+  "HROW": {
+    "ir_url": "tel:+6157334737",
+    "pipeline_url": "https://www.harrow.com/pipeline"
+  },
+  "IMTX": {
+    "ir_url": "https://investors.immatics.com/events-presentations",
+    "pipeline_url": "https://immatics.com/our-pipeline/"
+  },
+  "HCSG": {
+    "ir_url": "https://investor.hcsgcorp.com/events-and-presentations/default.aspx"
+  }
+}

@@ -1,0 +1,11 @@
+streamlit>=1.32
+plotly>=5.20
+yfinance>=0.2.40
+pandas>=2.2
+requests>=2.31
+python-dotenv>=1.0
+beautifulsoup4>=4.12
+feedparser>=6.0
+curl_cffi>=0.7
+psycopg2-binary>=2.9
+playwright>=1.40
