@@ -17,6 +17,7 @@ from datetime import datetime
 
 import pandas as pd
 
+import db
 from db import init_db
 from universe import load_universe, get_universe
 from collectors.high_low import (
@@ -222,6 +223,9 @@ if st.sidebar.button("⭐ 관심종목"):
 if st.sidebar.button("💼 Model Portfolio"):
     _go_main_tab("portfolios")
 
+if st.sidebar.button("📅 카탈리스트"):
+    _go_main_tab("catalysts")
+
 st.sidebar.divider()
 universe_count = len(get_universe())
 st.sidebar.caption(f"현재 universe: {universe_count}종목")
@@ -315,12 +319,29 @@ def _section_memos():
                     f"<div style='color:#5b6f6e; font-size:0.85em;'>{m.get('name') or ''}</div>",
                     unsafe_allow_html=True,
                 )
-                if st.button("종목 보기", key=f"open_{m['id']}",
-                             use_container_width=True):
+                btn_cols = st.columns(2)
+                if btn_cols[0].button("종목", key=f"open_{m['id']}",
+                                       use_container_width=True):
                     st.session_state["detail_ticker"] = m["ticker"]
                     st.session_state["detail_name"] = m.get("name") or m["ticker"]
                     st.session_state["detail_open"] = True
                     st.rerun()
+                # 삭제 — 두 번 클릭 보호 (한 번 누르면 confirm 모드)
+                confirm_key = f"del_confirm_{m['id']}"
+                if st.session_state.get(confirm_key):
+                    if btn_cols[1].button("✓ 확정", key=f"del_yes_{m['id']}",
+                                           use_container_width=True, type="primary"):
+                        from memo import delete as memo_delete
+                        memo_delete(m["id"])
+                        st.session_state.pop(confirm_key, None)
+                        _cached_timeline.clear()
+                        st.rerun()
+                else:
+                    if btn_cols[1].button("🗑", key=f"del_{m['id']}",
+                                           use_container_width=True,
+                                           help="메모 삭제 (한번 더 누르면 확정)"):
+                        st.session_state[confirm_key] = True
+                        st.rerun()
 
             with top[1]:
                 st.markdown(
@@ -493,10 +514,128 @@ def render_stock_detail(ticker: str, name: str):
     _render_ir_section(ticker, name)
     _render_pipeline_section(ticker)
     _render_news_section(ticker, name)
+    _render_catalyst_section(ticker)
+    _render_insider_section(ticker)
 
     # ── 메모 (토글들 밑) ──
     st.divider()
     _render_memo_section(ticker)
+
+
+def _render_catalyst_section(ticker: str):
+    """종목별 다가오는 카탈리스트 + IR 자료에서 추출된 회사 공개 마일스톤."""
+    import catalysts as cat
+    import ir_milestones as irm
+    df = cat.get_catalysts(ticker=ticker, days=365)
+    co_df = irm.get_company_events(ticker)
+    # 어닝콜 카탈리스트 (별도 표시)
+    ec_df = db.pd_read_sql(
+        "SELECT * FROM catalysts WHERE ticker=? AND event_type='earnings_call' "
+        "ORDER BY event_date ASC",
+        params=(ticker.upper(),),
+    )
+    badge_parts = []
+    if not df.empty:
+        badge_parts.append(f"{len(df)}건")
+    if not ec_df.empty:
+        badge_parts.append(f"어닝콜 {len(ec_df)}")
+    if not co_df.empty:
+        badge_parts.append(f"IR {len(co_df)}")
+    badge = f"({', '.join(badge_parts)})" if badge_parts else ""
+    with st.expander(f"📅 다가오는 카탈리스트 {badge}", expanded=False):
+        if df.empty and co_df.empty and ec_df.empty:
+            st.caption("저장된 카탈리스트 없음.")
+        if not df.empty:
+            for _, r in df.iterrows():
+                tt = r.get("event_type", "")
+                emoji = {"pdufa": "💊", "earnings": "📊",
+                         "clinical_readout": "🧪", "conference": "🎤",
+                         "company_event": "📑",
+                         "earnings_call": "🎙️"}.get(tt, "📅")
+                st.markdown(
+                    f"- {emoji} **{r['event_date']}** · {r['title'][:160]}  "
+                    f"<span style='opacity:0.55; font-size:0.85em'>· {tt}</span>",
+                    unsafe_allow_html=True,
+                )
+        if not ec_df.empty:
+            st.markdown("---")
+            st.caption("🎙️ 최근 어닝콜에서 회사가 공개한 forward-looking 멘션")
+            for _, r in ec_df.iterrows():
+                d = r.get("description")
+                d = d if isinstance(d, str) else ""
+                date_hint = d.split("·")[0].replace("date_hint:", "").strip() or r.get("event_date", "")
+                st.markdown(
+                    f"- **[{date_hint}]** {r['title']}",
+                )
+        if not co_df.empty:
+            st.markdown("---")
+            st.caption("📑 IR 자료에서 회사가 자체 공개한 milestones")
+            for _, r in co_df.iterrows():
+                d = r.get("description")
+                d = d if isinstance(d, str) else ""
+                date_hint = d.replace("date_hint:", "").strip() or r.get("event_date", "")
+                st.markdown(
+                    f"- **[{date_hint}]** {r['title']}",
+                )
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 카탈리스트 갱신", key=f"cat_rf_{ticker}",
+                         use_container_width=True):
+                with st.spinner("..."):
+                    cat.fetch_earnings_dates([ticker])
+                    cat.fetch_clinical_completions([ticker])
+                    cat.refresh_all(watchlist_only=False)
+                st.rerun()
+        with col2:
+            if st.button("🔍 IR PDF 마일스톤 추출", key=f"irm_rf_{ticker}",
+                         use_container_width=True):
+                with st.spinner("IR PDF 분석 (10-30초)..."):
+                    result = irm.extract_for_ticker(ticker, save=True)
+                if result.get("error"):
+                    st.warning(f"⚠️ {result['error']}")
+                else:
+                    st.success(
+                        f"✓ {len(result.get('milestones', []))}개 추출 — "
+                        f"{result.get('deck_title', '')[:60]}"
+                    )
+                    st.rerun()
+
+
+def _render_insider_section(ticker: str):
+    """SEC Form 4 인사이더 매매 (OpenInsider)."""
+    import insiders as ins
+    summary = ins.summary_for_ticker(ticker, days=180)
+    if summary.get("trades", 0) == 0:
+        label = f"👥 인사이더 매매 (180일)"
+    else:
+        net = summary["net_value"]
+        sign = "📈" if net > 0 else "📉" if net < 0 else "—"
+        label = (f"👥 인사이더 매매 (180일) {sign} "
+                 f"{summary['trades']}건 · 매수 ${summary['buy_value']/1e6:.1f}M · "
+                 f"매도 ${abs(summary['sell_value'])/1e6:.1f}M")
+    with st.expander(label, expanded=False):
+        if summary["trades"] == 0:
+            st.info("최근 180일 인사이더 매매 없음.")
+        else:
+            df = ins.get_insider_trades(ticker, days=180)
+            if not df.empty:
+                view = df[["trade_date", "insider_name", "title",
+                           "transaction", "shares", "price", "value_usd"]].copy()
+                view.columns = ["일자", "인사이더", "직책", "거래", "수량", "가격", "금액(USD)"]
+                view["수량"] = view["수량"].apply(
+                    lambda x: f"{int(x):,}" if pd.notna(x) else "—"
+                )
+                view["가격"] = view["가격"].apply(
+                    lambda x: f"${x:.2f}" if pd.notna(x) else "—"
+                )
+                view["금액(USD)"] = view["금액(USD)"].apply(
+                    lambda x: f"${x/1e3:+,.0f}K" if pd.notna(x) else "—"
+                )
+                st.dataframe(view, use_container_width=True, hide_index=True, height=300)
+        if st.button("🔄 갱신", key=f"ins_rf_{ticker}", use_container_width=True):
+            with st.spinner("OpenInsider fetching..."):
+                ins.refresh_for_tickers([ticker])
+            st.rerun()
 
 
 def _render_url_settings(ticker: str):
@@ -850,13 +989,14 @@ def render_main_page():
     )
 
     # 탭 — 컴팩트 라디오 (사이드바 버튼이 외부에서 변경 가능)
-    tab_options = ["high", "top_movers", "daily_news", "memos", "portfolios"]
+    tab_options = ["high", "top_movers", "daily_news", "memos", "portfolios", "catalysts"]
     tab_labels = {
         "high": "📈 52주 신고가",
         "top_movers": "🚀 상승폭 최대",
         "daily_news": "📰 데일리 뉴스",
         "memos": "📝 메모 타임라인",
         "portfolios": "💼 MP 현황",
+        "catalysts": "📅 카탈리스트",
     }
     # 사이드바에서 _force_tab을 set했으면 위젯 상태 강제 동기화
     if "_force_tab" in st.session_state:
@@ -883,6 +1023,145 @@ def render_main_page():
         _section_memos()
     elif chosen == "portfolios":
         _section_portfolios()
+    elif chosen == "catalysts":
+        _section_catalysts()
+
+
+# ───────────────────────── 카탈리스트 캘린더 ─────────────────────────
+def _section_catalysts():
+    import catalysts as cat
+    import ir_milestones as irm
+    st.subheader("📅 카탈리스트 캘린더")
+
+    col_a, col_b, col_c, col_d = st.columns([1.2, 1, 1.2, 1])
+    with col_a:
+        days = st.selectbox(
+            "기간",
+            options=[14, 30, 60, 90, 180, 365],
+            index=3,
+            format_func=lambda d: f"{d}일",
+            key="cat_days",
+        )
+    with col_b:
+        type_options = {
+            "전체": None,
+            "PDUFA": ["pdufa"],
+            "학회": ["conference"],
+            "어닝": ["earnings"],
+            "임상 데이터 공개": ["clinical_readout"],
+            "회사 공개": ["company_event", "earnings_call"],
+        }
+        type_label = st.selectbox("타입", list(type_options.keys()), key="cat_type")
+        types = type_options[type_label]
+    with col_c:
+        scope = st.selectbox(
+            "범위",
+            ["전체 (≥$1B 바이오텍)", "관심종목만"],
+            key="cat_scope",
+        )
+    with col_d:
+        st.markdown("<div style='height:1.7rem;'></div>", unsafe_allow_html=True)
+        refresh_scope = "watchlist" if scope == "관심종목만" else "biotech_1b"
+        btn_label = "🔄 갱신 (관심종목)" if refresh_scope == "watchlist" else "🔄 갱신 (전체, 30분+)"
+        if st.button(btn_label, use_container_width=True, key="cat_refresh"):
+            with st.spinner(
+                f"카탈리스트 fetching ({refresh_scope})... "
+                f"{'관심종목 ~1분' if refresh_scope == 'watchlist' else '$1B≥ ~30-60분'}"
+            ):
+                counts = cat.refresh_all(scope=refresh_scope)
+            st.success(
+                f"✓ PDUFA {counts['pdufa']} · 학회 {counts['conference']} · "
+                f"어닝 {counts['earnings']} · 임상 데이터 공개 {counts['clinical_readout']} · "
+                f"어닝콜 {counts.get('earnings_call', 0)}"
+            )
+
+    df = cat.get_catalysts(days=days, event_types=types)
+    def _is_sectorwide(s):
+        # 학회 같은 sector-wide 이벤트는 ticker=NULL/''
+        return s.isna() | (s == "")
+    if scope == "관심종목만" and not df.empty:
+        import watchlist as wl
+        wl_set = set(wl.list_all()["ticker"].tolist())
+        df = df[df["ticker"].isin(wl_set) | _is_sectorwide(df["ticker"])]
+    elif scope.startswith("전체") and not df.empty:
+        # ≥$1B 바이오텍 + 학회
+        from db import connect as _conn
+        with _conn() as c:
+            biotech_rows = c.execute(
+                "SELECT ticker FROM ticker_master "
+                "WHERE sector='Healthcare' AND market_cap >= 1000 "
+                "AND country='USA'"
+            ).fetchall()
+        biotech_set = {r["ticker"] for r in biotech_rows}
+        df = df[df["ticker"].isin(biotech_set) | _is_sectorwide(df["ticker"])]
+
+    if df.empty:
+        st.info("해당 조건의 카탈리스트 없음. 🔄 갱신 눌러 캐시 채우기.")
+    else:
+        st.caption(f"총 {len(df)}건 · 가까운 순")
+        # 일자 표시 — description에 date_hint 있으면 우선 사용 (late 2026 같은 fuzzy 표기)
+        import re as _re
+        def _date_label(row):
+            desc = row.get("description")
+            if not isinstance(desc, str):
+                desc = ""
+            m = _re.search(r"date_hint:\s*([^·]+?)(?:\s*·|$)", desc)
+            if m:
+                return m.group(1).strip()
+            return row.get("event_date") or ""
+        df = df.copy()
+        df["_disp_date"] = df.apply(_date_label, axis=1)
+        view = df[["_disp_date", "event_date", "ticker", "event_type", "title",
+                   "therapy_area", "source"]].copy()
+        view.columns = ["일자", "정렬일", "티커", "타입", "제목", "분야", "소스"]
+        view["티커"] = view["티커"].fillna("—")
+        view["분야"] = view["분야"].fillna("—")
+        st.dataframe(
+            view.drop(columns=["정렬일"]),
+            use_container_width=True, hide_index=True, height=520,
+        )
+
+    # IR 마일스톤 추출 — watchlist 종목별
+    st.divider()
+    st.subheader("📑 IR 자료 카탈리스트 추출 (회사 자체 공개)")
+    st.caption("watchlist 종목의 최근 투자자 프레젠테이션 PDF에서 'Anticipated Catalysts' 섹션 자동 추출")
+    import watchlist as wl
+    wl_df = wl.list_all()
+    if wl_df.empty:
+        st.info("관심종목 비어있음.")
+    else:
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            picked = st.selectbox(
+                "종목 선택", wl_df["ticker"].tolist(), key="irm_ticker",
+            )
+        with col2:
+            st.markdown("<div style='height:1.7rem;'></div>", unsafe_allow_html=True)
+            if st.button("🔍 IR PDF 재추출", use_container_width=True, key="irm_refresh"):
+                with st.spinner(f"{picked} IR PDF 분석 중..."):
+                    result = irm.extract_for_ticker(picked, save=True)
+                if result.get("error"):
+                    st.warning(f"⚠️ {result['error']}")
+                else:
+                    st.success(
+                        f"✓ {result.get('deck_title', '')[:80]} — "
+                        f"{len(result.get('milestones', []))}개 마일스톤"
+                    )
+                    if result.get("deck_url"):
+                        st.caption(f"📄 {result['deck_url']}")
+        ev_df = irm.get_company_events(picked)
+        if ev_df.empty:
+            st.info(f"{picked}의 추출된 마일스톤 없음. 🔍 IR PDF 재추출 시도.")
+        else:
+            for _, r in ev_df.iterrows():
+                d = r.get("description")
+                d = d if isinstance(d, str) else ""
+                date_hint = d.replace("date_hint:", "").strip() or r.get("event_date", "")
+                st.markdown(
+                    f"- **[{date_hint}]** {r['title']}  "
+                    f"<span style='opacity:0.6; font-size:0.85em'>· {r['event_date']}</span>",
+                    unsafe_allow_html=True,
+                )
 
 
 # ───────────────────────── Model Portfolio ─────────────────────────

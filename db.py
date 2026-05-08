@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS ticker_master (
 CREATE INDEX IF NOT EXISTS idx_ticker_industry ON ticker_master(industry);
 CREATE INDEX IF NOT EXISTS idx_ticker_mcap ON ticker_master(market_cap DESC);
 
+-- 외부 사이트 ticker → slug 매핑 (investing.com 등)
+ALTER TABLE ticker_master ADD COLUMN IF NOT EXISTS investing_slug TEXT;
+
 CREATE TABLE IF NOT EXISTS high_low_cache (
     ticker          TEXT NOT NULL,
     computed_date   TEXT NOT NULL,
@@ -90,6 +93,40 @@ CREATE TABLE IF NOT EXISTS portfolio_holdings (
     UNIQUE (portfolio_id, ticker)
 );
 CREATE INDEX IF NOT EXISTS idx_holdings_portfolio ON portfolio_holdings(portfolio_id);
+
+CREATE TABLE IF NOT EXISTS catalysts (
+    id              BIGSERIAL PRIMARY KEY,
+    ticker          TEXT,                       -- NULL이면 학회 같은 sector-wide 이벤트
+    event_date      TEXT NOT NULL,              -- ISO YYYY-MM-DD
+    event_end_date  TEXT,                       -- 학회처럼 기간 있는 이벤트
+    event_type      TEXT NOT NULL,              -- pdufa / earnings / conference / clinical_completion / advisory_committee
+    title           TEXT NOT NULL,
+    description     TEXT,
+    source          TEXT,                       -- biopharmcatalyst / yfinance / clinicaltrials / hardcoded
+    therapy_area    TEXT,                       -- 학회 분류용 (oncology/hepatology 등)
+    fetched_at      TEXT NOT NULL,
+    UNIQUE (ticker, event_date, event_type, title)
+);
+CREATE INDEX IF NOT EXISTS idx_catalysts_date ON catalysts(event_date);
+CREATE INDEX IF NOT EXISTS idx_catalysts_ticker ON catalysts(ticker, event_date);
+
+CREATE TABLE IF NOT EXISTS insider_trades (
+    id              BIGSERIAL PRIMARY KEY,
+    ticker          TEXT NOT NULL,
+    filing_date     TEXT NOT NULL,
+    trade_date      TEXT NOT NULL,
+    insider_name    TEXT NOT NULL,
+    title           TEXT,                       -- CEO/CFO/Director 등
+    transaction     TEXT NOT NULL,              -- P-Purchase / S-Sale / S-Sale+OE / etc.
+    shares          DOUBLE PRECISION,
+    price           DOUBLE PRECISION,
+    value_usd       DOUBLE PRECISION,
+    shares_after    DOUBLE PRECISION,
+    fetched_at      TEXT NOT NULL,
+    UNIQUE (ticker, trade_date, insider_name, transaction, shares)
+);
+CREATE INDEX IF NOT EXISTS idx_insider_ticker ON insider_trades(ticker, trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_insider_filing ON insider_trades(filing_date DESC);
 """
 
 
