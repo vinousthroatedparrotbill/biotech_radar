@@ -271,6 +271,49 @@ def _date_hint_to_iso(hint: str) -> str:
     return "2099-12-31"
 
 
+# ─────────────────────── 멘션 자동 분류 (event_type 재분류) ───────────────────────
+_RE_REGULATORY = re.compile(
+    r"\b(snda|sbla|nda|bla|"
+    r"filing|file an?|filed|submit|submission|"
+    r"approval|approved|fda decision|"
+    r"adcom|advisory committee|breakthrough (?:therapy )?designation|"
+    r"orphan (?:drug )?designation|priority review|accelerated approval|"
+    r"complete response letter|crl)\b",
+    re.IGNORECASE,
+)
+_RE_READOUT = re.compile(
+    r"(readout|top-?line|interim (?:data|analysis|results)|"
+    r"initial (?:data|results)|primary endpoint|"
+    r"phase\s*[123][a-z]?(?:[/-]\s*\d)?(?:[\w\s]{0,40})(?:results?|data|readout)|"
+    r"\bresults?\s+(?:are|expected|anticipated|due)|"
+    r"data\s+(?:are|is)\s+(?:expected|anticipated|due)|"
+    r"data\s+(?:read|release|disclosure|presentation|update)|"
+    r"clinical\s+trial\s+results?|trial\s+results?)",
+    re.IGNORECASE,
+)
+_RE_MILESTONE = re.compile(
+    r"(initiate|first patient|first dose|begin (?:the\s+)?phase|"
+    r"start (?:the\s+)?phase|launch (?:the\s+)?phase|"
+    r"complete (?:enrollment|the blinded)|enrollment complete|"
+    r"dose (?:first|patient)|first-in-human|fih\b|ind clearance)",
+    re.IGNORECASE,
+)
+
+
+def classify_milestone(sentence: str) -> str:
+    """forward-looking 문장 내용에 따라 event_type 분류.
+    return one of: regulatory, clinical_readout, clinical_milestone, company_event."""
+    s = sentence
+    # 우선순위: 규제 > 임상 데이터 > 임상 마일스톤 > 일반
+    if _RE_REGULATORY.search(s):
+        return "regulatory"
+    if _RE_READOUT.search(s):
+        return "clinical_readout"
+    if _RE_MILESTONE.search(s):
+        return "clinical_milestone"
+    return "company_event"
+
+
 def _save_transcript_extractions(ticker: str, transcripts: list[dict]) -> int:
     """transcripts = [{url, title}, ...] 본문 fetch → forward-looking → DB 저장."""
     if not transcripts:
@@ -288,13 +331,14 @@ def _save_transcript_extractions(ticker: str, transcripts: list[dict]) -> int:
             for it in items:
                 ev_date = _date_hint_to_iso(it["date_hint"])
                 title = it["sentence"][:300]
+                ev_type = classify_milestone(title)   # regulatory / clinical_readout / clinical_milestone / company_event
                 desc = f"date_hint: {it['date_hint']} · 출처: {t['title'][:80]}"
                 try:
                     conn.execute(
                         "INSERT INTO catalysts (ticker, event_date, event_type, title, "
                         "description, source, fetched_at) VALUES (?,?,?,?,?,?,?) "
                         "ON CONFLICT (ticker, event_date, event_type, title) DO NOTHING",
-                        (ticker.upper(), ev_date, "earnings_call",
+                        (ticker.upper(), ev_date, ev_type,
                          title, desc, t["url"][:300], now),
                     )
                     saved += 1

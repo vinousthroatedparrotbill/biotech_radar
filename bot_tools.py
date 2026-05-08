@@ -1158,8 +1158,8 @@ TOOL_DEFS = [
                        "data readouts (interim + final), company-disclosed milestones from "
                        "IR decks, and forward-looking statements from earnings calls. "
                        "ticker omitted = all (sector-wide). event_types filter: "
-                       "pdufa / conference / earnings / clinical_readout / company_event / "
-                       "earnings_call.",
+                       "pdufa / conference / earnings / clinical_readout / "
+                       "clinical_milestone / regulatory / company_event.",
         "input_schema": {
             "type": "object",
             "properties": {

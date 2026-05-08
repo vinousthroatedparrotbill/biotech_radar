@@ -549,7 +549,8 @@ def _render_catalyst_section(ticker: str):
             for _, r in df.iterrows():
                 tt = r.get("event_type", "")
                 emoji = {"pdufa": "💊", "earnings": "📊",
-                         "clinical_readout": "🧪", "conference": "🎤",
+                         "clinical_readout": "🧪", "clinical_milestone": "🚀",
+                         "regulatory": "📜", "conference": "🎤",
                          "company_event": "📑",
                          "earnings_call": "🎙️"}.get(tt, "📅")
                 st.markdown(
@@ -1049,7 +1050,9 @@ def _section_catalysts():
             "학회": ["conference"],
             "어닝": ["earnings"],
             "임상 데이터 공개": ["clinical_readout"],
-            "회사 공개": ["company_event", "earnings_call"],
+            "임상 마일스톤": ["clinical_milestone"],
+            "FDA 규제": ["regulatory"],
+            "회사 공개": ["company_event"],
         }
         type_label = st.selectbox("타입", list(type_options.keys()), key="cat_type")
         types = type_options[type_label]
@@ -1071,8 +1074,8 @@ def _section_catalysts():
                 counts = cat.refresh_all(scope=refresh_scope)
             st.success(
                 f"✓ PDUFA {counts['pdufa']} · 학회 {counts['conference']} · "
-                f"어닝 {counts['earnings']} · 임상 데이터 공개 {counts['clinical_readout']} · "
-                f"어닝콜 {counts.get('earnings_call', 0)}"
+                f"어닝 {counts['earnings']} · 임상 데이터 {counts['clinical_readout']} · "
+                f"transcript 멘션 {counts.get('earnings_call', 0)} (자동분류됨)"
             )
 
     df = cat.get_catalysts(days=days, event_types=types)
