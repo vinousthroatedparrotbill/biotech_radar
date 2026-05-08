@@ -213,7 +213,7 @@ def _markdown_to_html(md: str) -> str:
 
 def send_investment_reports(tickers: list[str], max_n: int = 5) -> int:
     """신규 신고가 종목 중 시총 큰 순 max_n개에 대해 투자 메모 생성·발송.
-    각 종목당 별도 메시지 (텔레그램 4096자 제한 + 가독성)."""
+    각 종목당 헤더 + 본문 (4096자 초과 시 분할). 도구 사용한 심층 메모라 길어질 수 있음."""
     import investment_report as ir
     if not tickers:
         return 0
@@ -222,14 +222,15 @@ def send_investment_reports(tickers: list[str], max_n: int = 5) -> int:
     for r in reports:
         tk = r["ticker"]
         body_html = _markdown_to_html(r["report"])
-        msg = f"📊 <b>{tk} 투자 메모</b>\n\n{body_html}"
-        if len(msg) > 4000:
-            msg = msg[:3990] + "\n…(잘림)"
-        try:
-            send(msg)
-            sent += 1
-        except Exception as e:
-            send(f"⚠️ {tk} 메모 발송 실패: {e}", parse_mode="HTML")
+        full = f"📊 <b>{tk} 투자 메모</b>\n\n{body_html}"
+        # 텔레그램 4096자 제한 — 청크로 분할 (코드/HTML 태그 안 끊기게)
+        chunks = _split(full, 3900)
+        for i, chunk in enumerate(chunks):
+            try:
+                send(chunk)
+                sent += 1
+            except Exception as e:
+                send(f"⚠️ {tk} 메모 청크 {i+1} 발송 실패: {e}", parse_mode="HTML")
     return sent
 
 

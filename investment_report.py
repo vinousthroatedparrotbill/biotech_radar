@@ -171,82 +171,139 @@ def _serialize_context(ctx: dict) -> str:
     return "\n".join(parts)
 
 
-SYSTEM_PROMPT = """당신은 Goldman Sachs / Morgan Stanley급 sell-side biotech 애널리스트.
-펀드매니저에게 보낼 institutional-quality 투자 메모 작성.
+SYSTEM_PROMPT = """당신은 Goldman Sachs / Morgan Stanley / Cowen / Leerink급 senior biotech 애널리스트.
+펀드매니저에게 보낼 institutional-quality 심층 리포트 작성.
+
+[작업 흐름 — 반드시 도구 사용]
+제공 데이터(우리 DB)는 시작점일 뿐. 다음 도구로 적극 조사 후 작성:
+1) get_pipeline_info(ticker) — 회사 파이프라인 페이지 본문 — 각 자산의 단계·적응증
+2) search_clinicaltrials(자산명/적응증) — 임상 단계, 사이즈, 디자인
+3) search_pubmed(자산명) — peer-reviewed 데이터 (LDL %, ORR, PFS 등 구체 수치)
+4) search_news_by_query(자산명 또는 "competitor + 적응증") — 최근 데이터 readout
+5) fetch_url — 검색에서 나온 PR/투자 자료 본문을 직접 읽어 LDL/Lp(a)/HDL 같은 구체 %, 시장 사이즈,
+   경쟁 약물 데이터 확보. 헤드라인만 보고 추측 금지.
+6) 경쟁 약물 조사 — "메인 자산이 X이면 X target / X 적응증의 경쟁 약물 Y, Z 모두 검색해서
+   head-to-head 차별점 표/논의" 작성.
 
 [형식]
-- 한국어 작성. 약물명·기전·회사명은 영문 유지 (예: ARO-MAPT, PSMA, TCE).
-- 분량: 약 15-25줄 (충분한 substance).
-- markdown bold(**)·이탤릭(*) 사용. 텔레그램 HTML로 자동 변환됨.
-- 회사명/티커 헤더로 시작.
+- 한국어. 약물명·기전·회사명·임상명은 영문 유지 (ARO-MAPT, PSMA, CETP, PREVAIL 등).
+- 분량 제한 없음 — substance 우선. Markdown.
+- 표 사용 권장 (head-to-head 비교).
 
-[구조 — 모든 섹션 포함]
+[필수 섹션 — 빠짐없이]
 
-**1) 투자 포인트 (Thesis)**
-3-4줄. 이 종목의 투자 매력 핵심. 어떤 자산이 movin needle인가, 시장 사이즈, MOA edge,
-경쟁 포지셔닝. 추상적 형용사 금지 — 구체적 자산·기전·target market 언급.
+# {회사명} ({TICKER}) — 투자 메모
 
-**2) 최근 주가 동향 + 상승 이유**
-2-3줄. 1D/1M/3M/1Y 수익률 인용 + 왜 올랐는지 (recent news, catalyst, deal 중 무엇이
-드라이버였는지). 데이터에 명시적 단서 있으면 인용, 없으면 "최근 60일 fundamental
-뉴스 부족 — 모멘텀 sustained 아님" 식으로 기록.
+## 1) 투자 포인트 (Thesis) — 4-6줄
+이 종목 매력 핵심. 메인 자산·기전·시장 사이즈·차별 포인트 구체적으로.
 
-**3) 카탈리스트 워치 포인트**
-가까운 순으로 핵심 3-5개 (날짜 + 자산명 + 드라이버):
-- [날짜] [자산/이벤트]: 무엇이 나오나, 왜 중요한가 (시장 사이즈, 경쟁 비교, base case 시나리오)
-- 일자 fuzzy면 그대로 인용 ("late 2026", "Q3 26")
+## 2) 메인 파이프라인 — 자산별 정리
+각 핵심 자산:
+- **자산명** (코드명) — 적응증, MOA, 단계, 핵심 데이터(% 수치)
+- 시장 사이즈, peak sales 컨센서스 (있다면)
+- 가까운 카탈리스트 (자산별 readout 일자)
+파이프라인 4-7개 자산 다룰 것.
 
-**4) 인사이더 매매 시그널**
-2줄. 180일 net buy/sell 금액. 해석: 매수 우세면 confidence, 매도 우세면 caution.
-0건이면 "최근 6M 인사이더 거래 없음" — 중립.
+## 3) 경쟁 파이프라인 — head-to-head 차별 분석 ★ 가장 중요 ★
+메인 자산 각각에 대해 같은 target / 같은 적응증의 경쟁 약물 조사·비교:
+- 표 권장: 자산 | 회사 | MOA | Phase | 핵심 데이터 | readout 일정
+- **차별 포인트 토론**: efficacy, safety, dosing, ROA, 환자 segment 분할,
+  manufacturing/COGS, 가격, first-mover timing 등 다각도.
+- 우리 자산이 어디서 우위/열위인지 솔직하게.
+- 시장 구도 시나리오 (양분 / 대체 / 보완).
 
-**5) 리스크 포인트**
-3개 — 각각 한 줄:
-- 임상 리스크 (구체 자산 + 실패 시 영향)
-- 경쟁/시장 리스크 (경쟁사·기전 대안)
-- 재무/규제 리스크 (cash runway, FDA 우려, IP 등)
+## 4) 최근 주가 동향 + 상승 이유
+1D/1M/3M/1Y 수익률 + 왜 올랐는지. 최근 60일 fundamental 뉴스에서 드라이버 식별.
 
-**6) Bottom Line**
-1줄 — 핵심 한 문장 요약 (이번 분기/연도 추적 포인트).
+## 5) 카탈리스트 워치 — 자산별 가까운 순
+- [일자] [자산]: 데이터/이벤트 + base case 시나리오 (성공/실패 시 주가 영향)
+- fuzzy 일자는 그대로 ("Q3 2026", "1H 2027").
+
+## 6) 인사이더 매매 시그널
+180일 net buy/sell + 해석.
+
+## 7) 리스크 포인트
+3-5개 — 임상/경쟁/재무/규제/IP 각각 구체.
+
+## 8) 바텀라인
+종합 결론 — 핵심 변곡점, 추적 포인트, 시나리오.
 
 [원칙]
-- 데이터에 없는 내용 절대 만들지 말기 (M&A 가능성, 경쟁사 비교 등 hallucination 금지).
-- 카탈리스트 일자/제목은 제공된 그대로 인용.
-- buy/sell 추천 표현 금지 (compliance). 사실/시그널/관찰 형태로 서술.
-- 너무 conservative 금지 — 펀드매니저 의사결정에 가치 있는 insight 제공."""
+- **펀더멘탈 데이터 풍부하게**: %, p-value, n, market size, peak sales 같은 구체 숫자
+  도구로 확보 후 인용. "효능 좋음" 같은 추상 형용사 금지.
+- 경쟁 분석 절대 빠뜨리지 말기. 모든 메인 자산에 경쟁 약물 1-3개 비교.
+- 데이터 없으면 "공개 데이터 없음" 명시 — 추측·hallucination 금지.
+- buy/sell 추천 표현 금지. 사실/시그널/관찰/시나리오 형태로 서술.
+- "변명 불가", "압도적", "olympics" 같은 솔직한 톤 OK — sell-side analyst 톤."""
 
 
-def generate(ticker: str) -> str:
-    """ticker → 투자 메모 텍스트 (텔레그램 markdown). API 키 없으면 fallback 요약."""
+def generate(ticker: str, max_tool_calls: int = 15) -> str:
+    """ticker → 도구 사용한 심층 투자 메모. Claude가 fetch_url/search_pubmed/
+    search_clinicaltrials/get_pipeline_info 등 자유롭게 호출해 경쟁 약물·구체 데이터 조사."""
+    import json as _json
+    from bot_tools import TOOL_DEFS, run_tool
+
     ctx = _gather_context(ticker)
     api_key = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
     context_str = _serialize_context(ctx)
 
     if not api_key:
-        # API 없으면 raw 컨텍스트 그대로 (포맷팅만)
         return f"*{ctx['name']} ({ticker})*\n\n{context_str}"
+
+    user_msg = (
+        f"종목 {ticker} ({ctx['name']})에 대한 institutional-quality 투자 메모 작성.\n\n"
+        f"[우리 DB 컨텍스트 — 시작점, 추가 도구 조사 필수]\n{context_str}\n\n"
+        "[작업 지침]\n"
+        "1. get_pipeline_info(ticker)로 메인 자산 4-7개 파악\n"
+        "2. 각 메인 자산에 대해 search_pubmed / search_clinicaltrials / "
+        "search_news_by_query로 구체 데이터(%, n, p-value 가능시) 확보\n"
+        "3. 각 메인 자산의 경쟁 약물(같은 target 또는 같은 적응증) 1-3개 조사 — "
+        "search_news_by_query('경쟁자산명 phase 결과') + fetch_url로 PR 본문 읽기\n"
+        "4. head-to-head 비교 표 + 차별 토론 포함\n"
+        "5. 시스템 프롬프트의 8개 섹션 모두 작성\n"
+        "도구 사용 끝나면 최종 메모만 텍스트로 출력."
+    )
+    messages: list[dict] = [{"role": "user", "content": user_msg}]
 
     try:
         client = anthropic.Anthropic(api_key=api_key)
-        resp = client.messages.create(
-            model=CLAUDE_MODEL,
-            max_tokens=2500,
-            system=SYSTEM_PROMPT,
-            messages=[{
-                "role": "user",
-                "content": (f"다음 데이터를 기반으로 institutional-quality 투자 메모 작성:\n\n"
-                            f"{context_str}\n\n"
-                            f"메모는 위에 명시된 6개 섹션 모두 포함."),
-            }],
-        )
-        text = ""
-        for b in resp.content:
-            if b.type == "text":
-                text += b.text
-        return text or "(리포트 생성 실패)"
+        final_text = ""
+        for step in range(max_tool_calls):
+            resp = client.messages.create(
+                model=CLAUDE_MODEL,
+                max_tokens=8000,
+                system=SYSTEM_PROMPT,
+                tools=TOOL_DEFS,
+                messages=messages,
+            )
+            if resp.stop_reason == "tool_use":
+                tool_uses = [b for b in resp.content if b.type == "tool_use"]
+                messages.append({"role": "assistant", "content": resp.content})
+                tool_results = []
+                for tu in tool_uses:
+                    log.info("[%s] tool: %s args=%s", ticker, tu.name,
+                             str(tu.input)[:120])
+                    try:
+                        result = run_tool(tu.name, tu.input)
+                    except Exception as e:
+                        result = {"error": str(e)}
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tu.id,
+                        "content": _json.dumps(result, ensure_ascii=False,
+                                               default=str)[:10000],
+                    })
+                messages.append({"role": "user", "content": tool_results})
+                continue
+            for b in resp.content:
+                if b.type == "text":
+                    final_text += b.text
+            break
+        log.info("%s 메모 생성 완료 — tool_call %d step", ticker, step)
+        return final_text or "(메모 생성 실패 — 응답 없음)"
     except Exception as e:
         log.exception("Claude 리포트 실패: %s", e)
-        return f"*{ctx['name']} ({ticker})*\n\n{context_str}\n\n_(Claude 리포트 생성 실패: {e})_"
+        return f"*{ctx['name']} ({ticker})*\n\n{context_str}\n\n_(Claude 실패: {e})_"
 
 
 def generate_for_tickers(tickers: list[str], max_n: int = 5) -> list[dict]:
