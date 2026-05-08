@@ -248,7 +248,14 @@ def generate(ticker: str, max_tool_calls: int = 15) -> str:
     context_str = _serialize_context(ctx)
 
     if not api_key:
-        return f"*{ctx['name']} ({ticker})*\n\n{context_str}"
+        return (
+            f"# {ctx['name']} ({ticker})\n\n"
+            "⚠️ **ANTHROPIC_API_KEY 미설정** — Claude 호출 불가, 원시 데이터만 표시.\n\n"
+            "Streamlit Cloud에서는 앱 설정 → **Secrets**에 다음 한 줄 추가:\n"
+            "```toml\nANTHROPIC_API_KEY = \"sk-ant-api03-...\"\n```\n"
+            "추가 후 앱 reboot.\n\n---\n\n"
+            f"{context_str}"
+        )
 
     user_msg = (
         f"종목 {ticker} ({ctx['name']})에 대한 institutional-quality 투자 메모 작성.\n\n"
