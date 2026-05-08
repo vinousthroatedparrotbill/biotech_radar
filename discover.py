@@ -163,19 +163,36 @@ def _extract_best_link(html: str, base_url: str, patterns: list[tuple[re.Pattern
     candidates: list[tuple[int, str, str]] = []   # (score, abs_url, text)
     for a in soup.find_all("a", href=True):
         href = a["href"]
+        # tel:, mailto:, javascript:, # 등 비-http 링크 거름
+        href_lower = href.lower().strip()
+        if href_lower.startswith(("tel:", "mailto:", "javascript:", "#", "data:")):
+            continue
         text = a.get_text(" ", strip=True)
         score = _score_anchor(text, href, patterns)
         if score == 0:
             continue
         abs_url = urljoin(base_url, href)
+        if not abs_url.startswith(("http://", "https://")):
+            continue
         # 외부 도메인은 제외 (단, 같은 회사의 *.investors.foo.com 같은 서브도메인은 OK)
         href_host = urlparse(abs_url).netloc
         if href_host and base_host:
             base_root = ".".join(base_host.split(".")[-2:])
             href_root = ".".join(href_host.split(".")[-2:])
             if base_root != href_root:
-                # 단, q4inc.com / s2.q4cdn.com 같은 IR 호스팅은 허용
-                if not any(s in href_host for s in ("q4inc", "q4cdn", "investis", "edgar")):
+                # IR/PR 외부 호스팅 서비스는 예외 허용
+                ALLOW_HOSTS = (
+                    "q4inc", "q4cdn",          # Q4 IR
+                    "investis",                  # Investis
+                    "edgar",                     # SEC EDGAR
+                    "gcs-web",                   # NASDAQ IR / Globe Newswire
+                    "mediaroom",                 # PR Newswire
+                    "prnewswire", "businesswire",
+                    "globenewswire",
+                    "investorroom",              # SHAREHOLDER.COM류
+                    "wsfsbank",
+                )
+                if not any(s in href_host for s in ALLOW_HOSTS):
                     continue
         candidates.append((score, abs_url, text[:80]))
 

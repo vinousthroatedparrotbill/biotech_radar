@@ -18,6 +18,12 @@ def add(ticker: str) -> None:
             "ON CONFLICT (ticker) DO NOTHING",
             (ticker, datetime.now().isoformat(timespec="seconds")),
         )
+    # 즉시 가격 스냅샷 fetch — 다음 collect 안 기다리고도 보이게
+    try:
+        from collectors.high_low import collect_tickers
+        collect_tickers([ticker])
+    except Exception:
+        pass   # 실패해도 watchlist 등록 자체는 성공
 
 
 def remove(ticker: str) -> None:

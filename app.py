@@ -21,10 +21,49 @@ from db import init_db
 from universe import load_universe, get_universe
 from collectors.high_low import (
     collect as hl_collect, fetch_new_highs, latest_run_date,
-    fetch_new_today_highs,
+    fetch_new_today_highs, fetch_top_movers,
 )
 
 st.set_page_config(page_title="Biotech Radar", layout="wide", page_icon="🧬")
+
+
+# ───────────────────────── 로그인 게이트 ─────────────────────────
+def _check_auth() -> bool:
+    """APP_PASSWORD가 .env/secrets에 있으면 첫 진입 시 비밀번호 요구.
+    없으면 로그인 X (개발 모드)."""
+    if st.session_state.get("authed"):
+        return True
+    expected = (os.environ.get("APP_PASSWORD") or "").strip()
+    if not expected:
+        return True   # 비밀번호 미설정 = 인증 비활성화
+
+    # 로그인 화면
+    st.markdown(
+        """
+        <div style="max-width: 400px; margin: 8rem auto; text-align: center;">
+          <h1 style="color: #0a3d3a;">🧬 Biotech Radar</h1>
+          <p style="color: #5b6f6e;">접근하려면 비밀번호 입력</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    cc = st.columns([1, 2, 1])
+    with cc[1]:
+        with st.form("login_form"):
+            pw = st.text_input("Password", type="password", label_visibility="collapsed",
+                               placeholder="비밀번호")
+            if st.form_submit_button("Login", type="primary", use_container_width=True):
+                if pw == expected:
+                    st.session_state["authed"] = True
+                    st.rerun()
+                else:
+                    st.error("틀린 비밀번호")
+    return False
+
+
+if not _check_auth():
+    st.stop()
+
 init_db()
 
 # ───────────────────────── 디자인 (CSS 인젝션) ─────────────────────────
@@ -103,11 +142,18 @@ st.markdown("""
     box-shadow: none !important;
     outline: 1px solid rgba(20, 78, 74, 0.25) !important;
   }
-  /* primary 버튼도 동일 처리 (저장 같은 강조 액션도 차분하게) */
+  /* primary 버튼 — 탭 active 상태용. 다크그린 배경 + 흰 글자 */
   div[data-testid="stMainBlockContainer"] [data-testid="stBaseButton-primary"],
   div[data-testid="stDialog"] [data-testid="stBaseButton-primary"] {
-    color: #0d3b3a !important;
-    font-weight: 600 !important;
+    background: #134e4a !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    border-radius: 8px !important;
+  }
+  div[data-testid="stMainBlockContainer"] [data-testid="stBaseButton-primary"]:hover,
+  div[data-testid="stDialog"] [data-testid="stBaseButton-primary"]:hover {
+    background: #0a3d3a !important;
+    color: #ffffff !important;
   }
   /* 표 헤더 정렬 버튼 — 굵게만 표시 (배경 X) */
   div[data-testid="stMainBlockContainer"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid^="stBaseButton-"] {
@@ -143,43 +189,38 @@ def _close_modal():
     st.session_state["detail_open"] = False
 
 
-if st.sidebar.button("🔄 Universe 갱신 (Finviz)"):
+def _go_main_tab(tab: str):
     _close_modal()
-    with st.spinner("Finviz Elite 스크리너 호출 중..."):
-        try:
-            n = load_universe()
-            st.sidebar.success(f"{n}종목 로드")
-        except Exception as e:
-            st.sidebar.error(f"실패: {e}")
+    st.session_state["page"] = "main"
+    st.session_state["main_tab"] = tab
+    st.session_state["_force_tab"] = tab   # 탭 라디오 위젯 상태 동기화 신호
+    st.rerun()
 
-if st.sidebar.button("📈 52주 신고가 갱신"):
+
+if st.sidebar.button("🏠 메인"):
     _close_modal()
-    with st.spinner("yfinance OHLCV 일괄 다운로드 (~수분)..."):
-        try:
-            n = hl_collect(industry_filter=None)
-            st.sidebar.success(f"{n}종목 처리")
-        except Exception as e:
-            st.sidebar.error(f"실패: {e}")
+    st.session_state["page"] = "main"
+    st.rerun()
+
+if st.sidebar.button("📈 52주 신고가"):
+    _go_main_tab("high")
+
+if st.sidebar.button("🚀 상승폭 최대"):
+    _go_main_tab("top_movers")
+
+if st.sidebar.button("📰 데일리 뉴스"):
+    _go_main_tab("daily_news")
 
 if st.sidebar.button("📝 메모 타임라인"):
-    _close_modal()
-    st.session_state["page"] = "memos"
-    st.rerun()
+    _go_main_tab("memos")
 
 if st.sidebar.button("⭐ 관심종목"):
     _close_modal()
     st.session_state["page"] = "watchlist"
     st.rerun()
 
-if st.sidebar.button("📨 텔레그램 발송"):
-    _close_modal()
-    with st.spinner("텔레그램 발송 중..."):
-        try:
-            from telegram_report import send, compose_report
-            send(compose_report())
-            st.sidebar.success("발송됨")
-        except Exception as e:
-            st.sidebar.error(f"실패: {e}")
+if st.sidebar.button("💼 Model Portfolio"):
+    _go_main_tab("portfolios")
 
 st.sidebar.divider()
 universe_count = len(get_universe())
@@ -203,36 +244,45 @@ try:
 except Exception:
     pass
 
+# ── 사이드바 좌하단: Universe 갱신 + 텔레그램 + 모바일 모드 ──
+st.sidebar.markdown("<div style='height:1.5rem;'></div>", unsafe_allow_html=True)
+if st.sidebar.button("🔄 Universe 갱신", key="uni_refresh",
+                     help="Finviz에서 Healthcare 전 종목 다시 로드"):
+    _close_modal()
+    with st.spinner("Finviz 호출 중..."):
+        try:
+            n = load_universe()
+            st.sidebar.success(f"{n}종목 로드")
+        except Exception as e:
+            st.sidebar.error(f"실패: {e}")
+
+if st.sidebar.button("📨 텔레그램 발송", key="tg_send",
+                     help="현재 데이터로 즉시 텔레그램 요약 발송"):
+    _close_modal()
+    with st.spinner("텔레그램 발송 중..."):
+        try:
+            from telegram_report import send, compose_report
+            send(compose_report())
+            st.sidebar.success("발송됨")
+        except Exception as e:
+            st.sidebar.error(f"실패: {e}")
+
+_is_mobile = st.session_state.get("mobile_mode", False)
+_mobile_label = "🖥 데스크톱 보기" if _is_mobile else "📱 모바일 보기"
+if st.sidebar.button(_mobile_label, key="toggle_mobile",
+                     help="컬럼 축소 + 큰 글자 + 작은 패딩"):
+    st.session_state["mobile_mode"] = not _is_mobile
+    st.rerun()
+
 
 # ───────────────────────── 메모 타임라인 페이지 ─────────────────────────
-def render_memo_timeline_page():
+def _section_memos():
+    """탭 컨텐츠 — 메모 타임라인."""
     from memo import timeline as memo_timeline
 
     @st.cache_data(ttl=600)
     def _cached_timeline(limit: int):
         return memo_timeline(limit=limit)
-
-    cc = st.columns([1, 8])
-    with cc[0]:
-        if st.button("← 메인", key="back_main"):
-            st.session_state["page"] = "main"
-            st.rerun()
-
-    st.markdown(
-        """
-        <div class="hero-banner" style="
-          background: linear-gradient(135deg, #134e4a 0%, #0a3d3a 100%);
-          color: #fff; padding: 1.2rem 1.8rem; border-radius: 12px;
-          margin-bottom: 1.2rem;
-        ">
-          <h1 style="margin:0; font-size:1.6rem;">📝 메모 타임라인</h1>
-          <div style="opacity:0.85; font-size:0.9rem; margin-top:0.25rem;">
-            최신순 · 액면분할/배당 자동 보정 · 유상증자는 시장가 기준
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
     cols = st.columns([1, 1, 6])
     with cols[0]:
@@ -270,7 +320,6 @@ def render_memo_timeline_page():
                     st.session_state["detail_ticker"] = m["ticker"]
                     st.session_state["detail_name"] = m.get("name") or m["ticker"]
                     st.session_state["detail_open"] = True
-                    st.session_state["page"] = "main"
                     st.rerun()
 
             with top[1]:
@@ -308,24 +357,85 @@ def _detail_dialog(ticker: str, name: str):
     render_stock_detail(ticker, name)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_fetch_chart(ticker: str, period: str, interval: str):
+    """5분 캐시 — 모달 재오픈 시 즉시 응답."""
+    from prices import fetch_chart
+    return fetch_chart(ticker, period, interval)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _cached_top_pipelines(ticker: str, name: str, days: int):
+    from news import top_pipelines, news_count
+    return news_count(ticker, name, days), top_pipelines(ticker, name, days)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _cached_pdf_links(ir_url: str):
+    from ir_pdfs import fetch_pdf_links
+    return fetch_pdf_links(ir_url, limit=40)
+
+
+def _ensure_urls_discovered(ticker: str) -> None:
+    """모달 열 때 IR/Pipeline URL 비어있으면 자동 탐색.
+    한쪽만 비어있어도 시도 (없는 쪽만 채움). 세션당 1회만."""
+    import ticker_urls
+    urls = ticker_urls.get(ticker)
+    have_ir = bool(urls.get("ir_url"))
+    have_pl = bool(urls.get("pipeline_url"))
+    if have_ir and have_pl:
+        return   # 둘 다 있으면 skip
+    flag = f"_auto_disc_{ticker}"
+    if st.session_state.get(flag):
+        return
+    st.session_state[flag] = True
+    try:
+        from discover import discover as auto_discover
+        with st.spinner("IR/Pipeline URL 자동 탐색..."):
+            result = auto_discover(ticker)
+        # 비어있는 쪽만 새로 채움
+        new_ir = urls.get("ir_url") or result.get("ir_url", "")
+        new_pl = urls.get("pipeline_url") or result.get("pipeline_url", "")
+        if (new_ir != urls.get("ir_url", "")) or (new_pl != urls.get("pipeline_url", "")):
+            ticker_urls.set_urls(ticker, ir_url=new_ir, pipeline_url=new_pl)
+            if new_ir and not have_ir:
+                st.session_state[f"ir_in_{ticker}"] = new_ir
+            if new_pl and not have_pl:
+                st.session_state[f"pl_in_{ticker}"] = new_pl
+    except Exception:
+        pass
+
+
 def render_stock_detail(ticker: str, name: str):
     import plotly.graph_objects as go
     import watchlist as wl
-    from prices import fetch_chart, PERIOD_LABELS
+    import excluded as excl
+    from prices import PERIOD_LABELS
 
-    # 헤더 + 관심종목 토글
-    top = st.columns([7, 2])
+    _ensure_urls_discovered(ticker)
+
+    # 헤더 + 관심/제외 토글
+    top = st.columns([6, 1.5, 1.5])
     with top[0]:
         st.markdown(f"### {name} ({ticker})")
     with top[1]:
-        watched = wl.is_watched(ticker)
-        if watched:
+        if wl.is_watched(ticker):
             if st.button("★ 관심 해제", key=f"wl_off_{ticker}", use_container_width=True):
                 wl.remove(ticker)
                 st.rerun()
         else:
-            if st.button("☆ 관심종목 추가", key=f"wl_on_{ticker}", use_container_width=True):
+            if st.button("☆ 관심종목", key=f"wl_on_{ticker}", use_container_width=True):
                 wl.add(ticker)
+                st.rerun()
+    with top[2]:
+        if excl.is_excluded(ticker):
+            if st.button("✓ 제외 해제", key=f"ex_off_{ticker}", use_container_width=True):
+                excl.remove(ticker)
+                st.rerun()
+        else:
+            if st.button("🚫 제외", key=f"ex_on_{ticker}", use_container_width=True,
+                         help="신고가/상승폭 리스트에서 영구 숨김 (비-biotech 종목용)"):
+                excl.add(ticker, note="user excluded")
                 st.rerun()
 
     cc = st.columns([2, 2])
@@ -343,7 +453,7 @@ def render_stock_detail(ticker: str, name: str):
 
     with st.spinner("OHLCV 다운로드..."):
         try:
-            hist = fetch_chart(ticker, period, interval)
+            hist = _cached_fetch_chart(ticker, period, interval)
         except Exception as e:
             st.error(f"차트 로드 실패: {e}")
             hist = None
@@ -447,33 +557,24 @@ def _render_ir_section(ticker: str, name: str):
 
         st.markdown(f"**IR 페이지**: [{ir_url}]({ir_url})")
 
-        # 자료 URL 리스트
         with st.spinner("IR 자료 URL 수집..."):
-            assets = fetch_pdf_links(ir_url, limit=40)
+            assets = _cached_pdf_links(ir_url)
         err = next((l.get("_error") for l in assets if l.get("_error")), None)
 
-        if not (err or not assets):
-            st.caption(f"📊 추출된 자료 {len(assets)}건")
-            for a in assets:
-                kind = a.get("kind", "")
-                kind_tag = f" [{kind}]" if kind else ""
-                date = a.get("date_hint") or "—"
-                ext = a.get("asset_type", "?").upper()
-                title = a.get("title") or a["url"].split("/")[-1]
-                st.markdown(
-                    f"- `[{ext}]` {date}{kind_tag} · [{title[:120]}]({a['url']})"
-                )
-        elif err:
-            st.caption(f"⚠️ 자동 추출 실패 — JS 렌더/봇 차단 사이트 가능성. 위 링크로 새 창에서 확인.")
+        if err or not assets:
+            st.caption(f"⚠️ 자동 추출 실패 — JS 렌더/봇 차단 사이트 가능성. 위 IR 페이지 링크로 새 창에서 확인.")
+            return
 
-        # iframe 시도 — 임베드 허용하는 사이트(Mirum 등)는 이대로 보임
-        st.divider()
-        st.caption("아래는 임베드 시도 — 회색 빈 박스면 사이트가 iframe 차단함 (위 링크 사용)")
-        st.markdown(
-            f'<iframe src="{ir_url}" width="100%" height="650" '
-            f'style="border:1px solid #cbd9d6; border-radius:8px;"></iframe>',
-            unsafe_allow_html=True,
-        )
+        st.caption(f"📊 추출된 자료 {len(assets)}건")
+        for a in assets:
+            kind = a.get("kind", "")
+            kind_tag = f" [{kind}]" if kind else ""
+            date = a.get("date_hint") or "—"
+            ext = a.get("asset_type", "?").upper()
+            title = a.get("title") or a["url"].split("/")[-1]
+            st.markdown(
+                f"- `[{ext}]` {date}{kind_tag} · [{title[:120]}]({a['url']})"
+            )
 
 
 def _render_pipeline_section(ticker: str):
@@ -495,14 +596,11 @@ def _render_pipeline_section(ticker: str):
 
 
 def _render_news_section(ticker: str, name: str):
-    from news import top_pipelines, news_count
-
     with st.expander("📰 뉴스 멘션 — 최근 6개월 가장 많이 언급된 파이프라인 TOP 3", expanded=False):
-        st.caption(f"검색: '{name}' · Yahoo Finance + Google News (6개월)")
+        st.caption(f"검색: '{name}' · Yahoo + Finviz + Google News (6개월)")
         with st.spinner("뉴스 분석..."):
             try:
-                nc = news_count(ticker, name, days=180)
-                top = top_pipelines(ticker, name, days=180)
+                nc, top = _cached_top_pipelines(ticker, name, 180)
             except Exception as e:
                 st.error(str(e))
                 return
@@ -590,12 +688,20 @@ SORT_KEYS = {
 
 
 def _render_table(df: pd.DataFrame):
-    schema: list[tuple[str, int]] = [
-        ("Ticker", 1), ("회사명", 5),
-        ("현재가", 2), ("시총($M)", 2),
-        ("1D", 1), ("7D", 1), ("1M", 1), ("3M", 1), ("6M", 1), ("1Y", 1),
-        ("52w최고", 2),
-    ]
+    mobile = st.session_state.get("mobile_mode", False)
+    if mobile:
+        # 모바일: 5컬럼 (Ticker / 회사명 / 현재가 / 1D / 시총)
+        schema: list[tuple[str, int]] = [
+            ("Ticker", 2), ("회사명", 5),
+            ("현재가", 3), ("1D", 2), ("시총($M)", 2),
+        ]
+    else:
+        schema: list[tuple[str, int]] = [
+            ("Ticker", 1), ("회사명", 5),
+            ("현재가", 2), ("시총($M)", 2),
+            ("1D", 1), ("7D", 1), ("1M", 1), ("3M", 1), ("6M", 1), ("1Y", 1),
+            ("52w최고", 2),
+        ]
     weights = [w for _, w in schema]
 
     sort_col = st.session_state.get("table_sort_col")
@@ -640,49 +746,56 @@ def _render_table(df: pd.DataFrame):
                 key=f"btn_{row['ticker']}_{idx}",
                 use_container_width=True,
             ):
+                prev = st.session_state.get("detail_ticker")
+                if prev and prev != row["ticker"]:
+                    for k in list(st.session_state.keys()):
+                        if k.startswith(("prd_", "int_", "ir_in_", "pl_in_", "asset_pick_")) and prev in k:
+                            del st.session_state[k]
                 st.session_state["detail_ticker"] = row["ticker"]
                 st.session_state["detail_name"] = row["name"]
                 st.session_state["detail_open"] = True
                 st.rerun()
-            cells[2].write(f"${row['close']:,.2f}" if pd.notna(row["close"]) else "—")
-            mcap = row["market_cap"]
-            cells[3].write(f"{mcap:,.0f}" if pd.notna(mcap) else "—")
-            for j, k in enumerate(["perf_1d", "perf_7d", "perf_1m", "perf_3m", "perf_6m", "perf_1y"]):
-                cells[4 + j].markdown(color_pct(row[k]), unsafe_allow_html=True)
-            cells[10].write(f"${row['high_52w']:,.2f}" if pd.notna(row["high_52w"]) else "—")
+            if mobile:
+                cells[2].write(f"${row['close']:,.2f}" if pd.notna(row["close"]) else "—")
+                cells[3].markdown(color_pct(row["perf_1d"]), unsafe_allow_html=True)
+                mcap = row["market_cap"]
+                cells[4].write(f"{mcap/1000:,.1f}b" if pd.notna(mcap) and mcap >= 1000
+                               else (f"{mcap:,.0f}m" if pd.notna(mcap) else "—"))
+            else:
+                cells[2].write(f"${row['close']:,.2f}" if pd.notna(row["close"]) else "—")
+                mcap = row["market_cap"]
+                cells[3].write(f"{mcap:,.0f}" if pd.notna(mcap) else "—")
+                for j, k in enumerate(["perf_1d", "perf_7d", "perf_1m", "perf_3m", "perf_6m", "perf_1y"]):
+                    cells[4 + j].markdown(color_pct(row[k]), unsafe_allow_html=True)
+                cells[10].write(f"${row['high_52w']:,.2f}" if pd.notna(row["high_52w"]) else "—")
 
 
-def render_main_page():
-    st.markdown(
-        f"""
-        <div class="hero-banner" style="
-          background: linear-gradient(135deg, #134e4a 0%, #0a3d3a 100%);
-          color: #fff; padding: 1.5rem 2rem; border-radius: 12px;
-          margin-bottom: 1.5rem;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        ">
-          <h1 style="margin:0;">🧬 Biotech Radar</h1>
-          <div style="opacity:0.85; font-size:0.95rem; margin-top:0.3rem;">
-            글로벌 Healthcare · 시총 ≥ $1.5B · 52주 신고가/신저가 · {datetime.now():%Y-%m-%d %H:%M}
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
+def _section_high():
+    """탭 컨텐츠 — 52주 신고가."""
     if last is None:
-        st.warning("아직 신고가 데이터 없음. 사이드바에서 1) Universe 갱신 → 2) 52주 신고가 갱신 순으로 실행하세요.")
+        st.warning("아직 신고가 데이터 없음. 우측 '🔄 신고가 갱신' 먼저 실행.")
         return
 
-    cc = st.columns([7, 2])
+    cc = st.columns([6, 2, 2])
     with cc[0]:
         view = st.radio(
             "구분", options=["new", "all"], horizontal=True,
-            format_func=lambda v: "🆕 오늘 신규 52w 신고가" if v == "new" else "📈 전체 52w 신고가",
+            format_func=lambda v: "🆕 오늘 신규" if v == "new" else "📈 전체",
             on_change=_close_modal, key="hl_view",
         )
     with cc[1]:
-        st.write("")  # 라디오와 정렬용 spacer
+        st.write("")
+        if st.button("🔄 신고가 갱신", key="hl_refresh_btn",
+                     help="universe 전체 yfinance OHLCV 일괄 다운로드 (~수분)"):
+            _close_modal()
+            with st.spinner("yfinance OHLCV 일괄 다운로드..."):
+                try:
+                    n = hl_collect(industry_filter=None)
+                    st.success(f"{n}종목 처리")
+                except Exception as e:
+                    st.error(f"실패: {e}")
+    with cc[2]:
+        st.write("")
         if st.button("🔍 URL 자동 탐색", key="discover_all_btn",
                      help="universe 전체 종목의 IR/Pipeline URL 일괄 탐색 (~1~2분)"):
             _close_modal()
@@ -714,6 +827,317 @@ def render_main_page():
         return
 
     st.caption(f"{len(df)}종목 · 기준일 {last} · 📊 회사명을 클릭하면 모달로 차트+MA가 떠요.")
+    _render_table(df)
+
+
+def render_main_page():
+    """메인 대시보드 — 4개 섹션 탭으로 전환."""
+    st.markdown(
+        f"""
+        <div class="hero-banner" style="
+          background: linear-gradient(135deg, #134e4a 0%, #0a3d3a 100%);
+          color: #fff; padding: 1.5rem 2rem; border-radius: 12px;
+          margin-bottom: 1.2rem;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        ">
+          <h1 style="margin:0;">🧬 Biotech Radar</h1>
+          <div style="opacity:0.85; font-size:0.95rem; margin-top:0.3rem;">
+            전체 조망 · {datetime.now():%Y-%m-%d %H:%M}
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # 탭 — 컴팩트 라디오 (사이드바 버튼이 외부에서 변경 가능)
+    tab_options = ["high", "top_movers", "daily_news", "memos", "portfolios"]
+    tab_labels = {
+        "high": "📈 52주 신고가",
+        "top_movers": "🚀 상승폭 최대",
+        "daily_news": "📰 데일리 뉴스",
+        "memos": "📝 메모 타임라인",
+        "portfolios": "💼 MP 현황",
+    }
+    # 사이드바에서 _force_tab을 set했으면 위젯 상태 강제 동기화
+    if "_force_tab" in st.session_state:
+        st.session_state["main_tab_radio"] = st.session_state.pop("_force_tab")
+    elif "main_tab_radio" not in st.session_state:
+        st.session_state["main_tab_radio"] = st.session_state.get("main_tab", "high")
+
+    chosen = st.radio(
+        "탭", options=tab_options,
+        format_func=lambda k: tab_labels[k], horizontal=True,
+        key="main_tab_radio", label_visibility="collapsed",
+        on_change=_close_modal,
+    )
+    st.session_state["main_tab"] = chosen
+    st.divider()
+
+    if chosen == "high":
+        _section_high()
+    elif chosen == "top_movers":
+        _section_top_movers()
+    elif chosen == "daily_news":
+        _section_daily_news()
+    elif chosen == "memos":
+        _section_memos()
+    elif chosen == "portfolios":
+        _section_portfolios()
+
+
+# ───────────────────────── Model Portfolio ─────────────────────────
+@st.dialog("💼 포트폴리오 상세", width="large")
+def _portfolio_dialog(portfolio_id: int):
+    import portfolio as pf
+    s = pf.summary(portfolio_id)
+    if not s:
+        st.error("포트폴리오 없음")
+        return
+    p = s["portfolio"]
+
+    # 헤더 + 삭제
+    head = st.columns([6, 2])
+    with head[0]:
+        st.markdown(f"### {p['name']}")
+        st.caption(f"생성: {p['created_at'][:10]} · 초기 사이즈: ${p['initial_size']/1e6:,.0f}M")
+    with head[1]:
+        if st.button("🗑 삭제", key=f"del_pf_{portfolio_id}", use_container_width=True):
+            pf.delete(portfolio_id)
+            st.session_state.pop("pf_open", None)
+            st.session_state.pop("pf_open_id", None)
+            st.rerun()
+
+    # 요약 metric
+    m = st.columns(4)
+    color = "#26a69a" if s["return_pct"] >= 0 else "#ef5350"
+    m[0].markdown(f"<div style='font-size:0.8em; color:#666;'>현재 사이즈</div>"
+                  f"<div style='font-size:1.4em; font-weight:700;'>${s['current_size']/1e6:,.2f}M</div>",
+                  unsafe_allow_html=True)
+    m[1].markdown(f"<div style='font-size:0.8em; color:#666;'>수익률</div>"
+                  f"<div style='font-size:1.4em; font-weight:700; color:{color};'>{s['return_pct']:+.2f}%</div>",
+                  unsafe_allow_html=True)
+    m[2].markdown(f"<div style='font-size:0.8em; color:#666;'>편입 비중</div>"
+                  f"<div style='font-size:1.4em; font-weight:700;'>{s['total_weight']:.1f}%</div>",
+                  unsafe_allow_html=True)
+    m[3].markdown(f"<div style='font-size:0.8em; color:#666;'>현금</div>"
+                  f"<div style='font-size:1.4em; font-weight:700;'>${s['cash_amt']/1e6:,.1f}M</div>",
+                  unsafe_allow_html=True)
+
+    st.divider()
+
+    # 종목 추가 (form)
+    with st.expander("＋ 종목 추가", expanded=not s["holdings"]):
+        with st.form(f"add_holding_{portfolio_id}", clear_on_submit=True):
+            cc = st.columns([2, 1, 1])
+            with cc[0]:
+                ticker_in = st.text_input("티커", placeholder="VRTX")
+            with cc[1]:
+                weight_in = st.number_input("비중 %", min_value=0.0, max_value=100.0,
+                                            value=5.0, step=0.5)
+            with cc[2]:
+                st.write("")
+                submitted = st.form_submit_button("추가", type="primary",
+                                                  use_container_width=True)
+            if submitted and ticker_in.strip():
+                try:
+                    pf.add_holding(portfolio_id, ticker_in, weight_in)
+                    st.success(f"{ticker_in.upper()} 추가됨")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"실패: {e}")
+
+    # 종목 리스트
+    if not s["holdings"]:
+        st.info("아직 편입 종목 없음.")
+        return
+
+    st.markdown("##### 편입 종목")
+    schema = [("티커", 1), ("회사명", 4), ("비중%", 1), ("편입일", 2),
+              ("편입가", 2), ("현재가", 2), ("수익률", 2), ("현재가치", 2), ("", 1)]
+    weights = [w for _, w in schema]
+    hdr = st.columns(weights, vertical_alignment="center")
+    for i, (label, _) in enumerate(schema):
+        hdr[i].markdown(f"**{label}**")
+
+    for h in s["holdings"]:
+        cells = st.columns(weights, vertical_alignment="center")
+        cells[0].caption(h["ticker"])
+        cells[1].caption((h.get("name") or h["ticker"])[:30])
+        cells[2].write(f"{h['weight_pct']:.1f}%")
+        cells[3].caption(h["entry_date"])
+        cells[4].write(f"${h['entry_price']:,.2f}")
+        cells[5].write(f"${h['curr_price']:,.2f}")
+        ret = h["return_pct"]
+        clr = "#26a69a" if ret >= 0 else "#ef5350"
+        cells[6].markdown(
+            f"<span style='color:{clr}; font-weight:600;'>{ret:+.2f}%</span>",
+            unsafe_allow_html=True,
+        )
+        cells[7].write(f"${h['amt_current']/1e6:,.2f}M")
+        if cells[8].button("✗", key=f"rm_{h['id']}", help="이 종목 제거"):
+            pf.remove_holding(h["id"])
+            st.rerun()
+
+
+@st.dialog("새 포트폴리오 만들기", width="small")
+def _new_portfolio_dialog():
+    import portfolio as pf
+    with st.form("new_pf_form", clear_on_submit=True):
+        name = st.text_input("이름", placeholder="Bio Fund #1")
+        size_m = st.number_input("초기 사이즈 ($M)", min_value=1.0, value=100.0, step=10.0)
+        if st.form_submit_button("만들기", type="primary"):
+            if not name.strip():
+                st.error("이름 필수")
+                return
+            try:
+                pf.create(name, initial_size=size_m * 1_000_000)
+                st.session_state.pop("_new_pf_open", None)
+                st.rerun()
+            except Exception as e:
+                st.error(f"실패: {e}")
+
+
+def _section_portfolios():
+    """탭 컨텐츠 — Model Portfolio 카드 그리드."""
+    import portfolio as pf
+
+    if st.button("＋ 새 포트폴리오", key="open_new_pf"):
+        st.session_state["_new_pf_open"] = True
+        st.rerun()
+    if st.session_state.get("_new_pf_open"):
+        _new_portfolio_dialog()
+
+    open_id = st.session_state.get("pf_open_id")
+    if st.session_state.get("pf_open") and open_id:
+        _portfolio_dialog(open_id)
+
+    portfolios = pf.list_all()
+    if not portfolios:
+        st.info("아직 포트폴리오 없음. 위 ＋ 버튼으로 만드세요.")
+        return
+
+    st.caption(f"{len(portfolios)}개 포트폴리오 · 카드 클릭 → 상세")
+    cols_per_row = 3
+    for i in range(0, len(portfolios), cols_per_row):
+        row_pfs = portfolios[i:i + cols_per_row]
+        cols = st.columns(cols_per_row)
+        for col, p in zip(cols, row_pfs):
+            with col:
+                s = pf.summary(p["id"])
+                ret = s.get("return_pct", 0.0)
+                clr = "#26a69a" if ret >= 0 else "#ef5350"
+                with st.container(border=True):
+                    st.markdown(f"**{p['name']}**")
+                    st.markdown(
+                        f"<div style='font-size:1.3em; font-weight:700;'>"
+                        f"${s['current_size']/1e6:,.2f}M</div>"
+                        f"<div style='color:{clr}; font-weight:600;'>"
+                        f"{ret:+.2f}%</div>"
+                        f"<div style='color:#888; font-size:0.85em; margin-top:0.3rem;'>"
+                        f"{len(s['holdings'])}종목 · 편입 {s['total_weight']:.0f}%</div>",
+                        unsafe_allow_html=True,
+                    )
+                    if st.button("열기", key=f"open_pf_{p['id']}",
+                                 use_container_width=True):
+                        st.session_state["pf_open"] = True
+                        st.session_state["pf_open_id"] = p["id"]
+                        st.rerun()
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _cached_daily_news(days: int):
+    from news import fetch_global_healthcare_news
+    return fetch_global_healthcare_news(days=days, max_items=200)
+
+
+def _section_daily_news():
+    """탭 컨텐츠 — 데일리 바이오 뉴스 (M&A/라이센싱/임상/FDA)."""
+    cc = st.columns([1, 2, 1, 4])
+    with cc[0]:
+        days = st.selectbox("기간", [1, 3, 7], index=0,
+                            format_func=lambda v: f"최근 {v}일")
+    with cc[1]:
+        cat_filter = st.multiselect(
+            "카테고리",
+            ["M&A", "라이센싱", "라이센싱 종료", "파트너십", "임상 결과", "FDA / 규제"],
+            default=[],
+            placeholder="전체 (선택 시 필터)",
+        )
+    with cc[2]:
+        st.write("")
+        if st.button("🔄 새로 가져오기", help="캐시 무시하고 재수집"):
+            _cached_daily_news.clear()
+            st.rerun()
+
+    with st.spinner("Finviz + 바이오 매체 RSS + Google News 통합 (~1분)..."):
+        items = _cached_daily_news(days)
+
+    if cat_filter:
+        items = [n for n in items if any(c in cat_filter for c in n["categories"])]
+
+    st.caption(f"{len(items)}건 · 출처: Finviz, FiercePharma, FierceBiotech, Endpoints, "
+               f"BioPharma Dive, STAT, BioSpace, Google News (30분 캐시)")
+
+    if not items:
+        st.info("조건에 맞는 뉴스 없음.")
+        return
+
+    cat_color = {
+        "M&A": "#d32f2f",
+        "라이센싱": "#1976d2",
+        "라이센싱 종료": "#666",
+        "파트너십": "#7e57c2",
+        "임상 결과": "#26a69a",
+        "FDA / 규제": "#f9a825",
+    }
+    default_color = "#888"
+    for n in items:
+        with st.container(border=True):
+            cat_spans = []
+            for c in n["categories"]:
+                color = cat_color.get(c, default_color)
+                cat_spans.append(
+                    f"<span style='background:{color}; color:#fff; "
+                    f"padding:0.1rem 0.5rem; border-radius:4px; font-size:0.75em; "
+                    f"margin-right:0.2rem;'>{c}</span>"
+                )
+            cats_html = " ".join(cat_spans)
+            tks = ", ".join(n["tickers"][:3]) if n["tickers"] else ""
+            tks_html = (f" · <span style='color:#1976d2; font-weight:600;'>{tks}</span>"
+                        if tks else "")
+            st.markdown(
+                f"{cats_html} "
+                f"<span style='color:#888; font-size:0.85em;'>{n['published'][:10]} · "
+                f"{n['source']}</span>{tks_html}",
+                unsafe_allow_html=True,
+            )
+            st.markdown(f"**[{n['title']}]({n['link']})**")
+            if n.get("summary"):
+                st.caption(n["summary"][:200])
+
+
+def _section_top_movers():
+    """탭 컨텐츠 — 상승폭 최대."""
+    cc2 = st.columns([1, 1, 1, 5])
+    with cc2[0]:
+        min_mcap = st.selectbox(
+            "최소 시총", [500, 1000, 2000, 5000, 10000], index=0,
+            format_func=lambda v: f"{v//1000}b" if v >= 1000 else f"{v}m",
+        )
+    with cc2[1]:
+        min_perf = st.selectbox(
+            "최소 상승률", [5.0, 10.0, 20.0], index=0,
+            format_func=lambda v: f"+{v:.0f}%",
+        )
+    with cc2[2]:
+        limit = st.selectbox("개수", [50, 100, 200], index=1)
+
+    df = fetch_top_movers(limit=limit, min_mcap=min_mcap, min_perf=min_perf)
+    if df.empty:
+        st.info("조건에 맞는 종목 없음. '🔄 신고가 갱신' (52주 신고가 탭) 먼저 실행하세요.")
+        return
+
+    st.caption(f"{len(df)}종목 · 기준일 {latest_run_date() or '—'} · 회사명 클릭 → 상세")
     _render_table(df)
 
 
@@ -771,7 +1195,7 @@ def render_watchlist_page():
         ">
           <h1 style="margin:0; font-size:1.6rem;">⭐ 관심종목</h1>
           <div style="opacity:0.85; font-size:0.9rem; margin-top:0.25rem;">
-            신고가 여부 무관 · universe(Healthcare ≥ $1.5B)에서 추가
+            신고가 여부 무관
           </div>
         </div>
         """,
@@ -804,9 +1228,7 @@ if st.session_state.get("detail_open"):
         _detail_dialog(detail_ticker, st.session_state.get("detail_name") or detail_ticker)
 
 page = st.session_state.get("page", "main")
-if page == "memos":
-    render_memo_timeline_page()
-elif page == "watchlist":
+if page == "watchlist":
     render_watchlist_page()
 else:
     render_main_page()

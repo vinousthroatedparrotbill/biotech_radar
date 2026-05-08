@@ -65,6 +65,31 @@ CREATE TABLE IF NOT EXISTS watchlist (
     added_at    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_watchlist_added ON watchlist(added_at DESC);
+
+CREATE TABLE IF NOT EXISTS excluded_tickers (
+    ticker      TEXT PRIMARY KEY,
+    added_at    TEXT NOT NULL,
+    note        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS portfolios (
+    id              BIGSERIAL PRIMARY KEY,
+    name            TEXT NOT NULL UNIQUE,
+    initial_size    DOUBLE PRECISION NOT NULL DEFAULT 100000000,   -- $100M default
+    created_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS portfolio_holdings (
+    id              BIGSERIAL PRIMARY KEY,
+    portfolio_id    BIGINT NOT NULL REFERENCES portfolios(id) ON DELETE CASCADE,
+    ticker          TEXT NOT NULL,
+    weight_pct      DOUBLE PRECISION NOT NULL,
+    entry_date      TEXT NOT NULL,
+    entry_price     DOUBLE PRECISION NOT NULL,
+    note            TEXT,
+    UNIQUE (portfolio_id, ticker)
+);
+CREATE INDEX IF NOT EXISTS idx_holdings_portfolio ON portfolio_holdings(portfolio_id);
 """
 
 

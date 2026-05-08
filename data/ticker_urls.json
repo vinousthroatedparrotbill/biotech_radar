@@ -1020,6 +1020,15 @@
     "ir_url": "https://investor.hcsgcorp.com/events-and-presentations/default.aspx"
   },
   "CRVS": {
-    "pipeline_url": "https://www.corvuspharma.com/our-science/our-pipeline/"
+    "pipeline_url": "https://www.corvuspharma.com/our-science/our-pipeline/",
+    "ir_url": "https://corvuspharma.gcs-web.com/calendar-events"
+  },
+  "COLL": {
+    "ir_url": "https://ir.collegiumpharma.com/events-and-presentations/event-calendar",
+    "pipeline_url": "https://www.collegiumpharma.com/our-approach/#our-portfolio"
+  },
+  "VIR": {
+    "ir_url": "https://investors.vir.bio/events-and-presentations/default.aspx",
+    "pipeline_url": "https://www.vir.bio/pipeline/"
   }
 }

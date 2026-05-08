@@ -259,7 +259,8 @@ def _extract_drugs(text: str) -> set[str]:
 
 # ───────────────────────── TOP 3 + 기전 ─────────────────────────
 def top_pipelines(ticker: str, name: str, days: int) -> list[dict]:
-    """Returns [{drug, mentions, moa, sample_link}] (top 3, by mention count)."""
+    """Returns [{drug, mentions, moa, sample_link}] (top 3, by mention count).
+    파이프라인 페이지에서 검증 — 회사 자체 파이프라인에 없는 약물(타사 임상 등) 거름."""
     items = fetch_combined(ticker, name, days)
     drug_counter: Counter[str] = Counter()
     drug_context: dict[str, str] = {}
@@ -269,10 +270,14 @@ def top_pipelines(ticker: str, name: str, days: int) -> list[dict]:
         drugs = _extract_drugs(text)
         for d in drugs:
             drug_counter[d] += 1
-            # 가장 길고 정보 많은 컨텍스트 보관
             if len(text) > len(drug_context.get(d, "")):
                 drug_context[d] = text
                 drug_links[d] = it.get("link", "")
+
+    # 파이프라인 검증 — 회사 페이지에 있는 약물만 통과
+    if drug_counter:
+        valid = _validate_against_pipeline(ticker, set(drug_counter.keys()))
+        drug_counter = Counter({d: c for d, c in drug_counter.items() if d in valid})
 
     out = []
     for drug, cnt in drug_counter.most_common(3):
@@ -289,6 +294,410 @@ def top_pipelines(ticker: str, name: str, days: int) -> list[dict]:
 def news_count(ticker: str, name: str, days: int) -> int:
     """단순 뉴스 건수 (기전 분석용 보조 표시)."""
     return len(fetch_combined(ticker, name, days))
+
+
+# ───────────────────────── Pipeline 검증 ─────────────────────────
+def _strip_html(html: str) -> str:
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    return soup.get_text(" ", strip=True).lower()
+
+
+def _fetch_pipeline_text(pipeline_url: str) -> str:
+    """파이프라인 페이지 본문 텍스트(소문자).
+    1) curl_cffi 정적 fetch
+    2) 약물명 패턴 부족하면 Playwright 헤드리스 렌더 fallback (JS-only 사이트 대응)
+    """
+    if not pipeline_url:
+        return ""
+    # tier 1: 정적 fetch
+    try:
+        r = crequests.get(pipeline_url, impersonate="chrome", timeout=10)
+        r.raise_for_status()
+        text = _strip_html(r.text)
+    except Exception:
+        text = ""
+    if _pipeline_is_parseable(text):
+        return text
+    # tier 2: Playwright fallback
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+            )
+            ctx = browser.new_context(
+                user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/131.0.0.0 Safari/537.36"),
+                viewport={"width": 1366, "height": 900},
+            )
+            page = ctx.new_page()
+            page.goto(pipeline_url, wait_until="domcontentloaded", timeout=20000)
+            page.wait_for_timeout(3500)
+            content = page.content()
+            browser.close()
+        rendered = _strip_html(content)
+        if _pipeline_is_parseable(rendered):
+            return rendered
+    except Exception:
+        pass
+    return text   # 최후엔 정적 결과 (빈 문자열일 수 있음)
+
+
+def _pipeline_is_parseable(pipeline_text: str) -> bool:
+    """페이지에 약물명 패턴 2개 이상 있으면 정적 렌더 OK로 판정.
+    그 외엔 JS-only/빈 페이지로 보고 필터 적용 안 함."""
+    if not pipeline_text or len(pipeline_text) < 300:
+        return False
+    n = len(DRUG_SUFFIX.findall(pipeline_text)) + len(DRUG_CODE.findall(pipeline_text))
+    return n >= 2
+
+
+def _drug_in_pipeline(drug: str, pipeline_text: str) -> bool:
+    """약물명이 pipeline 페이지에 등장하는지 — alias 포함 (drugs_db)."""
+    drug_lc = drug.lower()
+    if drug_lc in pipeline_text:
+        return True
+    # drugs_db에서 동일 약물의 다른 표기 (브랜드↔generic 양쪽) 매칭
+    for k, _moa in DRUG_MOA.items():
+        kl = k.lower()
+        if kl == drug_lc or drug_lc in kl or kl in drug_lc:
+            if kl in pipeline_text:
+                return True
+    return False
+
+
+def _competitor_ticker_prefix(drug: str, own_ticker: str, all_tickers: set[str]) -> bool:
+    """drug가 'XXX-NNNN' 또는 'XXXNNNN' 형태이고 XXX가 universe의 다른 ticker(2~5자)면 True.
+    예: ERAS-0015 (RVMD 뉴스에서 등장) → ERAS는 Erasca ticker → 거름."""
+    m = re.match(r"^([A-Z]+)[-]?\d", drug.upper())
+    if not m:
+        return False
+    prefix = m.group(1)
+    if prefix == own_ticker.upper():
+        return False
+    if 2 <= len(prefix) <= 5 and prefix in all_tickers:
+        return True
+    return False
+
+
+def _validate_against_pipeline(ticker: str, drugs: set[str]) -> set[str]:
+    """약물 검증 (필터 단계):
+    1) 코드형 약물의 prefix가 universe 다른 ticker면 거름 (ERAS-0015 류)
+    2) 회사 파이프라인 페이지에 있는 약물만 통과 (페이지 파싱 불가능하면 통과)
+    """
+    # 1) ticker prefix 필터 — 빠르고 확실한 케이스부터
+    try:
+        from db import connect
+        with connect() as conn:
+            all_tickers = {
+                r["ticker"] for r in
+                conn.execute("SELECT ticker FROM ticker_master").fetchall()
+            }
+    except Exception:
+        all_tickers = set()
+    drugs = {d for d in drugs if not _competitor_ticker_prefix(d, ticker, all_tickers)}
+
+    # 2) 파이프라인 페이지 검증
+    try:
+        import ticker_urls
+        pl_url = ticker_urls.get(ticker).get("pipeline_url", "")
+    except Exception:
+        return drugs
+    if not pl_url:
+        return drugs
+    text = _fetch_pipeline_text(pl_url)
+    if not _pipeline_is_parseable(text):
+        return drugs   # JS 렌더 후에도 빈 페이지면 필터 보류
+    return {d for d in drugs if _drug_in_pipeline(d, text)}
+
+
+# ───────────────────────── Daily News (universe-wide) ─────────────────────────
+NEWS_CATEGORIES: dict[str, list[str]] = {
+    "M&A": [
+        r"\b(?:to\s+)?acquir(?:e|es|ed|ing|ition)\b",
+        r"\bmerger?\b",
+        r"\bbuyout\b",
+        r"\btakeover\b",
+        r"\bagree(?:s|d)?\s+to\s+(?:buy|acquire|purchase)\b",
+        r"\b(?:agree|definitive)\s+agreement\s+to\s+acquire\b",
+        r"\bsnaps?\s+up\b",
+        r"\b(?:to\s+)?buy\s+(?:biotech|pharma|drugmaker|maker)\b",
+        r"\bbillion-?dollar\s+deal\b",
+        r"\b\$\d+(?:\.\d+)?\s*(?:b|bn|billion)\s+(?:deal|acquisition)\b",
+    ],
+    "라이센싱": [
+        r"\bin-?licens(?:e|es|ed|ing)\b",
+        r"\bout-?licens(?:e|es|ed|ing)\b",
+        r"\blicens(?:e|es|ed|ing)\s+(?:agreement|deal|pact)\b",
+        r"\b(?:enters?\s+into|signs?)\s+(?:a\s+)?licens",
+        r"\bexclusive\s+(?:license|rights|option)\b",
+        r"\bworldwide\s+(?:license|rights)\b",
+        r"\boption\s+(?:and\s+)?licens",
+        r"\bgrant(?:s|ed)?\s+.+\s+licens",
+        r"\b(?:obtains?|secures?|gains?)\s+(?:exclusive\s+)?rights\b",
+        r"\bsublicens(?:e|es|ed|ing)\b",
+    ],
+    "라이센싱 종료": [
+        r"\bterminat(?:e|es|ed|ion)\s+(?:.+)?(?:agreement|license|partnership|collaboration|deal)\b",
+        r"\breturn(?:s|ed)?\s+(?:.+)?rights\b",
+        r"\bend(?:s|ed)?\s+(?:.+)?(?:collaboration|agreement|partnership|deal)\b",
+        r"\bdiscontinu(?:e|es|ed)\s+.+\s+(?:program|trial|development)\b",
+        r"\bopt(?:s|ed)?\s+out\b",
+    ],
+    "파트너십": [
+        r"\bcollabor(?:ate|ation|ative)\b",
+        r"\bpartner(?:s|ship)?\b",
+        r"\bstrategic\s+alliance\b",
+        r"\bjoint\s+venture\b",
+        r"\bco-?develop(?:ment|ing)?\b",
+        r"\bco-?market(?:ing)?\b",
+        r"\bco-?commercializ\w*\b",
+        r"\bresearch\s+(?:and\s+)?(?:dev|development)\s+agreement\b",
+        r"\bteam(?:s|ed)?\s+up\s+with\b",
+        r"\bjoins?\s+forces\b",
+    ],
+    "임상 결과": [
+        r"\bphase\s*(?:1|2|3|i{1,3}|iv)\b",
+        r"\btopline\s+(?:data|results)\b",
+        r"\bdata\s+readout\b",
+        r"\bprimary\s+endpoint\b",
+        r"\b(?:trial|study)\s+(?:results|data)\b",
+        r"\binterim\s+(?:data|results|analysis)\b",
+        r"\bpivotal\b",
+        r"\bmet\s+(?:its\s+)?primary\b",
+        r"\b(?:achieves?|achieved|achieving)\s+(?:.+)?(?:endpoint|response|efficacy)\b",
+        r"\b(?:reports?|presents?|announces?)\s+(?:.+)?(?:data|results|outcomes)\b",
+        r"\b(?:positive|negative)\s+(?:.+)?data\b",
+        r"\b(?:fail|failed|fails)\s+(?:to\s+)?(?:meet|achieve)\b",
+        r"\boverall\s+survival\b",
+        r"\bprogression-?free\s+survival\b|\bpfs\b",
+    ],
+    "FDA / 규제": [
+        r"\bfda\s+(?:approves?|approval|grants?|clears?|clearance|accepts?)\b",
+        r"\b(?:bla|nda|sNDA|cBLA)\s+(?:filing|accept|submit|approval)",
+        r"\bfast\s+track\b",
+        r"\bbreakthrough\s+(?:therapy|designation)\b",
+        r"\borphan\s+drug\s+designation\b",
+        r"\bpriority\s+review\b",
+        r"\bpdufa\b",
+        r"\bcrl\b|\bcomplete\s+response\s+letter\b",
+        r"\baccelerated\s+approval\b",
+        r"\b(?:ema|chmp)\s+(?:approves?|recommendation|opinion)\b",
+        r"\b(?:withdraws?|withdraw)\s+.+\s+(?:application|filing)\b",
+    ],
+}
+
+
+def categorize(title: str) -> list[str]:
+    """제목에서 매칭되는 카테고리 라벨 반환 (다중 가능)."""
+    if not title:
+        return []
+    cats: list[str] = []
+    for cat, patterns in NEWS_CATEGORIES.items():
+        for p in patterns:
+            if re.search(p, title, re.I):
+                cats.append(cat)
+                break
+    return cats
+
+
+# 바이오/제약 관련 키워드 — 비-바이오 false positive (LG에너지·자동차·IT 등) 거름
+BIOTECH_KEYWORDS = re.compile(
+    r"\b(?:"
+    # 일반 의료/바이오 용어
+    r"bio(?:tech|pharma|tech\w*)?|pharma(?:ceutical)?s?|drug(?:maker|s)?|"
+    r"medicine|therap(?:y|eutic|ies)|clinical|trial|fda|ema|chmp|"
+    r"phase\s*[123]|cancer|oncology|tumor|vaccine|immun(?:o|e)|"
+    r"gene\s+therapy|cell\s+therapy|crispr|monoclonal|antibody|antibodies|"
+    r"diagnost(?:ic|ics)?|patholog|radiolog|surgical|"
+    r"healthcare|health\s+care|life\s+science|medical|"
+    # INN suffix
+    r"\w+(?:mab|nib|tinib|caftor|gene)\b|"
+    # 빅파마 회사명 (자주 등장)
+    r"roche|pfizer|merck|novartis|lilly|astrazeneca|sanofi|bayer|takeda|"
+    r"novo\s+nordisk|abbvie|gilead|amgen|regeneron|biogen|vertex|moderna|"
+    r"bristol[\s-]?myers|johnson\s*&\s*johnson|j&j|gsk|glaxosmithkline|"
+    r"daiichi\s+sankyo|eisai|chugai|servier|boehringer|teva|"
+    r"angelini|recordati|"
+    # 임상·승인 관련
+    r"primary\s+endpoint|topline|readout|approved\s+(?:for|in)"
+    r")",
+    re.I,
+)
+
+
+def _is_biotech_relevant(item: dict) -> bool:
+    """비-바이오 잡음 거름.
+    - Finviz per-ticker 결과: 항상 통과 (universe ticker 기반이라 이미 biotech)
+    - 바이오 전문 RSS: 항상 통과 (도메인 자체가 biotech)
+    - Google News 결과: 제목에 biotech 키워드 있어야 통과"""
+    source = item.get("source", "") or ""
+    if source.startswith("Finviz/"):
+        return True
+    if source in BIOTECH_RSS_FEEDS:
+        return True
+    title = item.get("title", "") or ""
+    return bool(BIOTECH_KEYWORDS.search(title))
+
+
+# Google News 카테고리 검색 — 비상장·해외 거래 보강
+GNEWS_BIOTECH_QUERIES = [
+    "biotech acquisition",
+    "pharma acquires",
+    "biotech licensing deal",
+    "biotech partnership",
+    "biotech phase 3 results",
+    "FDA approval biotech",
+    "drugmaker acquires",
+]
+
+
+def fetch_gnews_biotech_categorized(days: int = 7, per_query: int = 30) -> list[dict]:
+    """카테고리 키워드 query로 Google News RSS → categorize 매칭만."""
+    out: list[dict] = []
+    for q in GNEWS_BIOTECH_QUERIES:
+        items = fetch_google_news(q, days=days, limit=per_query)
+        for it in items:
+            cats = categorize(it.get("title", ""))
+            if not cats:
+                continue
+            it = dict(it)
+            it["categories"] = cats
+            it["tickers"] = []
+            out.append(it)
+    return out
+
+
+# 바이오 전문 매체 RSS — Finviz로는 못 잡는 비상장 거래·해외 업계 뉴스 보강
+BIOTECH_RSS_FEEDS = {
+    "FiercePharma":   "https://www.fiercepharma.com/rss/xml",
+    "FierceBiotech":  "https://www.fiercebiotech.com/rss/xml",
+    "Endpoints":      "https://endpts.com/feed/",
+    "BioPharma Dive": "https://www.biopharmadive.com/feeds/news/",
+    "STAT":           "https://www.statnews.com/feed/",
+    "BioSpace":       "https://www.biospace.com/rss/news",
+}
+
+
+def fetch_biotech_rss(days: int = 7, max_per_feed: int = 100) -> list[dict]:
+    """바이오 전문 매체 RSS feed 합쳐서 카테고리 매칭만 반환."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    out: list[dict] = []
+    for source, url in BIOTECH_RSS_FEEDS.items():
+        try:
+            feed = feedparser.parse(url)
+        except Exception:
+            continue
+        for e in feed.entries[:max_per_feed]:
+            published = None
+            if hasattr(e, "published_parsed") and e.published_parsed:
+                published = datetime(*e.published_parsed[:6], tzinfo=timezone.utc)
+                if published < cutoff:
+                    continue
+            title = getattr(e, "title", "")
+            cats = categorize(title)
+            if not cats:
+                continue
+            summary = re.sub("<[^>]+>", "", getattr(e, "summary", ""))
+            out.append({
+                "title": title,
+                "summary": summary[:300],
+                "link": getattr(e, "link", ""),
+                "source": source,
+                "published": published.isoformat() if published else "",
+                "_published_dt": published,
+                "tickers": [],   # RSS는 ticker 태그 없음
+                "categories": cats,
+            })
+    return out
+
+
+def _fetch_finviz_universe_news(days: int, min_mcap: float,
+                                max_workers: int) -> list[dict]:
+    """Finviz per-ticker news 병렬 fetch (universe ≥ min_mcap)."""
+    if not _finviz_token():
+        return []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from db import connect
+    try:
+        with connect() as conn:
+            rows = conn.execute(
+                "SELECT ticker FROM ticker_master WHERE market_cap >= %s",
+                (min_mcap,),
+            ).fetchall()
+            tickers = [r["ticker"] for r in rows]
+    except Exception:
+        return []
+    if not tickers:
+        return []
+
+    out: list[dict] = []
+    seen: set[str] = set()
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futs = {ex.submit(fetch_finviz_news, t, days): t for t in tickers}
+        for fut in as_completed(futs):
+            tk = futs[fut]
+            try:
+                items = fut.result()
+            except Exception:
+                continue
+            for it in items:
+                title = (it.get("title") or "").strip()
+                if not title:
+                    continue
+                cats = categorize(title)
+                if not cats:
+                    continue
+                key = re.sub(r"[^a-z0-9]", "", title.lower())[:60]
+                if not key or key in seen:
+                    for o in out:
+                        if re.sub(r"[^a-z0-9]", "", o["title"].lower())[:60] == key:
+                            if tk not in o["tickers"]:
+                                o["tickers"].append(tk)
+                            break
+                    continue
+                seen.add(key)
+                it = dict(it)
+                it["categories"] = cats
+                it["tickers"] = [tk]
+                out.append(it)
+    return out
+
+
+def fetch_global_healthcare_news(days: int = 1, max_items: int = 300,
+                                 min_mcap: float = 500.0,
+                                 max_workers: int = 15) -> list[dict]:
+    """3-tier 통합 — Finviz per-ticker + 바이오 전문 매체 RSS + Google News.
+    카테고리 매칭된 것만 + 제목 dedupe.
+    Returns [{title, link, source, published, _published_dt, tickers, categories}]."""
+    finviz_items = _fetch_finviz_universe_news(days, min_mcap, max_workers)
+    rss_items = fetch_biotech_rss(days=days)
+    gnews_items = fetch_gnews_biotech_categorized(days=days)
+
+    # 통합 dedupe + 비-바이오 잡음 필터
+    seen: set[str] = set()
+    combined: list[dict] = []
+    for src_list in (finviz_items, rss_items, gnews_items):
+        for it in src_list:
+            title = (it.get("title") or "").strip()
+            if not title:
+                continue
+            if not _is_biotech_relevant(it):
+                continue
+            key = re.sub(r"[^a-z0-9]", "", title.lower())[:60]
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            combined.append(it)
+
+    combined.sort(key=lambda x: x.get("_published_dt")
+                  or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    return combined[:max_items]
 
 
 def fetch_recent_titles(ticker: str, n: int = 3, days: int = 7) -> list[dict]:

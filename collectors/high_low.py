@@ -9,6 +9,89 @@ from db import connect, pd_read_sql
 from perf import compute_snapshot
 from universe import get_universe
 
+# Healthcare에서 비-치료 영역 제외 (retailers/distribution/시설/보험/IT)
+# 의료기기/CDMO/진단은 통과
+EXCLUDED_INDUSTRIES = (
+    "Pharmaceutical Retailers",
+    "Medical Distribution",
+    "Medical Care Facilities",
+    "Health Information Services",
+    "Healthcare Plans",
+)
+
+
+def _industry_filter(alias: str = "t") -> str:
+    quoted = ", ".join(f"'{s}'" for s in EXCLUDED_INDUSTRIES)
+    return f"({alias}.industry IS NOT NULL AND {alias}.industry NOT IN ({quoted}))"
+
+
+def _excluded_ticker_filter(alias: str = "h") -> str:
+    """사용자 지정 ticker 블랙리스트 제외."""
+    return f"{alias}.ticker NOT IN (SELECT ticker FROM excluded_tickers)"
+
+
+BIOTECH_INDUSTRY_FILTER = _industry_filter("t")
+
+
+def collect_tickers(tickers: list[str], mcap_map: dict[str, float] | None = None) -> int:
+    """주어진 ticker 리스트에 대해 yfinance 스냅샷 + high_low_cache upsert.
+    mcap_map 미지정 시 ticker_master에서 자동 조회.
+    return: 처리된 row 수.
+    """
+    if not tickers:
+        return 0
+    if mcap_map is None:
+        with connect() as conn:
+            ph = ",".join(["?"] * len(tickers))
+            mcap_map = {
+                r["ticker"]: r["market_cap"]
+                for r in conn.execute(
+                    f"SELECT ticker, market_cap FROM ticker_master WHERE ticker IN ({ph})",
+                    tuple(tickers),
+                ).fetchall()
+            }
+
+    CHUNK = 100
+    all_frames = []
+    for i in range(0, len(tickers), CHUNK):
+        chunk = tickers[i:i + CHUNK]
+        df = compute_snapshot(chunk)
+        if not df.empty:
+            all_frames.append(df)
+    if not all_frames:
+        return 0
+    snap = pd.concat(all_frames, ignore_index=True)
+    snap["market_cap"] = snap["ticker"].map(mcap_map)
+    today = datetime.now().strftime("%Y-%m-%d")
+    rows = [
+        (r["ticker"], today,
+         r.get("high_52w"), r.get("low_52w"),
+         r.get("today_high"), r.get("today_low"), r.get("today_close"),
+         r.get("market_cap"),
+         r.get("perf_1d"), r.get("perf_7d"), r.get("perf_1m"),
+         r.get("perf_3m"), r.get("perf_6m"), r.get("perf_1y"))
+        for _, r in snap.iterrows()
+    ]
+    with connect() as conn:
+        conn.executemany(
+            """
+            INSERT INTO high_low_cache
+              (ticker, computed_date, high_52w, low_52w, today_high, today_low,
+               today_close, market_cap, perf_1d, perf_7d, perf_1m, perf_3m, perf_6m, perf_1y)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(ticker, computed_date) DO UPDATE SET
+                high_52w=excluded.high_52w, low_52w=excluded.low_52w,
+                today_high=excluded.today_high, today_low=excluded.today_low,
+                today_close=excluded.today_close,
+                market_cap=excluded.market_cap,
+                perf_1d=excluded.perf_1d, perf_7d=excluded.perf_7d,
+                perf_1m=excluded.perf_1m, perf_3m=excluded.perf_3m,
+                perf_6m=excluded.perf_6m, perf_1y=excluded.perf_1y
+            """,
+            rows,
+        )
+    return len(rows)
+
 
 def collect(industry_filter: str | None = "Biotechnology") -> int:
     """52w high + 멀티 기간 수익률 계산.
@@ -28,7 +111,8 @@ def collect(industry_filter: str | None = "Biotechnology") -> int:
     except Exception:
         pass
 
-    mask = (universe["market_cap"] >= 1500.0) | (universe["ticker"].isin(watch_tickers))
+    # 수집 범위 = mcap ≥ $500M (52w 보드는 ≥$1.5B로 표시 시 필터, 상승폭 페이지는 $500M+)
+    mask = (universe["market_cap"] >= 500.0) | (universe["ticker"].isin(watch_tickers))
     universe = universe[mask].reset_index(drop=True)
     tickers = universe["ticker"].tolist()
     mcap_map = dict(zip(universe["ticker"], universe["market_cap"]))
@@ -102,6 +186,8 @@ def fetch_new_highs(direction: str = "high", limit: int = 500) -> pd.DataFrame:
         LEFT JOIN ticker_master t ON t.ticker = h.ticker
         WHERE h.computed_date = %s
           AND h.market_cap >= 1500
+          AND {BIOTECH_INDUSTRY_FILTER}
+          AND {_excluded_ticker_filter('h')}
           AND {cond}
         ORDER BY {order}
         LIMIT %s
@@ -109,6 +195,30 @@ def fetch_new_highs(direction: str = "high", limit: int = 500) -> pd.DataFrame:
         params=(latest, limit),
     )
     return df
+
+
+def fetch_top_movers(limit: int = 100, min_mcap: float = 500.0,
+                     min_perf: float = 5.0) -> pd.DataFrame:
+    """오늘 일일 상승률 상위 종목 (1D% 내림차순).
+    필터: industry 블랙리스트(retailer/시설/보험 등) + 사용자 ticker 블랙리스트."""
+    return pd_read_sql(
+        f"""
+        SELECT h.ticker, t.name, t.industry, h.today_close AS close,
+               h.high_52w, h.low_52w, h.market_cap,
+               h.perf_1d, h.perf_7d, h.perf_1m, h.perf_3m, h.perf_6m, h.perf_1y
+        FROM high_low_cache h
+        LEFT JOIN ticker_master t ON t.ticker = h.ticker
+        WHERE h.computed_date = (SELECT MAX(computed_date) FROM high_low_cache)
+          AND h.market_cap >= %s
+          AND h.perf_1d IS NOT NULL
+          AND h.perf_1d >= %s
+          AND {BIOTECH_INDUSTRY_FILTER}
+          AND {_excluded_ticker_filter('h')}
+        ORDER BY h.perf_1d DESC
+        LIMIT %s
+        """,
+        params=(min_mcap, min_perf, limit),
+    )
 
 
 def latest_run_date() -> str | None:
@@ -132,8 +242,9 @@ def fetch_new_today_highs(limit: int = 200) -> pd.DataFrame:
         today = dates[0]["computed_date"]
         yesterday = dates[1]["computed_date"] if len(dates) > 1 else None
 
+        bio_filter = _industry_filter("m") + " AND " + _excluded_ticker_filter("t")
         if yesterday:
-            sql = """
+            sql = f"""
                 SELECT t.ticker, m.name, m.industry, t.today_close AS close,
                        t.high_52w, t.low_52w, t.market_cap,
                        t.perf_1d, t.perf_7d, t.perf_1m, t.perf_3m, t.perf_6m, t.perf_1y,
@@ -144,6 +255,7 @@ def fetch_new_today_highs(limit: int = 200) -> pd.DataFrame:
                 LEFT JOIN ticker_master m ON m.ticker = t.ticker
                 WHERE t.computed_date = %s
                   AND t.market_cap >= 1500
+                  AND {bio_filter}
                   AND t.today_high >= t.high_52w * 0.999
                   AND (y.high_52w IS NULL OR t.high_52w > y.high_52w)
                 ORDER BY (t.today_close / NULLIF(t.high_52w,0)) DESC
@@ -151,8 +263,7 @@ def fetch_new_today_highs(limit: int = 200) -> pd.DataFrame:
             """
             params = (yesterday, today, limit)
         else:
-            # 어제 스냅샷 없음 — 오늘 신고가 전부를 신규로 표시
-            sql = """
+            sql = f"""
                 SELECT t.ticker, m.name, m.industry, t.today_close AS close,
                        t.high_52w, t.low_52w, t.market_cap,
                        t.perf_1d, t.perf_7d, t.perf_1m, t.perf_3m, t.perf_6m, t.perf_1y,
@@ -161,6 +272,7 @@ def fetch_new_today_highs(limit: int = 200) -> pd.DataFrame:
                 LEFT JOIN ticker_master m ON m.ticker = t.ticker
                 WHERE t.computed_date = %s
                   AND t.market_cap >= 1500
+                  AND {bio_filter}
                   AND t.today_high >= t.high_52w * 0.999
                 ORDER BY (t.today_close / NULLIF(t.high_52w,0)) DESC
                 LIMIT %s
