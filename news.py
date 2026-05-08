@@ -531,6 +531,59 @@ BIOTECH_KEYWORDS = re.compile(
 )
 
 
+# 토큰 기반 유사 제목 dedupe (같은 딜·이벤트의 paraphrase 거름)
+_DEDUPE_STOPWORDS = {
+    "to", "the", "for", "of", "in", "and", "a", "an", "with", "by", "is", "are",
+    "from", "on", "at", "as", "be", "or", "this", "that", "its", "it", "has",
+    "have", "had", "after", "amid", "but", "new", "us", "more", "set", "than",
+    "into", "over", "up", "down", "off", "out", "all",
+}
+
+
+def _title_tokens(title: str) -> set[str]:
+    """제목에서 의미있는 토큰 set (소문자, stopword 제외, 3자 이상)."""
+    words = re.findall(r"[a-zA-Z][a-zA-Z0-9-]+", title.lower())
+    return {w for w in words if w not in _DEDUPE_STOPWORDS and len(w) >= 3}
+
+
+def _is_duplicate(title_a: str, title_b: str, threshold: float = 0.65) -> bool:
+    """두 제목의 토큰 overlap이 threshold 이상이면 같은 내용으로 판정."""
+    a, b = _title_tokens(title_a), _title_tokens(title_b)
+    if not a or not b:
+        return False
+    inter = a & b
+    smaller = min(len(a), len(b))
+    return (len(inter) / smaller) >= threshold
+
+
+# 공통 entity (capitalized 회사명) 2개 이상이면 같은 딜로 간주
+_ENTITY_STOP = {
+    "The", "For", "With", "From", "And", "But", "His", "Her", "Inc", "Ltd", "LLC",
+    "Pharma", "Pharmaceutical", "Pharmaceuticals", "Therapeutics", "Bio",
+    "Biotech", "Sciences", "Group", "Holdings", "What", "How", "Why", "When",
+    "After", "Amid", "About", "Says", "Said", "FDA", "EMA", "USA", "CEO",
+    "Acquires", "Acquire", "Acquired", "Buys", "Bought", "Reports", "Announces",
+    "Announce", "Phase", "Data", "Results", "New", "Plus", "Stock", "Shares",
+    "Statement", "Update", "First", "Second", "Third", "Fourth", "Quarter",
+    "Year", "Month", "Week", "Day", "Today", "Yesterday", "January", "February",
+    "March", "April", "May", "June", "July", "August", "September", "October",
+    "November", "December", "Monday", "Tuesday", "Wednesday", "Thursday",
+    "Friday", "Saturday", "Sunday",
+}
+
+
+def _entities(title: str) -> set[str]:
+    """제목에서 capitalized 회사명 후보 (3+ chars, stopword 제외)."""
+    words = re.findall(r"\b[A-Z][a-zA-Z]{2,}\b", title)
+    return {w for w in words if w not in _ENTITY_STOP}
+
+
+def _is_same_deal(title_a: str, title_b: str) -> bool:
+    """두 제목이 공통 entity 2개 이상이면 같은 딜/이벤트."""
+    ea, eb = _entities(title_a), _entities(title_b)
+    return len(ea & eb) >= 2
+
+
 def _is_biotech_relevant(item: dict) -> bool:
     """비-바이오 잡음 거름.
     - Finviz per-ticker 결과: 항상 통과 (universe ticker 기반이라 이미 biotech)
@@ -679,20 +732,16 @@ def fetch_global_healthcare_news(days: int = 1, max_items: int = 300,
     rss_items = fetch_biotech_rss(days=days)
     gnews_items = fetch_gnews_biotech_categorized(days=days)
 
-    # 통합 dedupe + 비-바이오 잡음 필터
-    seen: set[str] = set()
+    # 통합 + 비-바이오 필터 + 토큰 50% paraphrase dedupe
+    # (50% 이상 겹치면 같은 발표의 paraphrase, 미만이면 다른 각도로 보고 keep)
     combined: list[dict] = []
     for src_list in (finviz_items, rss_items, gnews_items):
         for it in src_list:
             title = (it.get("title") or "").strip()
-            if not title:
+            if not title or not _is_biotech_relevant(it):
                 continue
-            if not _is_biotech_relevant(it):
+            if any(_is_duplicate(title, c["title"], threshold=0.50) for c in combined):
                 continue
-            key = re.sub(r"[^a-z0-9]", "", title.lower())[:60]
-            if not key or key in seen:
-                continue
-            seen.add(key)
             combined.append(it)
 
     combined.sort(key=lambda x: x.get("_published_dt")
