@@ -514,12 +514,87 @@ def render_stock_detail(ticker: str, name: str):
     _render_ir_section(ticker, name)
     _render_pipeline_section(ticker)
     _render_news_section(ticker, name)
+    _render_recent_articles_section(ticker, name)
     _render_catalyst_section(ticker)
     _render_insider_section(ticker)
 
     # ── 메모 (토글들 밑) ──
     st.divider()
     _render_memo_section(ticker)
+
+
+_FUNDAMENTAL_PAT = __import__("re").compile(
+    r"(phase\s*[123][a-z]?|topline|interim|primary endpoint|"
+    r"readout|data\s+(?:read|release|disclosure|update)|"
+    r"\bfda\b|pdufa|adcom|advisory committee|approval|approve[ds]?|"
+    r"breakthrough designation|orphan designation|priority review|"
+    r"crl|complete response letter|"
+    r"snda|sbla|nda\b|bla\b|ind\b|"
+    r"acquir(?:e|ed|es|ition)|merger|partner|partnership|collaboration|"
+    r"licens(?:e|ed|es|ing)|deal\b|"
+    r"first patient|first dose|enrollment|"
+    r"survival|response rate|orr\b|pfs\b|os\b|"
+    r"clinical trial|study results?|safety|efficacy)",
+    __import__("re").IGNORECASE,
+)
+_NOISE_PAT = __import__("re").compile(
+    r"(price target|analyst|upgrad|downgrad|consensus|estimate|"
+    r"insider (?:bought|sold)|filed form 4|"
+    r"options activity|unusual options|short interest|"
+    r"(?:eps|revenue) (?:beat|miss|estimate)|"
+    r"top \d+ stocks?|stocks? to (?:buy|watch)|trending|moving|gainers?|losers?|"
+    r"premarket|after hours|"
+    r"benzinga|seeking alpha author|simply wall st)",
+    __import__("re").IGNORECASE,
+)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _cached_recent_articles(ticker: str, name: str, days: int):
+    """Finviz quote 페이지 + Yahoo per-ticker — fundamental 필터링."""
+    from news import fetch_finviz_news, fetch_yahoo_news
+    items = list(fetch_finviz_news(ticker, days=days))
+    items += list(fetch_yahoo_news(ticker))
+    # 최근순 정렬
+    items.sort(key=lambda it: it.get("_published_dt") or 0, reverse=True)
+    # fundamental 필터 + dedup
+    out = []
+    seen_titles = set()
+    for it in items:
+        t = (it.get("title") or "").strip()
+        if not t or len(t) < 15:
+            continue
+        if _NOISE_PAT.search(t):
+            continue
+        if not _FUNDAMENTAL_PAT.search(t):
+            continue
+        # 제목 정규화 — 유사 제목 중복 제거
+        norm = " ".join(sorted(set(t.lower().split())))[:80]
+        if norm in seen_titles:
+            continue
+        seen_titles.add(norm)
+        out.append(it)
+    return out
+
+
+def _render_recent_articles_section(ticker: str, name: str):
+    """FiercePharma / Yahoo / Finviz 등에서 fundamental 기사 TOP 3."""
+    with st.expander("📰 최근 주요 기사 — 펀더멘탈 (TOP 3)", expanded=False):
+        articles = _cached_recent_articles(ticker, name, 60)
+        if not articles:
+            st.caption("최근 60일 fundamental 기사 없음.")
+            return
+        for it in articles[:3]:
+            title = it.get("title", "")
+            link = it.get("link", "")
+            src = (it.get("source") or "").replace("Finviz/", "")
+            pub = (it.get("published") or "")[:10]
+            st.markdown(
+                f"**[{title}]({link})**  \n"
+                f"<span style='opacity:0.6; font-size:0.85em'>{src} · {pub}</span>",
+                unsafe_allow_html=True,
+            )
+            st.markdown("")
 
 
 def _render_catalyst_section(ticker: str):
