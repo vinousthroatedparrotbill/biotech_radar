@@ -48,6 +48,11 @@ SYSTEM_PROMPT = """당신은 fund manager의 biotech research analyst + dashboar
 
 답변 못 찾으면 "현재 공개된 자료 한정" 명시하고, 시도한 검색·확인한 URL 간략히 언급.
 
+[투자 리포트 요청]
+- "X 리포트", "X 투자 메모", "X 분석해줘" → generate_investment_report(ticker)
+  → top-tier 애널리스트 메모 (thesis / 최근 주가 동향 / 카탈리스트 워치 / 인사이더 /
+    리스크 / bottom line) ~15-25줄 자동 생성. 결과 그대로 사용자에게 전달.
+
 [카탈리스트 / 인사이더 매매 질문]
 - "X 다음 카탈리스트", "X 다가오는 일정", "X 언제 데이터 나와" → get_catalysts(ticker)
   + **반드시 함께**: get_earnings_call_milestones(ticker) — investing.com transcripts

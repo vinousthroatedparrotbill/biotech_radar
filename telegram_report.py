@@ -199,10 +199,45 @@ def compose_report() -> str:
     return "\n".join(parts)
 
 
+def _markdown_to_html(md: str) -> str:
+    """Claude markdown 출력 → 텔레그램 HTML."""
+    import re as _re
+    # 이스케이프 (HTML 특수 문자)
+    s = md.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # **bold** → <b>
+    s = _re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", s)
+    # *italic* → <i> (단, list bullet 충돌 회피 — 줄 시작 * 제외)
+    s = _re.sub(r"(?<![\*\n])\*([^*\n]+)\*(?!\*)", r"<i>\1</i>", s)
+    return s
+
+
+def send_investment_reports(tickers: list[str], max_n: int = 5) -> int:
+    """신규 신고가 종목 중 시총 큰 순 max_n개에 대해 투자 메모 생성·발송.
+    각 종목당 별도 메시지 (텔레그램 4096자 제한 + 가독성)."""
+    import investment_report as ir
+    if not tickers:
+        return 0
+    reports = ir.generate_for_tickers(tickers, max_n=max_n)
+    sent = 0
+    for r in reports:
+        tk = r["ticker"]
+        body_html = _markdown_to_html(r["report"])
+        msg = f"📊 <b>{tk} 투자 메모</b>\n\n{body_html}"
+        if len(msg) > 4000:
+            msg = msg[:3990] + "\n…(잘림)"
+        try:
+            send(msg)
+            sent += 1
+        except Exception as e:
+            send(f"⚠️ {tk} 메모 발송 실패: {e}", parse_mode="HTML")
+    return sent
+
+
 def daily_run() -> dict:
     """수집 + 요약 + 발송 — 스케줄러에서 호출."""
     from universe import load_universe
     from collectors.high_low import collect as hl_collect
+    from collectors.high_low import fetch_new_today_highs
 
     # 1) Universe 갱신
     n_uni = load_universe()
@@ -211,7 +246,16 @@ def daily_run() -> dict:
     # 3) 요약 + 발송
     text = compose_report()
     text = f"<i>auto-run: universe={n_uni}, snapshot={n_hl}</i>\n\n" + text
-    return send(text)
+    main_result = send(text)
+
+    # 4) 신규 신고가 종목 자동 투자 메모 (시총 큰 순 TOP 5)
+    new_today = fetch_new_today_highs(limit=100)
+    if not new_today.empty:
+        tickers = new_today["ticker"].tolist()
+        sent_n = send_investment_reports(tickers, max_n=5)
+        main_result["investment_reports"] = sent_n
+
+    return main_result
 
 
 if __name__ == "__main__":

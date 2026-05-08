@@ -819,6 +819,17 @@ def get_ir_milestones(ticker: str, refresh: bool = False) -> dict:
     }
 
 
+def generate_investment_report(ticker: str) -> dict:
+    """ticker에 대해 institutional-quality 투자 메모 생성 (Claude API).
+    포함: 투자 포인트(thesis), 최근 주가 동향+상승 이유, 카탈리스트 워치, 인사이더 시그널,
+    리스크, bottom line. ~15-25줄 markdown.
+    데이터 소스: ticker_master / high_low_cache / catalysts / insider_trades / 펀더멘탈 뉴스 /
+    pipeline 멘션. 매일 7am 자동 발송 + 수동 ('ARWR 리포트' 같은 질의)에 사용."""
+    import investment_report as ir
+    text = ir.generate(ticker)
+    return {"ticker": ticker.upper(), "report": text}
+
+
 def get_earnings_call_milestones(ticker: str, refresh: bool = False) -> dict:
     """최근 분기 어닝콜 요약(Yahoo Finance)에서 회사가 공개한 forward-looking 멘션
     (Q3 2026 readout, 2H 27 phase 1 initial data 등) 추출.
@@ -1226,6 +1237,20 @@ TOOL_DEFS = [
         },
     },
     {
+        "name": "generate_investment_report",
+        "description": "Generate an institutional-quality (Goldman/MS-style) investment memo "
+                       "for a ticker. Includes: thesis, recent price action + drivers, "
+                       "catalyst watch list, insider signal, risk points, bottom line. "
+                       "Uses all available data — ticker_master, high_low_cache, catalysts, "
+                       "insider_trades, fundamental news, pipeline mentions. "
+                       "Trigger when user says 'X 리포트', 'X 투자 메모', 'X analyze', etc.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"ticker": {"type": "string"}},
+            "required": ["ticker"],
+        },
+    },
+    {
         "name": "get_earnings_call_milestones",
         "description": "Extract forward-looking milestone disclosures from recent transcripts "
                        "(investing.com — quarterly earnings calls + conference presentations "
@@ -1295,6 +1320,7 @@ def run_tool(name: str, args: dict):
         "get_insider_trades": get_insider_trades,
         "get_ir_milestones": get_ir_milestones,
         "get_earnings_call_milestones": get_earnings_call_milestones,
+        "generate_investment_report": generate_investment_report,
         "search_company_milestones": search_company_milestones,
     }
     f = funcs.get(name)
