@@ -819,6 +819,16 @@ def get_ir_milestones(ticker: str, refresh: bool = False) -> dict:
     }
 
 
+def get_new_today_highs(limit: int = 100) -> list[dict]:
+    """오늘 신규 52주 신고가 종목 리스트. ticker, name, close, perf_1d, market_cap 포함.
+    리포트 일괄 생성·요약 등에 활용."""
+    from collectors.high_low import fetch_new_today_highs
+    df = fetch_new_today_highs(limit=limit)
+    if df.empty:
+        return []
+    return df.to_dict("records")
+
+
 def generate_investment_report(ticker: str) -> dict:
     """ticker에 대해 institutional-quality 투자 메모 생성 (Claude API).
     포함: 투자 포인트(thesis), 최근 주가 동향+상승 이유, 카탈리스트 워치, 인사이더 시그널,
@@ -1237,6 +1247,16 @@ TOOL_DEFS = [
         },
     },
     {
+        "name": "get_new_today_highs",
+        "description": "Today's newly-broken 52w high biotech tickers. Returns "
+                       "ticker/name/close/perf_1d/market_cap. Combine with "
+                       "generate_investment_report to deliver list + per-ticker memos.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "default": 100}},
+        },
+    },
+    {
         "name": "generate_investment_report",
         "description": "Generate an institutional-quality (Goldman/MS-style) investment memo "
                        "for a ticker. Includes: thesis, recent price action + drivers, "
@@ -1321,6 +1341,7 @@ def run_tool(name: str, args: dict):
         "get_ir_milestones": get_ir_milestones,
         "get_earnings_call_milestones": get_earnings_call_milestones,
         "generate_investment_report": generate_investment_report,
+        "get_new_today_highs": get_new_today_highs,
         "search_company_milestones": search_company_milestones,
     }
     f = funcs.get(name)

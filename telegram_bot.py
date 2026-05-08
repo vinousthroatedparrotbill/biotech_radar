@@ -52,6 +52,9 @@ SYSTEM_PROMPT = """당신은 fund manager의 biotech research analyst + dashboar
 - "X 리포트", "X 투자 메모", "X 분석해줘" → generate_investment_report(ticker)
   → top-tier 애널리스트 메모 (thesis / 최근 주가 동향 / 카탈리스트 워치 / 인사이더 /
     리스크 / bottom line) ~15-25줄 자동 생성. 결과 그대로 사용자에게 전달.
+- "오늘 신규 신고가 + 리포트", "신고가 종목들 분석해서 보내줘" 류 → 1) get_new_today_highs로
+  리스트 확보 → 2) 각 ticker에 generate_investment_report 호출(시총 큰 순 TOP 5) →
+  최종 답변에 리스트 요약 + 종목별 메모 차례로 포함.
 
 [카탈리스트 / 인사이더 매매 질문]
 - "X 다음 카탈리스트", "X 다가오는 일정", "X 언제 데이터 나와" → get_catalysts(ticker)
@@ -242,7 +245,16 @@ async def _send_daily_news(update: Update) -> None:
 
 # ───────────────────────── 키워드 라우팅 ─────────────────────────
 async def _handle_keyword(update: Update, msg_lower: str) -> bool:
-    """키워드 매칭되면 처리하고 True. 안 되면 False (Claude로 넘김)."""
+    """키워드 매칭되면 처리하고 True. 안 되면 False (Claude로 넘김).
+    단순 단일-인텐트 메시지만 fast-path. '리포트', '분석', '메모', '왜', '어떻게',
+    '비교', '추가', '제외' 같은 추가 의도어가 함께 있으면 Claude로 넘김 (도구 호출)."""
+    intent_words = ("리포트", "분석", "메모", "투자 메모", "report", "analyze",
+                    "왜", "이유", "어떻게", "비교", "compare", "vs",
+                    "추가", "제외", "삭제", "변경", "넣어", "빼", "바꿔",
+                    "써줘", "적어줘", "찾아", "알려줘", "조사")
+    if any(w in msg_lower for w in intent_words):
+        return False   # Claude가 도구 조합으로 처리
+
     if any(k in msg_lower for k in ("신고가", "52w high", "52주 신고가")):
         await _send_high(update); return True
     if any(k in msg_lower for k in ("관심종목", "watchlist", "워치리스트")):

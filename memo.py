@@ -102,13 +102,17 @@ def timeline(limit: int = 50) -> list[dict]:
         closes = _closes_for(tk)
         price_at_create = price_now = change_pct = None
         if closes is not None and len(closes):
-            create_dt = pd.to_datetime(m["created_at"]).normalize()
-            # tz-aware closes에 맞추기
-            if closes.index.tz is not None:
-                create_dt = create_dt.tz_localize(closes.index.tz)
-            mask = closes.index <= create_dt
-            if mask.any():
-                price_at_create = float(closes[mask].iloc[-1])
+            # 메모 캘린더 날짜 (KST/ET timezone 무관, 날짜만 비교).
+            # 메모 작성일 close는 사용자가 작성 시점에 알 수 없는 미래 정보라 strict <로 제외.
+            # closes는 시간 오름차순이므로 prior close = 메모 날짜 직전 거래일 close.
+            create_date = pd.Timestamp(m["created_at"]).date()
+            prior = None
+            for ts, val in closes.items():
+                if ts.date() < create_date:
+                    prior = float(val)
+                else:
+                    break
+            price_at_create = prior
             price_now = float(closes.iloc[-1])
             if price_at_create and price_now and price_at_create != 0:
                 change_pct = (price_now / price_at_create - 1) * 100
