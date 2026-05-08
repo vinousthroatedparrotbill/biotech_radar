@@ -306,6 +306,38 @@ def generate(ticker: str, max_tool_calls: int = 15) -> str:
         return f"*{ctx['name']} ({ticker})*\n\n{context_str}\n\n_(Claude 실패: {e})_"
 
 
+def get_cached_report(ticker: str) -> dict | None:
+    """ai_reports 테이블에서 캐시된 리포트 조회. 없으면 None."""
+    with db.connect() as conn:
+        row = conn.execute(
+            "SELECT body, generated_at, model FROM ai_reports WHERE ticker = ?",
+            (ticker.upper(),),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def save_report(ticker: str, body: str) -> None:
+    import datetime as dt
+    now = dt.datetime.now().isoformat(timespec="seconds")
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO ai_reports (ticker, body, generated_at, model) "
+            "VALUES (?,?,?,?) "
+            "ON CONFLICT (ticker) DO UPDATE SET "
+            "body = EXCLUDED.body, generated_at = EXCLUDED.generated_at, "
+            "model = EXCLUDED.model",
+            (ticker.upper(), body, now, CLAUDE_MODEL),
+        )
+
+
+def generate_and_save(ticker: str) -> dict:
+    """generate() 호출 + DB 캐시 저장."""
+    text = generate(ticker)
+    save_report(ticker, text)
+    return {"ticker": ticker.upper(), "body": text,
+            "generated_at": __import__("datetime").datetime.now().isoformat(timespec="seconds")}
+
+
 def generate_for_tickers(tickers: list[str], max_n: int = 5) -> list[dict]:
     """여러 ticker 일괄 생성. 시총 큰 순으로 max_n개만 (속도/비용)."""
     if not tickers:

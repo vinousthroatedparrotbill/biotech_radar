@@ -836,8 +836,8 @@ def generate_investment_report(ticker: str) -> dict:
     데이터 소스: ticker_master / high_low_cache / catalysts / insider_trades / 펀더멘탈 뉴스 /
     pipeline 멘션. 매일 7am 자동 발송 + 수동 ('ARWR 리포트' 같은 질의)에 사용."""
     import investment_report as ir
-    text = ir.generate(ticker)
-    return {"ticker": ticker.upper(), "report": text}
+    result = ir.generate_and_save(ticker)
+    return {"ticker": ticker.upper(), "report": result["body"]}
 
 
 def get_earnings_call_milestones(ticker: str, refresh: bool = False) -> dict:

@@ -517,6 +517,7 @@ def render_stock_detail(ticker: str, name: str):
     _render_recent_articles_section(ticker, name)
     _render_catalyst_section(ticker)
     _render_insider_section(ticker)
+    _render_ai_report_section(ticker, name)
 
     # ── 메모 (토글들 밑) ──
     st.divider()
@@ -595,6 +596,50 @@ def _render_recent_articles_section(ticker: str, name: str):
                 unsafe_allow_html=True,
             )
             st.markdown("")
+
+
+def _render_ai_report_section(ticker: str, name: str):
+    """AI 투자 메모 — Claude 도구 사용한 deep research 리포트.
+    캐시 보존(ai_reports 테이블), '생성/재생성' 버튼으로 갱신."""
+    import investment_report as ir
+    cached = ir.get_cached_report(ticker)
+    if cached:
+        gen_at = (cached.get("generated_at") or "")[:16].replace("T", " ")
+        # 경과 시간
+        try:
+            from datetime import datetime as _dt
+            elapsed = _dt.now() - _dt.fromisoformat(cached["generated_at"])
+            h = int(elapsed.total_seconds() // 3600)
+            if h < 24:
+                age = f"{h}시간 전" if h > 0 else "방금"
+            else:
+                age = f"{h//24}일 전"
+        except Exception:
+            age = ""
+        label = f"🎯 AI 투자 메모  ·  {gen_at} ({age})"
+    else:
+        label = "🎯 AI 투자 메모 (미생성)"
+
+    with st.expander(label, expanded=bool(cached)):
+        if cached:
+            st.markdown(cached["body"])
+            st.caption(f"_생성 모델: {cached.get('model') or 'claude-opus-4-7'}_")
+        else:
+            st.info(
+                "아직 생성된 리포트가 없습니다. 아래 버튼을 누르면 Claude가 도구를 호출해 "
+                "파이프라인·경쟁 약물·임상 데이터·인사이더를 조사하고 institutional-quality "
+                "메모를 작성합니다 (1-3분 소요)."
+            )
+
+        btn_label = "🔄 리포트 재생성 (1-3분)" if cached else "🎯 리포트 생성 (1-3분)"
+        if st.button(btn_label, key=f"ir_gen_{ticker}", use_container_width=True):
+            with st.spinner(f"{ticker} deep research 중... 도구 호출·경쟁 분석·메모 작성"):
+                try:
+                    result = ir.generate_and_save(ticker)
+                    st.success(f"✓ 리포트 생성 완료 ({len(result['body']):,}자)")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"실패: {e}")
 
 
 def _render_catalyst_section(ticker: str):

@@ -127,6 +127,13 @@ CREATE TABLE IF NOT EXISTS insider_trades (
 );
 CREATE INDEX IF NOT EXISTS idx_insider_ticker ON insider_trades(ticker, trade_date DESC);
 CREATE INDEX IF NOT EXISTS idx_insider_filing ON insider_trades(filing_date DESC);
+
+CREATE TABLE IF NOT EXISTS ai_reports (
+    ticker          TEXT PRIMARY KEY,
+    body            TEXT NOT NULL,           -- markdown
+    generated_at    TEXT NOT NULL,
+    model           TEXT
+);
 """
 
 
