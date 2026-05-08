@@ -1,10 +1,21 @@
 """Biotech Radar — 미국 Healthcare 52주 신고가 + 종목 상세."""
 from __future__ import annotations
 
+import os
+import streamlit as st
+
+# Streamlit Cloud secrets → os.environ (다른 모듈들이 환경변수에서 읽음)
+# 로컬 dev에선 secrets.toml 없으니 그냥 skip — .env 파일이 사용됨
+try:
+    for _k, _v in dict(st.secrets).items():
+        if isinstance(_v, str) and _k not in os.environ:
+            os.environ[_k] = _v
+except Exception:
+    pass
+
 from datetime import datetime
 
 import pandas as pd
-import streamlit as st
 
 from db import init_db
 from universe import load_universe, get_universe
@@ -155,7 +166,12 @@ if st.sidebar.button("📝 메모 타임라인"):
     st.session_state["page"] = "memos"
     st.rerun()
 
-if st.sidebar.button("📨 텔레그램 테스트 발송"):
+if st.sidebar.button("⭐ 관심종목"):
+    _close_modal()
+    st.session_state["page"] = "watchlist"
+    st.rerun()
+
+if st.sidebar.button("📨 텔레그램 발송"):
     _close_modal()
     with st.spinner("텔레그램 발송 중..."):
         try:
@@ -165,28 +181,27 @@ if st.sidebar.button("📨 텔레그램 테스트 발송"):
         except Exception as e:
             st.sidebar.error(f"실패: {e}")
 
-if st.sidebar.button("🔍 전체 URL 자동 탐색", help="universe 모든 종목의 IR/Pipeline URL 일괄 탐색 (~1~2분)"):
-    _close_modal()
-    import ticker_urls as _tu
-    from discover import discover_batch
-    with st.spinner("홈페이지 분석 중..."):
-        try:
-            tks = get_universe()["ticker"].tolist()
-            results = discover_batch(tks, max_workers=10)
-            saved = 0
-            for tk, r in results.items():
-                if r.get("ir_url") or r.get("pipeline_url"):
-                    _tu.set_urls(tk, ir_url=r.get("ir_url"), pipeline_url=r.get("pipeline_url"))
-                    saved += 1
-            st.sidebar.success(f"{saved}/{len(tks)}종목 URL 저장")
-        except Exception as e:
-            st.sidebar.error(f"실패: {e}")
-
 st.sidebar.divider()
 universe_count = len(get_universe())
 st.sidebar.caption(f"현재 universe: {universe_count}종목")
 last = latest_run_date()
 st.sidebar.caption(f"마지막 신고가 갱신: {last or '—'}")
+
+
+def _stats_counts():
+    """메모/관심종목 카운트."""
+    from db import connect
+    with connect() as conn:
+        m = conn.execute("SELECT COUNT(*) AS n FROM memos").fetchone()["n"]
+        w = conn.execute("SELECT COUNT(*) AS n FROM watchlist").fetchone()["n"]
+    return m, w
+
+
+try:
+    _memo_n, _watch_n = _stats_counts()
+    st.sidebar.caption(f"메모: {_memo_n}건  ·  관심종목: {_watch_n}종목")
+except Exception:
+    pass
 
 
 # ───────────────────────── 메모 타임라인 페이지 ─────────────────────────
@@ -295,9 +310,23 @@ def _detail_dialog(ticker: str, name: str):
 
 def render_stock_detail(ticker: str, name: str):
     import plotly.graph_objects as go
+    import watchlist as wl
     from prices import fetch_chart, PERIOD_LABELS
 
-    st.markdown(f"### {name} ({ticker})")
+    # 헤더 + 관심종목 토글
+    top = st.columns([7, 2])
+    with top[0]:
+        st.markdown(f"### {name} ({ticker})")
+    with top[1]:
+        watched = wl.is_watched(ticker)
+        if watched:
+            if st.button("★ 관심 해제", key=f"wl_off_{ticker}", use_container_width=True):
+                wl.remove(ticker)
+                st.rerun()
+        else:
+            if st.button("☆ 관심종목 추가", key=f"wl_on_{ticker}", use_container_width=True):
+                wl.add(ticker)
+                st.rerun()
 
     cc = st.columns([2, 2])
     with cc[0]:
@@ -645,11 +674,33 @@ def render_main_page():
         st.warning("아직 신고가 데이터 없음. 사이드바에서 1) Universe 갱신 → 2) 52주 신고가 갱신 순으로 실행하세요.")
         return
 
-    view = st.radio(
-        "구분", options=["new", "all"], horizontal=True,
-        format_func=lambda v: "🆕 오늘 신규 52w 신고가" if v == "new" else "📈 전체 52w 신고가",
-        on_change=_close_modal, key="hl_view",
-    )
+    cc = st.columns([7, 2])
+    with cc[0]:
+        view = st.radio(
+            "구분", options=["new", "all"], horizontal=True,
+            format_func=lambda v: "🆕 오늘 신규 52w 신고가" if v == "new" else "📈 전체 52w 신고가",
+            on_change=_close_modal, key="hl_view",
+        )
+    with cc[1]:
+        st.write("")  # 라디오와 정렬용 spacer
+        if st.button("🔍 URL 자동 탐색", key="discover_all_btn",
+                     help="universe 전체 종목의 IR/Pipeline URL 일괄 탐색 (~1~2분)"):
+            _close_modal()
+            import ticker_urls as _tu
+            from discover import discover_batch
+            with st.spinner("홈페이지 분석 중..."):
+                try:
+                    tks = get_universe()["ticker"].tolist()
+                    results = discover_batch(tks, max_workers=10)
+                    saved = 0
+                    for tk, r in results.items():
+                        if r.get("ir_url") or r.get("pipeline_url"):
+                            _tu.set_urls(tk, ir_url=r.get("ir_url"),
+                                         pipeline_url=r.get("pipeline_url"))
+                            saved += 1
+                    st.success(f"{saved}/{len(tks)}종목 URL 저장")
+                except Exception as e:
+                    st.error(f"실패: {e}")
 
     if view == "new":
         df = fetch_new_today_highs(limit=300)
@@ -666,6 +717,85 @@ def render_main_page():
     _render_table(df)
 
 
+# ───────────────────────── 관심종목 페이지 ─────────────────────────
+@st.dialog("📊 종목 추가", width="large")
+def _add_stock_dialog():
+    """검색 → 종목 클릭 → detail 모달로 전환."""
+    import watchlist as wl
+
+    st.markdown("**티커 또는 회사명으로 검색** (universe: ~312 종목)")
+    q = st.text_input("검색", value="", key="add_search", placeholder="VRTX, Vertex, ...")
+
+    universe = get_universe()
+    if q.strip():
+        ql = q.strip().lower()
+        mask = (universe["ticker"].str.lower().str.contains(ql, na=False)
+                | universe["name"].str.lower().str.contains(ql, na=False))
+        results = universe[mask].head(30)
+    else:
+        results = universe.head(30)   # 빈 검색 — 시총 상위 30
+
+    st.caption(f"{len(results)}건 표시")
+
+    for _, row in results.iterrows():
+        cols = st.columns([2, 5, 3, 1])
+        cols[0].caption(row["ticker"])
+        if cols[1].button(str(row["name"] or row["ticker"]),
+                          key=f"add_pick_{row['ticker']}", use_container_width=True):
+            # detail 모달로 전환
+            st.session_state["detail_ticker"] = row["ticker"]
+            st.session_state["detail_name"] = row["name"]
+            st.session_state["detail_open"] = True
+            st.session_state["_add_dialog_open"] = False
+            st.rerun()
+        cols[2].caption(row["industry"] or "—")
+        if wl.is_watched(row["ticker"]):
+            cols[3].caption("★")
+
+
+def render_watchlist_page():
+    import watchlist as wl
+
+    cc = st.columns([1, 8])
+    with cc[0]:
+        if st.button("← 메인", key="back_main_wl"):
+            st.session_state["page"] = "main"
+            st.rerun()
+
+    st.markdown(
+        """
+        <div class="hero-banner" style="
+          background: linear-gradient(135deg, #134e4a 0%, #0a3d3a 100%);
+          color: #fff; padding: 1.2rem 1.8rem; border-radius: 12px;
+          margin-bottom: 1.2rem;
+        ">
+          <h1 style="margin:0; font-size:1.6rem;">⭐ 관심종목</h1>
+          <div style="opacity:0.85; font-size:0.9rem; margin-top:0.25rem;">
+            신고가 여부 무관 · universe(Healthcare ≥ $1.5B)에서 추가
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # 종목 추가 버튼
+    if st.button("＋ 종목 추가", key="open_add_dialog"):
+        st.session_state["_add_dialog_open"] = True
+        st.rerun()
+
+    if st.session_state.get("_add_dialog_open"):
+        _add_stock_dialog()
+
+    # 관심종목 리스트
+    df = wl.list_all()
+    if df.empty:
+        st.info("아직 관심종목 없음. 위 ＋ 버튼으로 추가하세요.")
+        return
+
+    st.caption(f"{len(df)}종목 · 종목명 클릭 → 상세")
+    _render_table(df)
+
+
 # ───────────────────────── 라우팅 ─────────────────────────
 # 모달은 어느 페이지에서든 detail_open이면 띄움
 if st.session_state.get("detail_open"):
@@ -676,5 +806,7 @@ if st.session_state.get("detail_open"):
 page = st.session_state.get("page", "main")
 if page == "memos":
     render_memo_timeline_page()
+elif page == "watchlist":
+    render_watchlist_page()
 else:
     render_main_page()

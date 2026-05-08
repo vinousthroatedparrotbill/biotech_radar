@@ -1,19 +1,32 @@
 """뉴스 멘션 + 약물명 추출 + 기전 분류.
-출처: Yahoo Finance(yfinance Ticker.news, ~10건/티커) + Google News RSS(보조 볼륨)."""
+출처: Yahoo Finance(yfinance Ticker.news) + Finviz Elite(per-ticker CSV) + Google News RSS."""
 from __future__ import annotations
 
+import csv
+import io
+import os
 import re
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from urllib.parse import quote_plus
 
 import feedparser
+import requests
 import yfinance as yf
 from curl_cffi import requests as crequests
+from dotenv import load_dotenv
 
 from drugs_db import DRUG_MOA, SUFFIX_RULES, CONTEXT_KEYWORDS, classify
 
+load_dotenv(Path(__file__).parent / ".env", override=True)
+
 GNEWS_URL = "https://news.google.com/rss/search"
+FINVIZ_NEWS_URL = "https://elite.finviz.com/news_export.ashx"
+
+
+def _finviz_token() -> str:
+    return (os.environ.get("FINVIZ_AUTH_TOKEN") or "").strip()
 
 # INN 접미사 — 약물명 후보 추출용
 DRUG_SUFFIX = re.compile(
@@ -143,15 +156,59 @@ def fetch_google_news(query: str, days: int = 30, limit: int = 100) -> list[dict
     return out
 
 
+def fetch_finviz_news(ticker: str, days: int = 180) -> list[dict]:
+    """Finviz Elite per-ticker news. Returns list of {title, summary, link, source, published, _published_dt}.
+    토큰 없거나 실패 시 빈 리스트."""
+    token = _finviz_token()
+    if not token:
+        return []
+    try:
+        r = requests.get(
+            FINVIZ_NEWS_URL,
+            params={"v": "3", "t": ticker, "auth": token},
+            timeout=15,
+        )
+        r.raise_for_status()
+    except Exception:
+        return []
+
+    out: list[dict] = []
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    reader = csv.reader(io.StringIO(r.text))
+    header = next(reader, None)   # skip header row
+    for row in reader:
+        if len(row) < 5:
+            continue
+        title, source, date_s, url, category = row[0], row[1], row[2], row[3], row[4]
+        try:
+            # 'YYYY-MM-DD HH:MM:SS' (Eastern time, UTC로 근사)
+            dt = datetime.strptime(date_s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
+        if dt < cutoff:
+            continue
+        out.append({
+            "title": title,
+            "summary": "",   # Finviz CSV는 summary 미제공 — title만으로 추출
+            "link": url,
+            "source": f"Finviz/{source}",
+            "published": dt.isoformat(),
+            "_published_dt": dt,
+        })
+    return out
+
+
 def fetch_combined(ticker: str, name: str, days: int) -> list[dict]:
-    """Yahoo + Google News 합치고 제목 유사 중복 제거."""
+    """Yahoo + Finviz + Google News 합치고 제목 유사 중복 제거."""
     yahoo = fetch_yahoo_news(ticker)
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     yahoo = [n for n in yahoo if n.get("_published_dt") is None or n["_published_dt"] >= cutoff]
+    finviz = fetch_finviz_news(ticker, days=days)
     google = fetch_google_news(name, days=days, limit=200)
     seen_titles: set[str] = set()
     out = []
-    for n in yahoo + google:
+    # 우선순위: Finviz(가장 신뢰) → Yahoo → Google
+    for n in finviz + yahoo + google:
         key = re.sub(r"[^a-z0-9]", "", (n["title"] or "").lower())[:60]
         if not key or key in seen_titles:
             continue
@@ -232,3 +289,32 @@ def top_pipelines(ticker: str, name: str, days: int) -> list[dict]:
 def news_count(ticker: str, name: str, days: int) -> int:
     """단순 뉴스 건수 (기전 분석용 보조 표시)."""
     return len(fetch_combined(ticker, name, days))
+
+
+def fetch_recent_titles(ticker: str, n: int = 3, days: int = 7) -> list[dict]:
+    """텔레그램용 최근 뉴스 — 헤드라인 + 출처 + 링크. 날짜 내림차순.
+    Returns list of {title, source, link, published}."""
+    items = fetch_finviz_news(ticker, days=days)
+    if len(items) < n:
+        items += fetch_yahoo_news(ticker)
+    items.sort(key=lambda x: x.get("_published_dt") or datetime.min.replace(tzinfo=timezone.utc),
+               reverse=True)
+    seen_titles: set[str] = set()
+    out: list[dict] = []
+    for it in items:
+        title = (it.get("title") or "").strip()
+        if not title:
+            continue
+        key = re.sub(r"[^a-z0-9]", "", title.lower())[:60]
+        if not key or key in seen_titles:
+            continue
+        seen_titles.add(key)
+        out.append({
+            "title": title,
+            "source": it.get("source", ""),
+            "link": it.get("link", ""),
+            "published": it.get("published", ""),
+        })
+        if len(out) >= n:
+            break
+    return out

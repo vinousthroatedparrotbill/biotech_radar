@@ -504,7 +504,7 @@
     "ir_url": "https://ir.pacs.com/news-events/presentations"
   },
   "INDV": {
-    "ir_url": "https://www.indivior.com/static-files/203a9eab-3082-4a7e-866b-fcec4d76c975",
+    "ir_url": "https://ir.indivior.com/",
     "pipeline_url": "https://www.indivior.com/our-science"
   },
   "CRSP": {
@@ -1018,5 +1018,8 @@
   },
   "HCSG": {
     "ir_url": "https://investor.hcsgcorp.com/events-and-presentations/default.aspx"
+  },
+  "CRVS": {
+    "pipeline_url": "https://www.corvuspharma.com/our-science/our-pipeline/"
   }
 }

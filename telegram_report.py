@@ -143,6 +143,28 @@ def compose_report() -> str:
     parts.append(_table_render(new_today, max_rows=25))
     parts.append("")
 
+    # ── 신규 신고가 종목별 최근 뉴스 (헤드라인 3개씩) ──
+    if not new_today.empty:
+        from news import fetch_recent_titles
+        parts.append("📰 <b>신규 신고가 종목 최근 뉴스</b> (헤드라인 3개)")
+        for _, row in new_today.iterrows():
+            ticker = str(row["ticker"])
+            name = str(row.get("name") or "")
+            titles = fetch_recent_titles(ticker, n=3, days=7)
+            if not titles:
+                continue
+            parts.append(f"\n<b>{_esc(ticker)}</b> · {_esc(name[:40])}")
+            for t in titles:
+                title = t["title"][:160]
+                src = t.get("source", "").replace("Finviz/", "")
+                link = t.get("link", "")
+                if link:
+                    parts.append(f"  • <a href=\"{_esc(link)}\">{_esc(title)}</a> "
+                                 f"<i>({_esc(src)})</i>")
+                else:
+                    parts.append(f"  • {_esc(title)} <i>({_esc(src)})</i>")
+        parts.append("")
+
     # ── 전체 신고가 ──
     all_highs = fetch_new_highs("high", limit=200)
     parts.append(f"📈 <b>전체 52w 신고가</b> ({len(all_highs)}종목)")

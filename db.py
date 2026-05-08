@@ -10,7 +10,11 @@ import psycopg2.extras
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env", override=True)
-DATABASE_URL = (os.environ.get("DATABASE_URL") or "").strip()
+
+
+def _database_url() -> str:
+    """매 호출마다 환경변수에서 읽음 — Streamlit Cloud secrets가 import 후 주입되는 케이스 대응."""
+    return (os.environ.get("DATABASE_URL") or "").strip()
 
 
 SCHEMA = """
@@ -55,6 +59,12 @@ CREATE TABLE IF NOT EXISTS memos (
     updated_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_memos_ticker ON memos(ticker, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS watchlist (
+    ticker      TEXT PRIMARY KEY,
+    added_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_watchlist_added ON watchlist(added_at DESC);
 """
 
 
@@ -150,12 +160,13 @@ class _Conn:
 
 
 def connect():
-    if not DATABASE_URL:
+    url = _database_url()
+    if not url:
         raise RuntimeError(
-            "DATABASE_URL not set in .env. Supabase Project Settings → Database → "
-            "Connection string (URI)을 복사해 .env에 'DATABASE_URL=postgresql://...' 추가."
+            "DATABASE_URL not set. 로컬: .env 파일, 클라우드: Streamlit Secrets에 "
+            "'DATABASE_URL = \"postgresql://...\"' 추가."
         )
-    raw = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    raw = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
     raw.autocommit = False
     return _Conn(raw)
 
@@ -171,7 +182,7 @@ def pd_read_sql(sql: str, params=None):
     import pandas as pd
     if isinstance(sql, str) and "?" in sql:
         sql = sql.replace("?", "%s")
-    raw = psycopg2.connect(DATABASE_URL)   # 기본 tuple cursor
+    raw = psycopg2.connect(_database_url())   # 기본 tuple cursor
     try:
         return pd.read_sql_query(sql, raw, params=params)
     finally:

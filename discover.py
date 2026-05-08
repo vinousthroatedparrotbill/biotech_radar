@@ -14,23 +14,61 @@ from curl_cffi import requests as crequests
 
 # IR ROOT 패턴 — 회사 홈페이지에서 IR 섹션 찾을 때 (1단계)
 IR_ROOT_PATTERNS: list[tuple[re.Pattern, int]] = [
-    (re.compile(r"\binvestor\s*relations?\b", re.I), 10),
-    (re.compile(r"\bfor\s*investors?\b", re.I), 9),
-    (re.compile(r"\binvestors?\b", re.I), 7),
-    (re.compile(r"\bfinancial\s*(?:results?|information)\b", re.I), 6),
-    (re.compile(r"\bIR\b", re.I), 4),
+    (re.compile(r"\binvestor\s*relations?\b", re.I), 12),
+    (re.compile(r"\binvestor\s*(?:information|center|hub|portal|overview)\b", re.I), 11),
+    (re.compile(r"\bfor\s*investors?\b", re.I), 10),
+    (re.compile(r"\binvestors?\s*(?:&|and)\s*media", re.I), 10),
+    (re.compile(r"\binvestors?\b", re.I), 8),
+    (re.compile(r"\bshareholders?\b", re.I), 7),
+    (re.compile(r"\bfinancial\s*(?:results?|information|reports?|filings?)\b", re.I), 7),
+    (re.compile(r"\bIR\b", re.I), 5),
+    (re.compile(r"\bcorporate\b", re.I), 3),   # 약한 시그널
 ]
 
 # IR PRESENTATIONS 패턴 — IR 섹션 안에서 발표자료 페이지 찾을 때 (2단계, 더 구체적)
 IR_PRESENTATIONS_PATTERNS: list[tuple[re.Pattern, int]] = [
-    (re.compile(r"events?\s*(?:&amp;|&|and)\s*presentations?", re.I), 20),
-    (re.compile(r"investor\s*presentations?", re.I), 18),
-    (re.compile(r"\bpresentations?\b", re.I), 14),
-    (re.compile(r"\bIR\s*presentations?\b", re.I), 16),
-    (re.compile(r"\bquarterly\s*results?\b", re.I), 10),
-    (re.compile(r"\bearnings?\s*(?:call|webcast)\b", re.I), 9),
-    (re.compile(r"\bevents?\b", re.I), 7),
-    (re.compile(r"\bwebcast\b", re.I), 7),
+    (re.compile(r"events?\s*(?:&amp;|&|and)\s*presentations?", re.I), 25),
+    (re.compile(r"investor\s*(?:presentations?|day|update)", re.I), 22),
+    (re.compile(r"\bIR\s*presentations?\b", re.I), 22),
+    (re.compile(r"\bcorporate\s*presentations?\b", re.I), 20),
+    (re.compile(r"\bpresentations?\b", re.I), 16),
+    (re.compile(r"\bquarterly\s*results?\b", re.I), 14),
+    (re.compile(r"\bquarterly\s*(?:reports?|earnings?|financials?)\b", re.I), 13),
+    (re.compile(r"\bearnings?\s*(?:call|webcast|releases?|reports?)\b", re.I), 12),
+    (re.compile(r"\bfinancial\s*(?:results?|reports?)\b", re.I), 11),
+    (re.compile(r"\bnews\s*(?:&amp;|&|and)\s*events?", re.I), 10),
+    (re.compile(r"\bevents?\b", re.I), 9),
+    (re.compile(r"\bwebcasts?\b", re.I), 9),
+    (re.compile(r"\bconferences?\b", re.I), 8),
+    (re.compile(r"\bnews\s*releases?\b", re.I), 7),
+]
+
+# 도메인이 비-IR이면 직접 시도할 IR 서브도메인
+IR_SUBDOMAIN_PREFIXES = ["ir", "investors", "investor"]
+
+# 메인 도메인 위에 직접 시도할 IR 경로
+IR_PATH_CANDIDATES = [
+    "/investor-relations", "/investor-relations/",
+    "/investors", "/investors/",
+    "/investor", "/investor/",
+    "/our-investors",
+    "/ir", "/ir/",
+    "/about/investors", "/about-us/investors",
+    "/company/investors",
+]
+
+# IR root 위에 직접 시도할 발표자료 경로
+PRESENTATIONS_PATH_CANDIDATES = [
+    "/events-and-presentations", "/events-and-presentations/",
+    "/events-presentations",
+    "/investor-presentations",
+    "/news-events/events-presentations",
+    "/news-and-events/events-and-presentations",
+    "/financial-information/quarterly-results",
+    "/quarterly-results",
+    "/presentations", "/presentations/",
+    "/events", "/events/",
+    "/news-events", "/news-and-events",
 ]
 
 # 호환성 유지 — 기존 호출 코드 깨지지 않게
@@ -68,6 +106,45 @@ def _fetch_html(url: str, timeout: int = 12) -> str | None:
         return r.text
     except Exception:
         return None
+
+
+def _url_alive(url: str, timeout: int = 8) -> bool:
+    """URL이 200 OK 응답하는지 빠르게 확인."""
+    try:
+        r = crequests.get(url, impersonate="chrome", timeout=timeout, allow_redirects=True)
+        return r.status_code == 200 and len(r.text) > 1000   # 짧으면 에러 페이지일 가능성
+    except Exception:
+        return False
+
+
+def _try_subdomains(website: str) -> str | None:
+    """ir.X, investors.X, investor.X 직접 시도. 첫 번째 살아있는 URL 반환."""
+    p = urlparse(website)
+    if not p.hostname:
+        return None
+    # 도메인 추출 — 'www.example.com' → 'example.com'
+    host = p.hostname.lstrip("www.") if p.hostname.startswith("www.") else p.hostname
+    parts = host.split(".")
+    if len(parts) < 2:
+        return None
+    # apex 도메인 (마지막 두 부분)
+    apex = ".".join(parts[-2:])
+    for prefix in IR_SUBDOMAIN_PREFIXES:
+        candidate = f"{p.scheme}://{prefix}.{apex}/"
+        if _url_alive(candidate):
+            return candidate
+    return None
+
+
+def _try_paths(base_url: str, paths: list[str]) -> str | None:
+    """base_url 위에 paths 후보들 직접 시도. 첫 번째 살아있는 URL 반환."""
+    p = urlparse(base_url)
+    origin = f"{p.scheme}://{p.hostname}"
+    for path in paths:
+        candidate = f"{origin}{path}"
+        if _url_alive(candidate):
+            return candidate
+    return None
 
 
 def _score_anchor(text: str, href: str, patterns: list[tuple[re.Pattern, int]]) -> int:
@@ -126,10 +203,13 @@ def discover_batch(tickers: list[str], max_workers: int = 10) -> dict[str, dict]
 def discover(ticker: str) -> dict[str, str]:
     """Returns {'ir_url'?, 'pipeline_url'?, 'website'?, '_error'?}.
 
-    2단계 탐색:
-      1) 회사 홈페이지 → IR root 링크 (Investor Relations / Investors)
-      2) IR root → Events & Presentations 같은 발표자료 페이지
-    발표자료 페이지를 찾으면 그걸 ir_url로 반환, 못 찾으면 IR root.
+    탐색 순서 (cascade):
+      Step 1: 회사 홈페이지 anchor → IR root
+      Step 2: 못 찾으면 → ir.X / investors.X / investor.X 서브도메인 직접 프로빙
+      Step 3: 못 찾으면 → 메인 도메인의 /investors /ir /investor-relations 등 경로 프로빙
+      Step 4: IR root에서 anchor → Events & Presentations (etc.) 발표자료 페이지
+      Step 5: 못 찾으면 → IR root 위에 /events-and-presentations 같은 경로 프로빙
+      Step 6: 그래도 못 찾으면 IR root 자체를 ir_url로 반환
     """
     web = _company_website(ticker)
     if not web:
@@ -145,15 +225,26 @@ def discover(ticker: str) -> dict[str, str]:
     if pl:
         out["pipeline_url"] = pl
 
-    # IR — 1단계: 회사 홈에서 IR root 찾기
+    # === IR root 탐색 (3-tier cascade) ===
+    # tier 1: anchor 텍스트 매칭
     ir_root = _extract_best_link(html, web, IR_ROOT_PATTERNS)
+    # tier 2: 서브도메인 프로빙
+    if not ir_root:
+        ir_root = _try_subdomains(web)
+    # tier 3: 경로 프로빙
+    if not ir_root:
+        ir_root = _try_paths(web, IR_PATH_CANDIDATES)
 
-    # IR — 2단계: IR root에서 Events & Presentations 페이지 찾기
+    # === IR presentations 탐색 (2-tier cascade) ===
     events_url = None
     if ir_root:
         ir_html = _fetch_html(ir_root)
         if ir_html:
+            # tier 1: IR root 페이지 안의 anchor
             events_url = _extract_best_link(ir_html, ir_root, IR_PRESENTATIONS_PATTERNS)
+        # tier 2: IR root 위에 /events-and-presentations 같은 경로 직접 시도
+        if not events_url:
+            events_url = _try_paths(ir_root, PRESENTATIONS_PATH_CANDIDATES)
 
     out["ir_url"] = events_url or ir_root or ""
     if not out["ir_url"]:

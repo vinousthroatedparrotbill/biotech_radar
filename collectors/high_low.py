@@ -11,10 +11,25 @@ from universe import get_universe
 
 
 def collect(industry_filter: str | None = "Biotechnology") -> int:
-    """Universe 전체에 대해 52w high + 멀티 기간 수익률 계산 후 high_low_cache에 저장."""
+    """52w high + 멀티 기간 수익률 계산.
+    범위 = (mcap ≥ $1.5B) ∪ (관심종목 등록된 ticker). 작은 종목은 watchlist로만 추적."""
     universe = get_universe(industry_filter=industry_filter)
     if universe.empty:
         raise RuntimeError("ticker_master 비어있음. 먼저 universe 갱신.")
+
+    # watchlist 등록된 ticker 합치기 (mcap 조건 무시하고 강제 포함)
+    watch_tickers: set[str] = set()
+    try:
+        with connect() as conn:
+            watch_tickers = {
+                r["ticker"] for r in
+                conn.execute("SELECT ticker FROM watchlist").fetchall()
+            }
+    except Exception:
+        pass
+
+    mask = (universe["market_cap"] >= 1500.0) | (universe["ticker"].isin(watch_tickers))
+    universe = universe[mask].reset_index(drop=True)
     tickers = universe["ticker"].tolist()
     mcap_map = dict(zip(universe["ticker"], universe["market_cap"]))
 
@@ -85,7 +100,9 @@ def fetch_new_highs(direction: str = "high", limit: int = 500) -> pd.DataFrame:
                h.perf_1d, h.perf_7d, h.perf_1m, h.perf_3m, h.perf_6m, h.perf_1y
         FROM high_low_cache h
         LEFT JOIN ticker_master t ON t.ticker = h.ticker
-        WHERE h.computed_date = %s AND {cond}
+        WHERE h.computed_date = %s
+          AND h.market_cap >= 1500
+          AND {cond}
         ORDER BY {order}
         LIMIT %s
         """,
@@ -126,6 +143,7 @@ def fetch_new_today_highs(limit: int = 200) -> pd.DataFrame:
                   ON y.ticker = t.ticker AND y.computed_date = %s
                 LEFT JOIN ticker_master m ON m.ticker = t.ticker
                 WHERE t.computed_date = %s
+                  AND t.market_cap >= 1500
                   AND t.today_high >= t.high_52w * 0.999
                   AND (y.high_52w IS NULL OR t.high_52w > y.high_52w)
                 ORDER BY (t.today_close / NULLIF(t.high_52w,0)) DESC
@@ -142,6 +160,7 @@ def fetch_new_today_highs(limit: int = 200) -> pd.DataFrame:
                 FROM high_low_cache t
                 LEFT JOIN ticker_master m ON m.ticker = t.ticker
                 WHERE t.computed_date = %s
+                  AND t.market_cap >= 1500
                   AND t.today_high >= t.high_52w * 0.999
                 ORDER BY (t.today_close / NULLIF(t.high_52w,0)) DESC
                 LIMIT %s

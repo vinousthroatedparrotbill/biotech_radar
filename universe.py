@@ -14,7 +14,8 @@ from db import connect, pd_read_sql
 
 _ENV_PATH = Path(__file__).parent / ".env"
 FINVIZ_EXPORT = "https://elite.finviz.com/export.ashx"
-MIN_MCAP_M = 1500.0   # $1.5B in millions
+MIN_MCAP_M = 0.0    # mcap floor 없음 — Healthcare 전 종목 (관심종목 검색용 보장).
+                    # 52w 신고가 수집은 ≥$1.5B 또는 watchlist 등록 종목만 처리 (collectors/high_low.py).
 
 
 def _token() -> str:
@@ -25,9 +26,10 @@ def _token() -> str:
     return tok
 
 
-def fetch_csv(filters: str = "cap_smallover,sec_healthcare", view: str = "111") -> pd.DataFrame:
+def fetch_csv(filters: str = "sec_healthcare", view: str = "111") -> pd.DataFrame:
     """Pull Finviz Elite screener result as DataFrame.
-    Default: 글로벌 Healthcare ≥$300M (post-filtered to ≥$1.5B in load_universe)."""
+    Default: 글로벌 Healthcare 전체 (mcap floor 없음).
+    52w 신고가 수집 단계에서 다시 ≥$1.5B + watchlist 합집합으로 필터링됨."""
     r = requests.get(
         FINVIZ_EXPORT,
         params={"v": view, "f": filters, "auth": _token()},
