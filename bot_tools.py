@@ -770,6 +770,15 @@ def get_upcoming_conferences(days: int = 90, area: str = "") -> list[dict]:
     return df.to_dict("records")[:50] if not df.empty else []
 
 
+def discover_catalysts_via_ai(ticker: str) -> dict:
+    """ticker의 향후 12개월 카탈리스트 능동 조사 — 정적 소스(ClinicalTrials/하드코딩 학회/
+    yfinance 어닝)가 놓치는 Investor Day, accelerated CVOT readout, KOL event,
+    회사 가이던스 변경 등을 Claude tool calling으로 발굴 후 catalysts 테이블에 저장.
+    1-3분 소요. 사용자가 'X 카탈리스트 다시 찾아', 'X 누락된 일정 발굴' 등 요청 시."""
+    import catalysts as cat
+    return cat.discover_catalysts_via_ai(ticker)
+
+
 def refresh_catalysts() -> dict:
     """카탈리스트 캐시 강제 갱신 (PDUFA + 어닝 + 임상 + 학회).
     watchlist 종목만 어닝/임상 fetch (속도)."""
@@ -1212,6 +1221,19 @@ TOOL_DEFS = [
         },
     },
     {
+        "name": "discover_catalysts_via_ai",
+        "description": "Actively research ticker's upcoming 12-month catalysts using Claude "
+                       "tool calling — picks up Investor Days, accelerated CVOT readouts, "
+                       "KOL events, recent guidance changes that static sources miss. "
+                       "Saves discovered items to catalysts table. 1-3 min. Use when user "
+                       "asks to find missing catalysts or when default get_catalysts looks sparse.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"ticker": {"type": "string"}},
+            "required": ["ticker"],
+        },
+    },
+    {
         "name": "refresh_catalysts",
         "description": "Force refresh catalysts cache (re-scrape biopharmcatalyst PDUFA, "
                        "fetch earnings/clinical for watchlist). Use sparingly.",
@@ -1337,6 +1359,7 @@ def run_tool(name: str, args: dict):
         "get_upcoming_pdufa": get_upcoming_pdufa,
         "get_upcoming_conferences": get_upcoming_conferences,
         "refresh_catalysts": refresh_catalysts,
+        "discover_catalysts_via_ai": discover_catalysts_via_ai,
         "get_insider_trades": get_insider_trades,
         "get_ir_milestones": get_ir_milestones,
         "get_earnings_call_milestones": get_earnings_call_milestones,

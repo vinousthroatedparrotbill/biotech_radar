@@ -469,6 +469,151 @@ def get_upcoming_conferences(days: int = 90, area: str | None = None) -> pd.Data
     return df
 
 
+# ─────────────────────── AI 능동 조사 (Investor Day / accelerated readout 등) ───────────────────────
+def discover_catalysts_via_ai(ticker: str) -> dict:
+    """Claude tool calling으로 ticker의 향후 12개월 카탈리스트 능동 조사 → 카탈리스트 테이블 저장.
+    수동 데이터 소스(ClinicalTrials.gov primary completion, 학회 하드코딩 등)가 놓치는
+    Investor Day, accelerated CVOT readout, KOL event, 회사 자체 가이던스 변경 등 잡기.
+    반환: {ticker, found, saved, summary}."""
+    import os as _os
+    import re as _re
+    import json as _json
+    import datetime as _dt
+    import anthropic as _anth
+
+    api_key = (_os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+    if not api_key:
+        return {"ticker": ticker, "error": "ANTHROPIC_API_KEY 미설정",
+                "found": 0, "saved": 0}
+    from bot_tools import TOOL_DEFS, run_tool
+
+    company = _company_name(ticker) or ticker
+    user_msg = f"""당신은 biotech catalyst hunter. ticker {ticker} ({company})의 향후 12개월 모든 카탈리스트를 능동 조사.
+
+[조사 대상 — 빠짐없이]
+- Investor Days, R&D Days, KOL events (회사 자체 IR 이벤트)
+- Phase 1/2/3 readout 일정 (자산별, interim·topline·primary·secondary 모두)
+- CVOT (cardiovascular outcome trial) interim/final readout 일정
+- PDUFA dates, NDA/BLA/sNDA filing 일정
+- 학회 발표 (ASCO/ASH/AHA/ESC/AACR 등) — 회사 데이터 발표 예정 행사
+- regulatory designations 결정 (BTD, RMAT, Orphan, Priority Review)
+- 사업 마일스톤 (launch dates, reimbursement decisions, EU/Japan approvals)
+- guidance 업데이트 (회사가 가속화 발표한 일정 변경 — 예: "interim 1년 앞당겨짐")
+
+[필수 도구 사용]
+- get_pipeline_info({ticker}) — 회사 파이프라인 페이지
+- search_news_by_query — recent press releases, analyst day announcements
+- get_earnings_call_milestones({ticker}) — 분기 콜에서 공개한 일정
+- get_ir_milestones({ticker}) — IR 자료
+- search_clinicaltrials — 임상 일정
+- fetch_url — 발견한 PR/IR 페이지 본문 직접 읽어 일자 확인
+
+[출력 형식 — 반드시 다음 JSON 배열만, 추가 설명 금지]
+```json
+[
+  {{
+    "date": "YYYY-MM-DD",
+    "date_hint": "Q4 2026" | "Aug 5, 2026" | "1H 2027" | "early 2027" 등 자연 표기,
+    "type": "pdufa" | "clinical_readout" | "clinical_milestone" | "regulatory" | "conference" | "earnings" | "company_event",
+    "title": "구체 제목 (자산명·이벤트 200자 이내)",
+    "source_url": "출처 URL (있으면)"
+  }}
+]
+```
+
+원칙:
+- 도구로 확인된 것만 포함, hallucination 금지.
+- 일자 fuzzy면 date 필드는 분기/반기 마지막 날짜로 (Q4 → 12-31, 1H → 06-30, late → 12-31).
+- date_hint는 원문 그대로 ("PREVAIL interim Q4 2026").
+- 같은 자산 중복 제거.
+- 최소 5개, 최대 30개.
+"""
+
+    client = _anth.Anthropic(api_key=api_key)
+    messages: list[dict] = [{"role": "user", "content": user_msg}]
+    final_text = ""
+    try:
+        for _step in range(12):
+            resp = client.messages.create(
+                model="claude-opus-4-7",
+                max_tokens=4000,
+                tools=TOOL_DEFS,
+                messages=messages,
+            )
+            if resp.stop_reason == "tool_use":
+                tool_uses = [b for b in resp.content if b.type == "tool_use"]
+                messages.append({"role": "assistant", "content": resp.content})
+                tool_results = []
+                for tu in tool_uses:
+                    log.info("[%s catalyst-discover] tool: %s", ticker, tu.name)
+                    try:
+                        result = run_tool(tu.name, tu.input)
+                    except Exception as e:
+                        result = {"error": str(e)}
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tu.id,
+                        "content": _json.dumps(result, ensure_ascii=False, default=str)[:8000],
+                    })
+                messages.append({"role": "user", "content": tool_results})
+                continue
+            for b in resp.content:
+                if b.type == "text":
+                    final_text += b.text
+            break
+    except Exception as e:
+        return {"ticker": ticker, "error": f"Claude 실패: {e}", "found": 0, "saved": 0}
+
+    # JSON 추출
+    items: list[dict] = []
+    m = _re.search(r"```(?:json)?\s*(\[.*?\])\s*```", final_text, _re.DOTALL)
+    if not m:
+        m = _re.search(r"(\[\s*\{.*\}\s*\])", final_text, _re.DOTALL)
+    if m:
+        try:
+            items = _json.loads(m.group(1))
+        except Exception as e:
+            return {"ticker": ticker,
+                    "error": f"JSON 파싱 실패: {e}",
+                    "found": 0, "saved": 0,
+                    "raw": final_text[:600]}
+
+    if not items:
+        return {"ticker": ticker, "error": "JSON 블록 없음", "found": 0, "saved": 0,
+                "raw": final_text[:600]}
+
+    # 저장
+    saved = 0
+    now = _dt.datetime.now().isoformat(timespec="seconds")
+    with db.connect() as conn:
+        for c in items:
+            ev_date = c.get("date") or "2099-12-31"
+            ev_type = c.get("type") or "company_event"
+            title = (c.get("title") or "")[:300]
+            if not title:
+                continue
+            date_hint = c.get("date_hint") or ev_date
+            src_url = (c.get("source_url") or "ai_discovery")[:300]
+            desc = f"date_hint: {date_hint} · 출처: AI 발굴"
+            try:
+                conn.execute(
+                    "INSERT INTO catalysts (ticker, event_date, event_type, title, "
+                    "description, source, fetched_at) VALUES (?,?,?,?,?,?,?) "
+                    "ON CONFLICT (ticker, event_date, event_type, title) DO NOTHING",
+                    (ticker.upper(), ev_date, ev_type, title, desc, src_url, now),
+                )
+                saved += 1
+            except Exception as e:
+                log.debug("upsert: %s", e)
+    log.info("%s AI catalyst discovery: found=%d saved=%d",
+             ticker, len(items), saved)
+    return {"ticker": ticker.upper(), "found": len(items), "saved": saved}
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    print(refresh_all(watchlist_only=True))
+    import sys
+    if len(sys.argv) > 1:
+        print(discover_catalysts_via_ai(sys.argv[1]))
+    else:
+        print(refresh_all(watchlist_only=True))

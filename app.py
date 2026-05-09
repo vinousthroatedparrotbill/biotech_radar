@@ -616,9 +616,9 @@ def _render_ai_report_section(ticker: str, name: str):
                 age = f"{h//24}일 전"
         except Exception:
             age = ""
-        label = f"🎯 AI 투자 메모  ·  {gen_at} ({age})"
+        label = f"🎯 Thesis  ·  {gen_at} ({age})"
     else:
-        label = "🎯 AI 투자 메모 (미생성)"
+        label = "🎯 Thesis (미생성)"
 
     with st.expander(label, expanded=bool(cached)):
         if cached:
@@ -698,26 +698,43 @@ def _render_catalyst_section(ticker: str):
                 st.markdown(
                     f"- **[{date_hint}]** {r['title']}",
                 )
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
-            if st.button("🔄 카탈리스트 갱신", key=f"cat_rf_{ticker}",
-                         use_container_width=True):
+            if st.button("🔄 자동 갱신", key=f"cat_rf_{ticker}",
+                         use_container_width=True,
+                         help="ClinicalTrials/yfinance/투자자료 등 정적 소스 다시 fetch"):
                 with st.spinner("..."):
                     cat.fetch_earnings_dates([ticker])
                     cat.fetch_clinical_completions([ticker])
-                    cat.refresh_all(watchlist_only=False)
+                    from earnings_calls import fetch_for_ticker as _ec_fetch
+                    _ec_fetch(ticker, max_quarters=3)
                 st.rerun()
         with col2:
-            if st.button("🔍 IR PDF 마일스톤 추출", key=f"irm_rf_{ticker}",
-                         use_container_width=True):
+            if st.button("🔍 IR PDF 추출", key=f"irm_rf_{ticker}",
+                         use_container_width=True,
+                         help="회사 투자자 프레젠테이션 PDF에서 'Anticipated Catalysts' 추출"):
                 with st.spinner("IR PDF 분석 (10-30초)..."):
                     result = irm.extract_for_ticker(ticker, save=True)
                 if result.get("error"):
                     st.warning(f"⚠️ {result['error']}")
                 else:
                     st.success(
-                        f"✓ {len(result.get('milestones', []))}개 추출 — "
-                        f"{result.get('deck_title', '')[:60]}"
+                        f"✓ {len(result.get('milestones', []))}개 — "
+                        f"{result.get('deck_title', '')[:50]}"
+                    )
+                    st.rerun()
+        with col3:
+            if st.button("🤖 AI 발굴 (1-3분)", key=f"cat_ai_{ticker}",
+                         use_container_width=True,
+                         help="Claude가 능동 조사로 Investor Day, accelerated readout, "
+                              "KOL event 등 정적 소스가 놓치는 카탈리스트 발굴"):
+                with st.spinner(f"{ticker} 카탈리스트 능동 조사 중 (web 검색·PR fetch)..."):
+                    result = cat.discover_catalysts_via_ai(ticker)
+                if result.get("error"):
+                    st.warning(f"⚠️ {result['error']}")
+                else:
+                    st.success(
+                        f"✓ AI 발굴: {result['found']}개 발견, {result['saved']}개 신규 저장"
                     )
                     st.rerun()
 
