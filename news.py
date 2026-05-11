@@ -652,11 +652,16 @@ def fetch_biotech_rss(days: int = 7, max_per_feed: int = 100) -> list[dict]:
                 published = datetime(*e.published_parsed[:6], tzinfo=timezone.utc)
                 if published < cutoff:
                     continue
-            title = getattr(e, "title", "")
+            raw_title = getattr(e, "title", "")
+            # Fierce*는 title을 <a href="...">실제 제목</a>로 감싸 보냄 — HTML 태그/엔티티 제거
+            title = re.sub("<[^>]+>", "", raw_title)
+            import html as _html
+            title = _html.unescape(title).strip()
             cats = categorize(title)
             if not cats:
                 continue
             summary = re.sub("<[^>]+>", "", getattr(e, "summary", ""))
+            summary = _html.unescape(summary).strip()
             out.append({
                 "title": title,
                 "summary": summary[:300],
