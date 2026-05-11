@@ -642,11 +642,23 @@ def _tv_symbol(ticker: str) -> str:
     return t
 
 
+def _is_asian_ticker(ticker: str) -> bool:
+    t = ticker.upper()
+    return t.endswith((".T", ".HK", ".SZ", ".SS"))
+
+
 def _render_tradingview_chart(ticker: str):
     """TradingView 위젯 embed — volume bar, ruler, 작도 도구 모두 포함.
     그림 저장은 사용자 TV 계정 로그인 시 자동 동기화."""
     import streamlit.components.v1 as components
     symbol = _tv_symbol(ticker)
+
+    if _is_asian_ticker(ticker):
+        st.info(
+            "⚠️ TradingView는 Asia 종목 표시에 **무료 계정 로그인을 요구**할 수 있습니다 "
+            "(TV 정책). 차트 우상단 사람 아이콘 → Sign in 후 새로고침 — 또는 위 토글에서 "
+            "**'내장 (Plotly)'** 선택하면 즉시 보입니다."
+        )
     # 다양한 인디케이터 + 작도 도구 활성화
     html = f"""
     <div class="tradingview-widget-container" style="height:560px;width:100%;">
