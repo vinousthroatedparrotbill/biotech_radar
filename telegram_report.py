@@ -240,10 +240,10 @@ def daily_run() -> dict:
     from collectors.high_low import collect as hl_collect
     from collectors.high_low import fetch_new_today_highs
 
-    # 1) Universe 갱신
+    # 1) Universe 갱신 (USA Healthcare via Finviz, country='USA' 종목만 wipe·재삽입)
     n_uni = load_universe()
-    # 2) 52w 신고가 갱신
-    n_hl = hl_collect()
+    # 2) 52w 신고가 갱신 — 전체 healthcare (industry_filter=None) → 일본/중국 종목도 포함
+    n_hl = hl_collect(industry_filter=None)
     # 3) 요약 + 발송
     text = compose_report()
     text = f"<i>auto-run: universe={n_uni}, snapshot={n_hl}</i>\n\n" + text

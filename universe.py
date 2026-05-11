@@ -64,7 +64,8 @@ def load_universe(min_mcap_m: float = MIN_MCAP_M) -> int:
     ]
 
     with connect() as conn:
-        conn.execute("DELETE FROM ticker_master")
+        # USA 종목만 wipe — 수동 추가된 일본/홍콩/중국 종목은 보존
+        conn.execute("DELETE FROM ticker_master WHERE country = 'USA'")
         conn.executemany(
             """
             INSERT INTO ticker_master
