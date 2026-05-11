@@ -459,54 +459,66 @@ def render_stock_detail(ticker: str, name: str):
                 excl.add(ticker, note="user excluded")
                 st.rerun()
 
-    cc = st.columns([2, 2])
-    with cc[0]:
-        period = st.radio(
-            "기간", options=list(PERIOD_LABELS.keys()), index=4, horizontal=True,
-            format_func=lambda k: PERIOD_LABELS[k], key=f"prd_{ticker}",
-        )
-    with cc[1]:
-        interval_label = st.radio(
-            "봉", options=["일봉", "주봉", "월봉"], horizontal=True, key=f"int_{ticker}",
-        )
-    interval_map = {"일봉": "1d", "주봉": "1wk", "월봉": "1mo"}
-    interval = interval_map[interval_label]
+    # 차트 엔진 선택 — TradingView (full 작도·ruler·volume) vs 내장 plotly (우리 MA)
+    engine = st.radio(
+        "차트 엔진", options=["TradingView", "내장 (Plotly)"],
+        horizontal=True, key=f"eng_{ticker}",
+        help="TradingView: 거래량 bar, ruler, 작도 도구 모두 사용 가능. "
+             "그림은 본인 TV 계정 로그인 시 동기화됨. "
+             "내장: 우리 MA20/60/120 라인이 표시됨.",
+    )
 
-    with st.spinner("OHLCV 다운로드..."):
-        try:
-            hist = _cached_fetch_chart(ticker, period, interval)
-        except Exception as e:
-            st.error(f"차트 로드 실패: {e}")
-            hist = None
-
-    if hist is None or hist.empty:
-        st.info("차트 데이터 없음")
+    if engine == "TradingView":
+        _render_tradingview_chart(ticker)
     else:
-        fig = go.Figure()
-        if period == "1d":
-            fig.add_trace(go.Scatter(
-                x=hist.index, y=hist["Close"], mode="lines",
-                line=dict(color="#1976d2", width=1.6), name="Price",
-            ))
+        cc = st.columns([2, 2])
+        with cc[0]:
+            period = st.radio(
+                "기간", options=list(PERIOD_LABELS.keys()), index=4, horizontal=True,
+                format_func=lambda k: PERIOD_LABELS[k], key=f"prd_{ticker}",
+            )
+        with cc[1]:
+            interval_label = st.radio(
+                "봉", options=["일봉", "주봉", "월봉"], horizontal=True, key=f"int_{ticker}",
+            )
+        interval_map = {"일봉": "1d", "주봉": "1wk", "월봉": "1mo"}
+        interval = interval_map[interval_label]
+
+        with st.spinner("OHLCV 다운로드..."):
+            try:
+                hist = _cached_fetch_chart(ticker, period, interval)
+            except Exception as e:
+                st.error(f"차트 로드 실패: {e}")
+                hist = None
+
+        if hist is None or hist.empty:
+            st.info("차트 데이터 없음")
         else:
-            fig.add_trace(go.Candlestick(
-                x=hist.index, open=hist["Open"], high=hist["High"],
-                low=hist["Low"], close=hist["Close"], name=ticker,
-                increasing_line_color="#26a69a", decreasing_line_color="#ef5350",
-            ))
-            for w, color in [(20, "#ff9800"), (60, "#9c27b0"), (120, "#607d8b")]:
-                col = f"MA{w}"
-                if col in hist.columns:
-                    fig.add_trace(go.Scatter(
-                        x=hist.index, y=hist[col], mode="lines", name=f"MA{w}",
-                        line=dict(color=color, width=1.2),
-                    ))
-        fig.update_layout(
-            height=440, margin=dict(l=0, r=0, t=10, b=0),
-            xaxis_rangeslider_visible=False,
-            legend=dict(orientation="h", y=1.05, x=0),
-        )
-        st.plotly_chart(fig, use_container_width=True)
+            fig = go.Figure()
+            if period == "1d":
+                fig.add_trace(go.Scatter(
+                    x=hist.index, y=hist["Close"], mode="lines",
+                    line=dict(color="#1976d2", width=1.6), name="Price",
+                ))
+            else:
+                fig.add_trace(go.Candlestick(
+                    x=hist.index, open=hist["Open"], high=hist["High"],
+                    low=hist["Low"], close=hist["Close"], name=ticker,
+                    increasing_line_color="#26a69a", decreasing_line_color="#ef5350",
+                ))
+                for w, color in [(20, "#ff9800"), (60, "#9c27b0"), (120, "#607d8b")]:
+                    col = f"MA{w}"
+                    if col in hist.columns:
+                        fig.add_trace(go.Scatter(
+                            x=hist.index, y=hist[col], mode="lines", name=f"MA{w}",
+                            line=dict(color=color, width=1.2),
+                        ))
+            fig.update_layout(
+                height=440, margin=dict(l=0, r=0, t=10, b=0),
+                xaxis_rangeslider_visible=False,
+                legend=dict(orientation="h", y=1.05, x=0),
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
     # ── 3-1, 3-2, 3-3 토글 섹션들 ──
     st.divider()
@@ -611,6 +623,64 @@ def _render_recent_articles_section(ticker: str, name: str):
                 unsafe_allow_html=True,
             )
             st.markdown("")
+
+
+def _tv_symbol(ticker: str) -> str:
+    """yfinance ticker → TradingView symbol (exchange:code)."""
+    t = ticker.upper().strip()
+    if t.endswith(".T"):
+        return f"TSE:{t[:-2]}"
+    if t.endswith(".HK"):
+        # HK ticker는 4자리 zero-pad (예: 1801 → 01801)
+        code = t[:-3].zfill(5)
+        return f"HKEX:{code}"
+    if t.endswith(".SZ"):
+        return f"SZSE:{t[:-3]}"
+    if t.endswith(".SS"):
+        return f"SSE:{t[:-3]}"
+    # 미국 — TV가 자동 추측 (대부분 NASDAQ/NYSE)
+    return t
+
+
+def _render_tradingview_chart(ticker: str):
+    """TradingView 위젯 embed — volume bar, ruler, 작도 도구 모두 포함.
+    그림 저장은 사용자 TV 계정 로그인 시 자동 동기화."""
+    import streamlit.components.v1 as components
+    symbol = _tv_symbol(ticker)
+    # 다양한 인디케이터 + 작도 도구 활성화
+    html = f"""
+    <div class="tradingview-widget-container" style="height:560px;width:100%;">
+      <div id="tv_{ticker.replace('.','_')}" style="height:100%;width:100%;"></div>
+      <script src="https://s3.tradingview.com/tv.js"></script>
+      <script>
+        new TradingView.widget({{
+          "autosize": true,
+          "symbol": "{symbol}",
+          "interval": "D",
+          "timezone": "Asia/Seoul",
+          "theme": "light",
+          "style": "1",
+          "locale": "en",
+          "toolbar_bg": "#f1f3f6",
+          "enable_publishing": false,
+          "allow_symbol_change": true,
+          "withdateranges": true,
+          "hide_side_toolbar": false,
+          "studies": ["Volume@tv-basicstudies"],
+          "show_popup_button": true,
+          "popup_width": "1000",
+          "popup_height": "650",
+          "container_id": "tv_{ticker.replace('.','_')}"
+        }});
+      </script>
+    </div>
+    """
+    components.html(html, height=580, scrolling=False)
+    st.caption(
+        f"📊 TradingView · symbol: `{symbol}` · "
+        "왼쪽 toolbar에서 작도(추세선·피보·사각형), 측정자(Alt+drag), 거래량 보임. "
+        "TV 계정 로그인 시 그림 자동 저장."
+    )
 
 
 def _render_ai_report_section(ticker: str, name: str):
