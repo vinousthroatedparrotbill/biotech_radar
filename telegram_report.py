@@ -234,15 +234,106 @@ def send_investment_reports(tickers: list[str], max_n: int = 5) -> int:
     return sent
 
 
+def _fmt_catalyst_line(row: dict) -> str:
+    """단일 카탈리스트 한 줄 (이모지 + 날짜 + 티커 + 제목)."""
+    tt = row.get("event_type", "")
+    emoji = {"pdufa": "💊", "earnings": "📊", "clinical_readout": "🧪",
+             "clinical_milestone": "🚀", "regulatory": "📜",
+             "conference": "🎤", "company_event": "📑",
+             "earnings_call": "🎙️"}.get(tt, "📅")
+    tk = (row.get("ticker") or "").upper().strip()
+    tk_str = f"<b>{_esc(tk)}</b> · " if tk else ""
+    # date_hint 우선, 없으면 event_date
+    import re as _re
+    desc = row.get("description") or ""
+    dh = _re.search(r"date_hint:\s*([^·]+)", desc)
+    date_label = dh.group(1).strip() if dh else (row.get("event_date") or "")
+    title = (row.get("title") or "")[:200]
+    return f"  {emoji} <i>{_esc(date_label)}</i>  {tk_str}{_esc(title)}"
+
+
+def send_monthly_catalyst_summary() -> int:
+    """매달 1일 — 그달 카탈리스트 정리 발송."""
+    import catalysts as cat
+    today = datetime.now()
+    df = cat.get_month_catalysts(today.year, today.month)
+    if df.empty:
+        return 0
+    parts = [
+        f"📅 <b>{today.year}년 {today.month}월 카탈리스트</b> ({len(df)}건)",
+        "",
+    ]
+    # 타입별 그룹
+    type_order = ["pdufa", "regulatory", "clinical_readout", "clinical_milestone",
+                  "earnings", "conference", "company_event", "earnings_call"]
+    type_labels = {"pdufa": "💊 PDUFA",
+                   "regulatory": "📜 FDA 규제",
+                   "clinical_readout": "🧪 임상 데이터 공개",
+                   "clinical_milestone": "🚀 임상 마일스톤",
+                   "earnings": "📊 어닝",
+                   "conference": "🎤 학회·컨퍼런스",
+                   "company_event": "📑 회사 공개",
+                   "earnings_call": "🎙️ 어닝콜 멘션"}
+    for ev_type in type_order:
+        sub = df[df["event_type"] == ev_type]
+        if sub.empty:
+            continue
+        parts.append(f"\n<b>{type_labels.get(ev_type, ev_type)}</b> ({len(sub)})")
+        # 가까운 순, 최대 20개
+        for _, r in sub.head(20).iterrows():
+            parts.append(_fmt_catalyst_line(r.to_dict()))
+    msg = "\n".join(parts)
+    # 분할 발송
+    chunks = _split(msg, 3900)
+    for chunk in chunks:
+        send(chunk)
+    return len(chunks)
+
+
+def send_watched_alerts() -> dict:
+    """워치 카탈리스트의 1m/1w 임박 알림 발송."""
+    import catalysts as cat
+    due = cat.get_due_alerts()
+    sent_m = 0
+    sent_w = 0
+    # 1개월 전
+    for item in due["month_alerts"]:
+        msg = (
+            f"⏰ <b>1개월 전 알림</b>\n\n"
+            f"{_fmt_catalyst_line(item)}\n\n"
+            f"<i>notify_date: {item.get('notify_date')}</i>"
+        )
+        try:
+            send(msg)
+            cat.mark_notified(item["id"], "1m")
+            sent_m += 1
+        except Exception:
+            pass
+    # 1주 전
+    for item in due["week_alerts"]:
+        msg = (
+            f"⏰ <b>1주 전 알림</b>\n\n"
+            f"{_fmt_catalyst_line(item)}\n\n"
+            f"<i>notify_date: {item.get('notify_date')}</i>"
+        )
+        try:
+            send(msg)
+            cat.mark_notified(item["id"], "1w")
+            sent_w += 1
+        except Exception:
+            pass
+    return {"month": sent_m, "week": sent_w}
+
+
 def daily_run() -> dict:
     """수집 + 요약 + 발송 — 스케줄러에서 호출."""
     from universe import load_universe
     from collectors.high_low import collect as hl_collect
     from collectors.high_low import fetch_new_today_highs
 
-    # 1) Universe 갱신 (USA Healthcare via Finviz, country='USA' 종목만 wipe·재삽입)
+    # 1) Universe 갱신
     n_uni = load_universe()
-    # 2) 52w 신고가 갱신 — 전체 healthcare (industry_filter=None) → 일본/중국 종목도 포함
+    # 2) 52w 신고가 갱신
     n_hl = hl_collect(industry_filter=None)
     # 3) 요약 + 발송
     text = compose_report()
@@ -255,6 +346,21 @@ def daily_run() -> dict:
         tickers = new_today["ticker"].tolist()
         sent_n = send_investment_reports(tickers, max_n=5)
         main_result["investment_reports"] = sent_n
+
+    # 5) 매달 1일 — 월간 카탈리스트 요약
+    if datetime.now().day == 1:
+        try:
+            n_monthly = send_monthly_catalyst_summary()
+            main_result["monthly_catalyst_chunks"] = n_monthly
+        except Exception as e:
+            main_result["monthly_catalyst_error"] = str(e)
+
+    # 6) 워치 카탈리스트 1m/1w 임박 알림
+    try:
+        alert_counts = send_watched_alerts()
+        main_result["watched_alerts"] = alert_counts
+    except Exception as e:
+        main_result["watched_alerts_error"] = str(e)
 
     return main_result
 

@@ -434,6 +434,177 @@ def refresh_all(scope: str = "watchlist",
     return counts
 
 
+# ─────────────────────── 워치 / 알림 ───────────────────────
+def early_bound_date(date_hint: str, event_date: str) -> str:
+    """fuzzy 일자 → 조기 알림 트리거 기준 (보수적 = period의 시작점).
+    Q1/Q2/Q3/Q4 → 분기 첫째 날
+    1H/2H → 1/1, 7/1
+    early/mid/late/year-end → 1/1, 5/1, 10/1, 10/1
+    Month YYYY → 그 월 1일
+    exact YYYY-MM-DD → 그대로
+    """
+    h = (date_hint or "").lower().strip()
+    # Q1-Q4
+    m = re.search(r"q([1-4])\s*(20\d{2})", h)
+    if m:
+        q, y = int(m.group(1)), int(m.group(2))
+        start_month = (q - 1) * 3 + 1
+        return f"{y}-{start_month:02d}-01"
+    # 1H/2H (first half / second half)
+    m = re.search(r"(1h|first\s*half)\s*(?:of\s+)?(20\d{2})", h)
+    if m:
+        return f"{int(m.group(2))}-01-01"
+    m = re.search(r"(2h|second\s*half)\s*(?:of\s+)?(20\d{2})", h)
+    if m:
+        return f"{int(m.group(2))}-07-01"
+    # quarter words
+    m = re.search(r"first\s+quarter\s+(?:of\s+)?(20\d{2})", h)
+    if m:
+        return f"{int(m.group(1))}-01-01"
+    m = re.search(r"second\s+quarter\s+(?:of\s+)?(20\d{2})", h)
+    if m:
+        return f"{int(m.group(1))}-04-01"
+    m = re.search(r"third\s+quarter\s+(?:of\s+)?(20\d{2})", h)
+    if m:
+        return f"{int(m.group(1))}-07-01"
+    m = re.search(r"fourth\s+quarter\s+(?:of\s+)?(20\d{2})", h)
+    if m:
+        return f"{int(m.group(1))}-10-01"
+    # early / mid / late / year-end
+    m = re.search(r"(early|mid|late|year[\s\-]?end)\s*(?:of\s+)?\s*(20\d{2})", h)
+    if m:
+        kw, y = m.group(1), int(m.group(2))
+        if "early" in kw:
+            return f"{y}-01-01"
+        if "mid" in kw:
+            return f"{y}-05-01"
+        # late or year-end → Q4 시작
+        return f"{y}-10-01"
+    # Month YYYY → 그 월 1일
+    months = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+              "jul": 7, "aug": 8, "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
+              "january": 1, "february": 2, "march": 3, "april": 4,
+              "june": 6, "july": 7, "august": 8, "september": 9,
+              "october": 10, "november": 11, "december": 12}
+    m = re.search(r"(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)\w*\s+(20\d{2})",
+                  h)
+    if m:
+        mo = months.get(m.group(1)[:4] if m.group(1).startswith("sept") else m.group(1)[:3])
+        y = int(m.group(2))
+        if mo:
+            return f"{y}-{mo:02d}-01"
+    # exact ISO date 그대로 사용
+    if event_date and re.match(r"\d{4}-\d{2}-\d{2}", event_date):
+        return event_date[:10]
+    # YYYY only → Jan 1
+    m = re.search(r"(20\d{2})", h)
+    if m:
+        return f"{m.group(1)}-01-01"
+    return event_date or ""
+
+
+def set_watched(catalyst_id: int, watched: bool) -> None:
+    """워치 토글. 켜질 때 notify_date 자동 계산."""
+    with db.connect() as conn:
+        row = conn.execute(
+            "SELECT description, event_date FROM catalysts WHERE id = ?",
+            (catalyst_id,),
+        ).fetchone()
+        if not row:
+            return
+        if watched:
+            desc = row.get("description") or ""
+            m = re.search(r"date_hint:\s*([^·]+)", desc)
+            date_hint = m.group(1).strip() if m else ""
+            notify_date = early_bound_date(date_hint, row.get("event_date") or "")
+            conn.execute(
+                "UPDATE catalysts SET watched = TRUE, notify_date = ?, "
+                "notified_1m = FALSE, notified_1w = FALSE WHERE id = ?",
+                (notify_date, catalyst_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE catalysts SET watched = FALSE WHERE id = ?",
+                (catalyst_id,),
+            )
+
+
+def get_watched(days_ahead: int = 90) -> pd.DataFrame:
+    """워치 중인 카탈리스트 (notify_date 기준 N일 이내 + 과거)."""
+    horizon = (dt.date.today() + dt.timedelta(days=days_ahead)).isoformat()
+    return db.pd_read_sql(
+        "SELECT * FROM catalysts WHERE watched = TRUE "
+        "AND notify_date <= ? ORDER BY notify_date ASC",
+        params=(horizon,),
+    )
+
+
+def get_due_alerts() -> dict:
+    """오늘 트리거되어야 할 알림 — 1m 창 (28-32일 전) + 1w 창 (6-8일 전)."""
+    today = dt.date.today()
+    # 1개월: notify_date - today ∈ [28, 32]
+    m_start = (today + dt.timedelta(days=28)).isoformat()
+    m_end = (today + dt.timedelta(days=32)).isoformat()
+    # 1주: notify_date - today ∈ [6, 8]
+    w_start = (today + dt.timedelta(days=6)).isoformat()
+    w_end = (today + dt.timedelta(days=8)).isoformat()
+
+    with db.connect() as conn:
+        m_rows = conn.execute(
+            "SELECT * FROM catalysts WHERE watched = TRUE "
+            "AND notified_1m = FALSE "
+            "AND notify_date >= ? AND notify_date <= ?",
+            (m_start, m_end),
+        ).fetchall()
+        w_rows = conn.execute(
+            "SELECT * FROM catalysts WHERE watched = TRUE "
+            "AND notified_1w = FALSE "
+            "AND notify_date >= ? AND notify_date <= ?",
+            (w_start, w_end),
+        ).fetchall()
+    return {
+        "month_alerts": [dict(r) for r in m_rows],
+        "week_alerts": [dict(r) for r in w_rows],
+    }
+
+
+def mark_notified(catalyst_id: int, kind: str) -> None:
+    """kind='1m' or '1w' — 알림 발송 완료 표시."""
+    col = "notified_1m" if kind == "1m" else "notified_1w"
+    with db.connect() as conn:
+        conn.execute(
+            f"UPDATE catalysts SET {col} = TRUE WHERE id = ?",
+            (catalyst_id,),
+        )
+
+
+def get_month_catalysts(year: int, month: int) -> pd.DataFrame:
+    """해당 월 모든 카탈리스트 (월 1일 정기 발송용)."""
+    start = dt.date(year, month, 1).isoformat()
+    # 다음 달 1일
+    if month == 12:
+        end = dt.date(year + 1, 1, 1).isoformat()
+    else:
+        end = dt.date(year, month + 1, 1).isoformat()
+    return db.pd_read_sql(
+        "SELECT * FROM catalysts WHERE event_date >= ? AND event_date < ? "
+        "ORDER BY event_date ASC",
+        params=(start, end),
+    )
+
+
+def get_upcoming_watched(days: int = 7) -> pd.DataFrame:
+    """다가오는 N일 이내 워치 카탈리스트 (대시보드 팝업용)."""
+    today = dt.date.today().isoformat()
+    horizon = (dt.date.today() + dt.timedelta(days=days)).isoformat()
+    return db.pd_read_sql(
+        "SELECT * FROM catalysts WHERE watched = TRUE "
+        "AND notify_date >= ? AND notify_date <= ? "
+        "ORDER BY notify_date ASC",
+        params=(today, horizon),
+    )
+
+
 # ─────────────────────── 조회 ───────────────────────
 def get_catalysts(ticker: str | None = None, days: int = 90,
                   event_types: list[str] | None = None) -> pd.DataFrame:

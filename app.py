@@ -688,11 +688,25 @@ def _render_catalyst_section(ticker: str):
                          "regulatory": "📜", "conference": "🎤",
                          "company_event": "📑",
                          "earnings_call": "🎙️"}.get(tt, "📅")
-                st.markdown(
-                    f"- {emoji} **{r['event_date']}** · {r['title'][:160]}  "
-                    f"<span style='opacity:0.55; font-size:0.85em'>· {tt}</span>",
-                    unsafe_allow_html=True,
-                )
+                # 워치 토글 체크박스 (per row)
+                cid = int(r["id"])
+                is_watched = bool(r.get("watched"))
+                cc = st.columns([0.5, 11])
+                with cc[0]:
+                    new_state = st.checkbox(
+                        "", value=is_watched, key=f"cat_watch_{cid}",
+                        label_visibility="collapsed",
+                        help="워치 — 1m·1w 전 텔레그램 알림",
+                    )
+                    if new_state != is_watched:
+                        cat.set_watched(cid, new_state)
+                        st.rerun()
+                with cc[1]:
+                    st.markdown(
+                        f"{emoji} **{r['event_date']}** · {r['title'][:160]}  "
+                        f"<span style='opacity:0.55; font-size:0.85em'>· {tt}</span>",
+                        unsafe_allow_html=True,
+                    )
         if not ec_df.empty:
             st.markdown("---")
             st.caption("🎙️ 최근 어닝콜에서 회사가 공개한 forward-looking 멘션")
@@ -1122,8 +1136,74 @@ def _section_high():
     _render_table(df)
 
 
+def _render_watched_catalyst_banner():
+    """다가오는 워치 카탈리스트가 있으면 상단 배너로 표시 (1주 / 1개월 임박)."""
+    import catalysts as cat
+    import datetime as _dt
+    df = cat.get_watched(days_ahead=35)
+    if df.empty:
+        return
+    today = _dt.date.today()
+    week_items = []
+    month_items = []
+    for _, r in df.iterrows():
+        nd = r.get("notify_date")
+        if not nd:
+            continue
+        try:
+            d = _dt.date.fromisoformat(nd)
+        except ValueError:
+            continue
+        days_left = (d - today).days
+        if days_left < 0:
+            continue
+        if days_left <= 7:
+            week_items.append((days_left, r))
+        elif days_left <= 35:
+            month_items.append((days_left, r))
+    if not week_items and not month_items:
+        return
+    parts = []
+    if week_items:
+        parts.append("🚨 <b>이번주 워치 카탈리스트</b>")
+        for days_left, r in sorted(week_items, key=lambda x: x[0])[:5]:
+            import re as _re
+            desc = r.get("description") or ""
+            m = _re.search(r"date_hint:\s*([^·]+)", desc)
+            dh = m.group(1).strip() if m else (r.get("event_date") or "")
+            tk = (r.get("ticker") or "").upper().strip()
+            tk_s = f"<b>{tk}</b> · " if tk else ""
+            parts.append(
+                f"&nbsp;&nbsp;⏰ D-{days_left} · {dh} · {tk_s}"
+                f"{(r.get('title') or '')[:120]}"
+            )
+    if month_items:
+        if week_items:
+            parts.append("")
+        parts.append("📅 <b>1개월 이내 워치</b>")
+        for days_left, r in sorted(month_items, key=lambda x: x[0])[:5]:
+            import re as _re
+            desc = r.get("description") or ""
+            m = _re.search(r"date_hint:\s*([^·]+)", desc)
+            dh = m.group(1).strip() if m else (r.get("event_date") or "")
+            tk = (r.get("ticker") or "").upper().strip()
+            tk_s = f"<b>{tk}</b> · " if tk else ""
+            parts.append(
+                f"&nbsp;&nbsp;📍 D-{days_left} · {dh} · {tk_s}"
+                f"{(r.get('title') or '')[:120]}"
+            )
+    st.markdown(
+        f"<div style='background:#fff3cd; border:1px solid #ffd966; "
+        f"border-left:4px solid #f9a825; padding:0.8rem 1.2rem; "
+        f"border-radius:8px; margin-bottom:1rem; line-height:1.5; "
+        f"font-size:0.92em;'>{'<br/>'.join(parts)}</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def render_main_page():
     """메인 대시보드 — 4개 섹션 탭으로 전환."""
+    _render_watched_catalyst_banner()
     st.markdown(
         f"""
         <div class="hero-banner" style="
@@ -1253,8 +1333,8 @@ def _section_catalysts():
     if df.empty:
         st.info("해당 조건의 카탈리스트 없음. 🔄 갱신 눌러 캐시 채우기.")
     else:
-        st.caption(f"총 {len(df)}건 · 가까운 순")
-        # 일자 표시 — description에 date_hint 있으면 우선 사용 (late 2026 같은 fuzzy 표기)
+        st.caption(f"총 {len(df)}건 · 가까운 순 · 👁️ 컬럼 체크하면 워치 (1m·1w 전 텔레그램 알림)")
+        # 일자 표시 — description에 date_hint 있으면 우선 사용
         import re as _re
         def _date_label(row):
             desc = row.get("description")
@@ -1266,15 +1346,37 @@ def _section_catalysts():
             return row.get("event_date") or ""
         df = df.copy()
         df["_disp_date"] = df.apply(_date_label, axis=1)
-        view = df[["_disp_date", "event_date", "ticker", "event_type", "title",
-                   "therapy_area", "source"]].copy()
-        view.columns = ["일자", "정렬일", "티커", "타입", "제목", "분야", "소스"]
+        view = df[["id", "watched", "_disp_date", "event_date", "ticker",
+                   "event_type", "title", "therapy_area", "source"]].copy()
+        view.columns = ["id", "👁️", "일자", "정렬일", "티커",
+                        "타입", "제목", "분야", "소스"]
         view["티커"] = view["티커"].fillna("—")
         view["분야"] = view["분야"].fillna("—")
-        st.dataframe(
+        view["👁️"] = view["👁️"].fillna(False).astype(bool)
+
+        edited = st.data_editor(
             view.drop(columns=["정렬일"]),
             use_container_width=True, hide_index=True, height=520,
+            column_config={
+                "id": None,   # 숨김
+                "👁️": st.column_config.CheckboxColumn(
+                    "👁️", help="워치 (1개월·1주 전 알림)", width="small",
+                ),
+            },
+            disabled=["일자", "티커", "타입", "제목", "분야", "소스"],
+            key="cat_editor",
         )
+        # 변경된 watched 토글 detection
+        if edited is not None:
+            for _, before, after in zip(view.index, view.to_dict("records"),
+                                         edited.to_dict("records")):
+                if before["👁️"] != after["👁️"]:
+                    cat.set_watched(int(before["id"]), bool(after["👁️"]))
+                    st.toast(
+                        f"{'✅ 워치 추가' if after['👁️'] else '❌ 워치 해제'}"
+                        f": {after['제목'][:40]}",
+                        icon="👁️",
+                    )
 
     # IR 마일스톤 추출 — watchlist 종목별
     st.divider()

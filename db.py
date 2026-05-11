@@ -110,6 +110,13 @@ CREATE TABLE IF NOT EXISTS catalysts (
 CREATE INDEX IF NOT EXISTS idx_catalysts_date ON catalysts(event_date);
 CREATE INDEX IF NOT EXISTS idx_catalysts_ticker ON catalysts(ticker, event_date);
 
+-- 워치 기능 — 체크박스로 표시한 카탈리스트의 알림 트리거 추적
+ALTER TABLE catalysts ADD COLUMN IF NOT EXISTS watched BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE catalysts ADD COLUMN IF NOT EXISTS notify_date TEXT;        -- 조기 알림 트리거 기준일 (보수적, 시작-of-period)
+ALTER TABLE catalysts ADD COLUMN IF NOT EXISTS notified_1m BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE catalysts ADD COLUMN IF NOT EXISTS notified_1w BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_catalysts_watched ON catalysts(watched, notify_date);
+
 CREATE TABLE IF NOT EXISTS insider_trades (
     id              BIGSERIAL PRIMARY KEY,
     ticker          TEXT NOT NULL,
