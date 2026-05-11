@@ -653,11 +653,22 @@ def _render_tradingview_chart(ticker: str):
     import streamlit.components.v1 as components
     symbol = _tv_symbol(ticker)
 
+    # 새 탭에서 full TV 열기 버튼 — embed 막힌 종목에 유용 (Asia 등)
+    tv_full_url = f"https://www.tradingview.com/chart/?symbol={symbol}"
+    st.markdown(
+        f"<a href='{tv_full_url}' target='_blank' "
+        f"style='display:inline-block;padding:6px 14px;background:#2962ff;"
+        f"color:white;text-decoration:none;border-radius:6px;font-size:0.9em;'>"
+        f"📈 TradingView에서 열기 (full 기능)</a>",
+        unsafe_allow_html=True,
+    )
+
     if _is_asian_ticker(ticker):
         st.info(
-            "⚠️ TradingView는 Asia 종목 표시에 **무료 계정 로그인을 요구**할 수 있습니다 "
-            "(TV 정책). 차트 우상단 사람 아이콘 → Sign in 후 새로고침 — 또는 위 토글에서 "
-            "**'내장 (Plotly)'** 선택하면 즉시 보입니다."
+            "ℹ️ 무료 embed 위젯은 일부 Asia 종목을 'only available on tradingview' 벽으로 "
+            "막습니다 (TV 정책 — embed 자체에 sign-in UI 없음). 위 **'TradingView에서 열기'** "
+            "버튼으로 새 탭 full TV에서 본인 계정으로 작도/ruler/volume 사용하시거나, "
+            "위 토글에서 **'내장 (Plotly)'** 선택하면 차트는 즉시 보입니다."
         )
     # 다양한 인디케이터 + 작도 도구 활성화
     html = f"""
