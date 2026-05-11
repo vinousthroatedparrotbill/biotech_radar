@@ -52,8 +52,29 @@ _NOISE_PAT = re.compile(
 
 
 def _fundamental_news(ticker: str, days: int = 60, limit: int = 5) -> list[dict]:
-    from news import fetch_finviz_news, fetch_yahoo_news
+    from news import fetch_finviz_news, fetch_yahoo_news, fetch_google_news
     items = list(fetch_finviz_news(ticker, days=days)) + list(fetch_yahoo_news(ticker))
+    # Asia 또는 회사명 명확한 종목은 회사명으로 영문 매체 검색해 보강
+    # (FiercePharma, Endpoints, BioSpace, STAT 등)
+    try:
+        with db.connect() as conn:
+            row = conn.execute(
+                "SELECT name FROM ticker_master WHERE ticker = ?", (ticker.upper(),)
+            ).fetchone()
+            name = (row.get("name") if row else "") or ""
+    except Exception:
+        name = ""
+    if name:
+        clean_name = re.sub(
+            r"\b(Inc\.?|Corp\.?|Corporation|Limited|Ltd\.?|Co\.?|Company|"
+            r"Pharma|Pharmaceuticals?|Group|Holdings?|K\.K\.)$",
+            "", name, flags=re.IGNORECASE,
+        ).strip(" ,")
+        if len(clean_name) >= 4:
+            try:
+                items += list(fetch_google_news(clean_name, days=days, limit=30))
+            except Exception:
+                pass
     items.sort(key=lambda it: it.get("_published_dt") or 0, reverse=True)
     out = []
     seen = set()

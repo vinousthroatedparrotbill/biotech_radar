@@ -552,10 +552,25 @@ _NOISE_PAT = __import__("re").compile(
 
 @st.cache_data(ttl=600, show_spinner=False)
 def _cached_recent_articles(ticker: str, name: str, days: int):
-    """Finviz quote 페이지 + Yahoo per-ticker — fundamental 필터링."""
-    from news import fetch_finviz_news, fetch_yahoo_news
+    """Finviz quote + Yahoo per-ticker + Google News (회사명) — fundamental 필터링.
+    Asia 종목(.T/.HK/.SZ/.SS)은 Finviz 빈 응답이라 회사명으로 영문 매체
+    (FiercePharma, Endpoints, BioSpace, STAT 등) 검색해서 보강."""
+    from news import fetch_finviz_news, fetch_yahoo_news, fetch_google_news
     items = list(fetch_finviz_news(ticker, days=days))
     items += list(fetch_yahoo_news(ticker))
+    # 회사명 영문 검색 — Asia 또는 회사명에 큰 의미 있는 종목 모두 적용
+    # 회사명 짧으면 "Inc"/"Limited"/"Co"/"Ltd" 같은 흔한 단어 제거
+    import re as _re
+    clean_name = _re.sub(
+        r"\b(Inc\.?|Corp\.?|Corporation|Limited|Ltd\.?|Co\.?|Company|"
+        r"Pharma|Pharmaceuticals?|Group|Holdings?|K\.K\.)$",
+        "", name or "", flags=_re.IGNORECASE,
+    ).strip(" ,")
+    if len(clean_name) >= 4:
+        try:
+            items += list(fetch_google_news(clean_name, days=days, limit=30))
+        except Exception:
+            pass
     # 최근순 정렬
     items.sort(key=lambda it: it.get("_published_dt") or 0, reverse=True)
     # fundamental 필터 + dedup
