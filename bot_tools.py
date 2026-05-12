@@ -849,6 +849,59 @@ def generate_investment_report(ticker: str) -> dict:
     return {"ticker": ticker.upper(), "report": result["body"]}
 
 
+def send_thesis_pdf(ticker: str, refresh: bool = False) -> dict:
+    """투자 메모를 PDF로 만들어 텔레그램에 첨부 발송.
+    refresh=False (기본): 캐시된 메모(ai_reports) 있으면 즉시 PDF 생성·발송.
+                          캐시 없으면 generate_and_save 호출 후 PDF.
+    refresh=True: 새로 deep research 후 PDF.
+    사용자가 'X thesis PDF로', 'X 메모 PDF', 'X 리포트 PDF' 같은 요청 시.
+    """
+    import os
+    import investment_report as ir
+    from pdf_gen import render_pdf_to_file
+    from telegram_report import send_document
+
+    tk = ticker.upper()
+    # 캐시 확인
+    cached = ir.get_cached_report(tk) if not refresh else None
+    if cached and cached.get("body"):
+        report_md = cached["body"]
+        source = f"cached @ {cached.get('generated_at', '')[:16]}"
+    else:
+        result = ir.generate_and_save(tk)
+        report_md = result["body"]
+        source = "freshly generated"
+
+    if not report_md or len(report_md) < 100:
+        return {"ticker": tk, "error": "리포트 본문 비어있음"}
+
+    # TL;DR 추출 (캡션용)
+    tldr, body = ir.split_tldr_and_body(report_md)
+    # markdown → HTML 변환 (텔레그램 캡션용 — telegram_report._markdown_to_html과 동일)
+    import re as _re
+    def _md2html(s):
+        s = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        s = _re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", s)
+        s = _re.sub(r"(?<![\*\n])\*([^*\n]+)\*(?!\*)", r"<i>\1</i>", s)
+        return s
+    tldr_html = _md2html(tldr)
+    caption = f"📊 <b>{tk} 투자 메모</b> <i>({source})</i>\n\n{tldr_html}"
+    if len(caption) > 1000:
+        caption = caption[:990] + "\n…(요약 잘림, 전체는 PDF)"
+
+    # PDF 생성 + 발송
+    pdf_path = render_pdf_to_file(body, ticker=tk)
+    try:
+        send_document(pdf_path, caption=caption)
+    finally:
+        try:
+            os.unlink(pdf_path)
+        except Exception:
+            pass
+    return {"ticker": tk, "sent": True, "source": source,
+            "pdf_size_kb": None}
+
+
 def get_earnings_call_milestones(ticker: str, refresh: bool = False) -> dict:
     """최근 분기 어닝콜 요약(Yahoo Finance)에서 회사가 공개한 forward-looking 멘션
     (Q3 2026 readout, 2H 27 phase 1 initial data 등) 추출.
@@ -1285,10 +1338,27 @@ TOOL_DEFS = [
                        "catalyst watch list, insider signal, risk points, bottom line. "
                        "Uses all available data — ticker_master, high_low_cache, catalysts, "
                        "insider_trades, fundamental news, pipeline mentions. "
-                       "Trigger when user says 'X 리포트', 'X 투자 메모', 'X analyze', etc.",
+                       "Trigger when user says 'X 리포트', 'X 투자 메모', 'X analyze', etc. "
+                       "If user wants the memo as a PDF, use send_thesis_pdf instead.",
         "input_schema": {
             "type": "object",
             "properties": {"ticker": {"type": "string"}},
+            "required": ["ticker"],
+        },
+    },
+    {
+        "name": "send_thesis_pdf",
+        "description": "Build the investment memo as a PDF and send it to the user's Telegram "
+                       "as a document attachment with TL;DR caption. Use whenever the user "
+                       "asks for 'X PDF', 'X thesis PDF로 만들어줘', 'X 메모 파일로', "
+                       "'send X report as PDF', etc. Uses cached report if available; pass "
+                       "refresh=true to force fresh deep research first.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string"},
+                "refresh": {"type": "boolean", "default": False},
+            },
             "required": ["ticker"],
         },
     },
@@ -1364,6 +1434,7 @@ def run_tool(name: str, args: dict):
         "get_ir_milestones": get_ir_milestones,
         "get_earnings_call_milestones": get_earnings_call_milestones,
         "generate_investment_report": generate_investment_report,
+        "send_thesis_pdf": send_thesis_pdf,
         "get_new_today_highs": get_new_today_highs,
         "search_company_milestones": search_company_milestones,
     }

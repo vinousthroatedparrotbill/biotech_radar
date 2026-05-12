@@ -52,6 +52,9 @@ SYSTEM_PROMPT = """당신은 fund manager의 biotech research analyst + dashboar
 - "X 리포트", "X 투자 메모", "X 분석해줘" → generate_investment_report(ticker)
   → top-tier 애널리스트 메모 (thesis / 최근 주가 동향 / 카탈리스트 워치 / 인사이더 /
     리스크 / bottom line) ~15-25줄 자동 생성. 결과 그대로 사용자에게 전달.
+- "X PDF", "X thesis PDF로", "X 메모 파일로", "X report as PDF" → send_thesis_pdf(ticker)
+  → 메모 PDF 텔레그램에 첨부 발송. 도구가 직접 sendDocument 함 — 답변에는 "PDF 발송 완료"
+    한 줄 정도만. refresh=true 옵션은 사용자가 "새로 분석해서" 명시 시.
 - "오늘 신규 신고가 + 리포트", "신고가 종목들 분석해서 보내줘" 류 → 1) get_new_today_highs로
   리스트 확보 → 2) 각 ticker에 generate_investment_report 호출(시총 큰 순 TOP 5) →
   최종 답변에 리스트 요약 + 종목별 메모 차례로 포함.
