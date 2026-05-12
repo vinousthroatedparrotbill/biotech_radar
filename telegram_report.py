@@ -229,16 +229,54 @@ def _markdown_to_html(md: str) -> str:
     return s
 
 
+def _html_tags_balanced(s: str) -> bool:
+    """간단 검사 — 모든 <tag>가 </tag>로 닫혀있는지."""
+    import re as _re
+    opens = _re.findall(r"<(b|i|u|s|code|pre|a)(?:\s[^>]*)?>", s)
+    closes = _re.findall(r"</(b|i|u|s|code|pre|a)>", s)
+    from collections import Counter
+    return Counter(opens) == Counter(closes)
+
+
+def _safe_caption(caption: str, limit: int = 1024) -> tuple[str, str | None]:
+    """캡션 1024자 제한 + HTML 균형 검증.
+    제한 넘거나 태그 불균형이면 plain text(parse_mode=None) 반환."""
+    import re as _re
+    if len(caption) <= limit and _html_tags_balanced(caption):
+        return caption, "HTML"
+    # 안전: HTML 태그 제거 + 엔티티 복원 → plain text
+    stripped = _re.sub(r"<[^>]+>", "", caption)
+    stripped = (stripped.replace("&amp;", "&")
+                .replace("&lt;", "<").replace("&gt;", ">"))
+    if len(stripped) > limit:
+        stripped = stripped[:limit - 10] + "\n…(전체는 PDF)"
+    return stripped, None
+
+
 def send_document(path: str, caption: str = "",
                   parse_mode: str = "HTML") -> dict:
-    """파일 첨부 발송 — sendDocument API."""
+    """파일 첨부 발송 — sendDocument API. 캡션 HTML 깨지면 plain text fallback."""
     token, chat_id = _load_env()
     url = f"https://api.telegram.org/bot{token}/sendDocument"
+    safe_cap, mode = _safe_caption(caption, limit=1024)
+    if parse_mode is None:
+        mode = None
     with open(path, "rb") as fp:
         files = {"document": fp}
-        data = {"chat_id": chat_id, "caption": caption[:1024],
-                "parse_mode": parse_mode, "disable_notification": False}
+        data = {"chat_id": chat_id, "caption": safe_cap,
+                "disable_notification": False}
+        if mode:
+            data["parse_mode"] = mode
         r = requests.post(url, data=data, files=files, timeout=60)
+    if r.status_code == 400 and mode:
+        # HTML 파싱 실패 — 태그 다 제거 후 재시도
+        import re as _re
+        plain = _re.sub(r"<[^>]+>", "", caption)[:1024]
+        with open(path, "rb") as fp:
+            files = {"document": fp}
+            data = {"chat_id": chat_id, "caption": plain,
+                    "disable_notification": False}
+            r = requests.post(url, data=data, files=files, timeout=60)
     if not r.ok:
         raise requests.exceptions.HTTPError(
             f"{r.status_code} sendDocument: {r.text[:300]}", response=r,
