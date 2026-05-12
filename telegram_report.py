@@ -287,6 +287,55 @@ def send_investment_reports(tickers: list[str], max_n: int = 5) -> int:
     return sent
 
 
+def send_portfolio_snapshots() -> int:
+    """모든 MP의 수익률 + 편입 종목별 수익률 발송. 발송 청크 수 반환."""
+    import portfolio as pf
+    ports = pf.list_all()
+    if not ports:
+        return 0
+    parts = ["💼 <b>Model Portfolio 일일 스냅샷</b>", ""]
+    for p in ports:
+        s = pf.summary(p["id"])
+        if not s:
+            continue
+        ret = s.get("return_pct", 0) or 0
+        sign = "🟢" if ret >= 0 else "🔴"
+        current_m = s["current_size"] / 1e6
+        initial_m = s["portfolio"]["initial_size"] / 1e6
+        parts.append(
+            f"━━━ <b>{_esc(p['name'])}</b> ━━━\n"
+            f"  {sign} <b>{ret:+.2f}%</b>  "
+            f"${current_m:,.2f}M / ${initial_m:,.0f}M 기준\n"
+            f"  편입 {s['total_weight']:.0f}% · 현금 {s['cash_pct']:.0f}% "
+            f"(${s['cash_amt']/1e6:,.2f}M)"
+        )
+        holdings = sorted(
+            s["holdings"], key=lambda h: (h.get("return_pct") or 0), reverse=True,
+        )
+        if holdings:
+            parts.append("")
+            parts.append("<pre>")
+            parts.append(f"{'Ticker':<7}{'편입%':>7}{'진입가':>10}{'현재가':>10}{'수익률':>9}")
+            for h in holdings:
+                ret = h.get("return_pct") or 0
+                arrow = "🟢" if ret > 0 else ("🔴" if ret < 0 else "⚪")
+                tk = h["ticker"][:7]
+                wt = h.get("weight_pct") or 0
+                ep = h.get("entry_price") or 0
+                cp = h.get("curr_price") or 0
+                parts.append(
+                    f"{tk:<7}{wt:>6.1f}%{ep:>10.2f}{cp:>10.2f}"
+                    f"{arrow} {ret:>+6.1f}%"
+                )
+            parts.append("</pre>")
+        parts.append("")
+    msg = "\n".join(parts)
+    chunks = _split(msg, 3900)
+    for chunk in chunks:
+        send(chunk)
+    return len(chunks)
+
+
 def _fmt_catalyst_line(row: dict) -> str:
     """단일 카탈리스트 한 줄 (이모지 + 날짜 + 티커 + 제목)."""
     tt = row.get("event_type", "")
@@ -393,7 +442,14 @@ def daily_run() -> dict:
     text = f"<i>auto-run: universe={n_uni}, snapshot={n_hl}</i>\n\n" + text
     main_result = send(text)
 
-    # 4) 신규 신고가 종목 자동 투자 메모 (시총 큰 순 TOP 5)
+    # 4) Model Portfolio 일일 스냅샷 (전체 MP 수익률 + 편입 종목별)
+    try:
+        mp_chunks = send_portfolio_snapshots()
+        main_result["mp_chunks"] = mp_chunks
+    except Exception as e:
+        main_result["mp_error"] = str(e)
+
+    # 5) 신규 신고가 종목 자동 투자 메모 (시총 큰 순 TOP 5)
     new_today = fetch_new_today_highs(limit=100)
     if not new_today.empty:
         tickers = new_today["ticker"].tolist()
