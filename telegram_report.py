@@ -28,7 +28,8 @@ def _load_env() -> tuple[str, str]:
 
 
 def send(text: str, parse_mode: str = "HTML") -> dict:
-    """단일 메시지 발송. text가 길면 chunk로 분할."""
+    """단일 메시지 발송. text가 길면 chunk로 분할.
+    HTML parse 실패 시 plain text로 fallback (chunk 단위)."""
     token, chat_id = _load_env()
     chunks = _split(text, MAX_MSG_LEN)
     last = {}
@@ -39,7 +40,24 @@ def send(text: str, parse_mode: str = "HTML") -> dict:
                   "parse_mode": parse_mode, "disable_web_page_preview": True},
             timeout=15,
         )
-        r.raise_for_status()
+        if r.status_code == 400 and parse_mode:
+            # HTML 파싱 실패 — plain text로 재시도 (chunk 분할로 <pre> 깨졌을 가능성)
+            import re as _re
+            stripped = _re.sub(r"<[^>]+>", "", chunk)   # HTML 태그 제거
+            stripped = (stripped.replace("&amp;", "&")
+                         .replace("&lt;", "<").replace("&gt;", ">"))
+            r = requests.post(
+                TG_API.format(token=token),
+                json={"chat_id": chat_id, "text": stripped[:MAX_MSG_LEN],
+                      "disable_web_page_preview": True},
+                timeout=15,
+            )
+        if not r.ok:
+            # 실패 본문 surface해 디버깅 가능하게
+            raise requests.exceptions.HTTPError(
+                f"{r.status_code} from Telegram: {r.text[:300]}",
+                response=r,
+            )
         last = r.json()
     return last
 
@@ -211,26 +229,61 @@ def _markdown_to_html(md: str) -> str:
     return s
 
 
+def send_document(path: str, caption: str = "",
+                  parse_mode: str = "HTML") -> dict:
+    """파일 첨부 발송 — sendDocument API."""
+    token, chat_id = _load_env()
+    url = f"https://api.telegram.org/bot{token}/sendDocument"
+    with open(path, "rb") as fp:
+        files = {"document": fp}
+        data = {"chat_id": chat_id, "caption": caption[:1024],
+                "parse_mode": parse_mode, "disable_notification": False}
+        r = requests.post(url, data=data, files=files, timeout=60)
+    if not r.ok:
+        raise requests.exceptions.HTTPError(
+            f"{r.status_code} sendDocument: {r.text[:300]}", response=r,
+        )
+    return r.json()
+
+
 def send_investment_reports(tickers: list[str], max_n: int = 5) -> int:
-    """신규 신고가 종목 중 시총 큰 순 max_n개에 대해 투자 메모 생성·발송.
-    각 종목당 헤더 + 본문 (4096자 초과 시 분할). 도구 사용한 심층 메모라 길어질 수 있음."""
+    """신규 신고가 종목 시총 TOP max_n — TL;DR 5-10줄을 텔레그램 메시지로,
+    full report는 PDF 첨부로 발송. 발송 성공 종목 수 반환."""
+    import os
     import investment_report as ir
+    from pdf_gen import render_pdf_to_file
     if not tickers:
         return 0
     reports = ir.generate_for_tickers(tickers, max_n=max_n)
     sent = 0
     for r in reports:
         tk = r["ticker"]
-        body_html = _markdown_to_html(r["report"])
-        full = f"📊 <b>{tk} 투자 메모</b>\n\n{body_html}"
-        # 텔레그램 4096자 제한 — 청크로 분할 (코드/HTML 태그 안 끊기게)
-        chunks = _split(full, 3900)
-        for i, chunk in enumerate(chunks):
+        full_md = r["report"]
+        try:
+            tldr, body = ir.split_tldr_and_body(full_md)
+            # TL;DR markdown → HTML (텔레그램 캡션용)
+            tldr_html = _markdown_to_html(tldr)
+            caption = (f"📊 <b>{tk} 투자 메모</b>\n\n{tldr_html}\n\n"
+                       f"<i>📎 전체 리포트는 첨부 PDF 참조</i>")
+            if len(caption) > 1000:
+                caption = caption[:990] + "\n…(요약 잘림, 전체는 PDF)"
+            # PDF 생성
+            pdf_path = render_pdf_to_file(body, ticker=tk)
             try:
-                send(chunk)
+                send_document(pdf_path, caption=caption)
                 sent += 1
-            except Exception as e:
-                send(f"⚠️ {tk} 메모 청크 {i+1} 발송 실패: {e}", parse_mode="HTML")
+            finally:
+                try:
+                    os.unlink(pdf_path)
+                except Exception:
+                    pass
+        except Exception as e:
+            # 실패 시 plain text 폴백
+            try:
+                send(f"⚠️ <b>{tk} 메모 PDF 발송 실패</b>: {e}\n\n"
+                     f"---\n\n{_markdown_to_html(full_md)[:3000]}")
+            except Exception:
+                pass
     return sent
 
 

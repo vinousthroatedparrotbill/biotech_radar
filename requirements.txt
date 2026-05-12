@@ -11,5 +11,6 @@ psycopg2-binary>=2.9
 playwright>=1.40
 googlenewsdecoder>=0.1.7
 pypdf>=4.0
+markdown>=3.5
 anthropic>=0.40
 python-telegram-bot>=21.0

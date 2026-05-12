@@ -215,6 +215,12 @@ SYSTEM_PROMPT = """당신은 Goldman Sachs / Morgan Stanley / Cowen / Leerink급
 
 # {회사명} ({TICKER}) — 투자 메모
 
+## TL;DR (5-10줄 요약)
+- 한 줄당 한 가지 핵심. 마크다운 list 형식.
+- 메인 자산·핵심 카탈리스트 일자·시그널·리스크 가장 본질만.
+- "Bottom line"이나 추측 표현 금지. 사실/일자/숫자 위주.
+- 펀드매니저가 이 줄들만 보고 의사결정 가능해야.
+
 ## 1) 투자 포인트 (Thesis) — 4-6줄
 이 종목 매력 핵심. 메인 자산·기전·시장 사이즈·차별 포인트 구체적으로.
 
@@ -356,6 +362,19 @@ def save_report(ticker: str, body: str) -> None:
             "model = EXCLUDED.model",
             (ticker.upper(), body, now, CLAUDE_MODEL),
         )
+
+
+def split_tldr_and_body(text: str) -> tuple[str, str]:
+    """리포트 마크다운에서 TL;DR 섹션과 본문 분리.
+    TL;DR = '## TL;DR' 이후 ~ 다음 '##' 직전.
+    body = 전체 (TL;DR 포함). PDF에는 body 전체 들어감."""
+    if not text:
+        return "", ""
+    m = re.search(r"##\s*TL;DR[^\n]*\n(.+?)(?=\n##\s)", text, re.DOTALL | re.IGNORECASE)
+    if m:
+        return m.group(1).strip(), text.strip()
+    # fallback: 첫 200자
+    return text.strip()[:600], text.strip()
 
 
 def generate_and_save(ticker: str) -> dict:

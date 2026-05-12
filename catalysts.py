@@ -530,7 +530,8 @@ def set_watched(catalyst_id: int, watched: bool) -> None:
 
 
 def get_watched(days_ahead: int = 90) -> pd.DataFrame:
-    """워치 중인 카탈리스트 (notify_date 기준 N일 이내 + 과거)."""
+    """워치 중인 카탈리스트 (notify_date 기준 N일 이내 + 과거).
+    Streamlit Cloud module reload trigger."""
     horizon = (dt.date.today() + dt.timedelta(days=days_ahead)).isoformat()
     return db.pd_read_sql(
         "SELECT * FROM catalysts WHERE watched = TRUE "
