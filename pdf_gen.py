@@ -137,9 +137,8 @@ def _inline(text: str) -> str:
     return t
 
 
-def render_pdf(markdown_text: str, title: str = "Investment Memo",
-               footer: str = "") -> bytes:
-    """markdown → PDF 바이트. Playwright 사용."""
+def _render_pdf_blocking(markdown_text: str, title: str, footer: str) -> bytes:
+    """동기 Playwright 호출 — 반드시 worker thread에서 실행 (asyncio 루프 충돌 회피)."""
     from playwright.sync_api import sync_playwright
     html_body = markdown_to_html(markdown_text)
     html = _HTML_TEMPLATE.format(
@@ -159,6 +158,16 @@ def render_pdf(markdown_text: str, title: str = "Investment Memo",
         )
         browser.close()
     return pdf_bytes
+
+
+def render_pdf(markdown_text: str, title: str = "Investment Memo",
+               footer: str = "") -> bytes:
+    """markdown → PDF 바이트. asyncio 이벤트 루프 안에서 호출돼도 안전하게
+    별도 worker thread에서 sync Playwright 실행."""
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        future = ex.submit(_render_pdf_blocking, markdown_text, title, footer)
+        return future.result()
 
 
 def render_pdf_to_file(markdown_text: str, ticker: str,
