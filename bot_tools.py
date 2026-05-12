@@ -97,7 +97,8 @@ def search_pubmed(query: str, max_results: int = 5) -> list[dict]:
 
 # ───────────────────────── Supabase 조회 ─────────────────────────
 def get_ticker_info(ticker: str) -> dict:
-    """ticker_master + 최신 high_low_cache 조회."""
+    """ticker_master + 최신 high_low_cache 조회. market_cap은 $M (백만달러) 단위.
+    더 정확한 실시간 시총이 필요하면 get_realtime_quote의 market_cap_b_usd 사용."""
     from db import connect
     with connect() as conn:
         t = conn.execute(
@@ -115,6 +116,10 @@ def get_ticker_info(ticker: str) -> dict:
         out = dict(t)
         if h:
             out.update(dict(h))
+        # 시총 가독성 — market_cap이 $M 단위이므로 B 단위도 추가
+        if out.get("market_cap"):
+            out["market_cap_unit"] = "$M (백만달러)"
+            out["market_cap_b_usd"] = round(out["market_cap"] / 1000.0, 3)
         return out
 
 
@@ -228,10 +233,17 @@ def get_realtime_quote(tickers: str) -> list[dict]:
                 ("marketState", "market_state"),
                 ("regularMarketPrice", "rt_price"),
                 ("longName", "name"),
+                ("marketCap", "market_cap_usd"),     # 실시간 시총 (USD raw)
+                ("sharesOutstanding", "shares_outstanding"),
+                ("currency", "currency"),
             ]:
                 v = info.get(k_in)
                 if v is not None:
                     cur[k_out] = v
+            # USD M 환산값도 함께 (가독성)
+            if "market_cap_usd" in cur and cur["market_cap_usd"]:
+                cur["market_cap_m_usd"] = round(cur["market_cap_usd"] / 1e6, 1)
+                cur["market_cap_b_usd"] = round(cur["market_cap_usd"] / 1e9, 3)
         except Exception:
             pass
         out_map[tk] = cur
