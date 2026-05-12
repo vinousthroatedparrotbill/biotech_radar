@@ -20,7 +20,16 @@ ROOT = Path(__file__).parent
 MARKER = ROOT / "data" / ".last_daily_run"
 
 
+def _setup_logging() -> None:
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+
 def main() -> int:
+    _setup_logging()
     today = date.today().isoformat()
     if MARKER.exists():
         last = MARKER.read_text(encoding="utf-8").strip()

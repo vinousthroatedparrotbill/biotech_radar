@@ -278,12 +278,15 @@ def send_investment_reports(tickers: list[str], max_n: int = 5) -> int:
                 except Exception:
                     pass
         except Exception as e:
+            import traceback as _tb
+            print(f"[REPORT_FAIL] {tk}: {type(e).__name__}: {e}", flush=True)
+            print(_tb.format_exc(), flush=True)
             # 실패 시 plain text 폴백
             try:
-                send(f"⚠️ <b>{tk} 메모 PDF 발송 실패</b>: {e}\n\n"
+                send(f"⚠️ <b>{tk} 메모 PDF 발송 실패</b>: {type(e).__name__}: {e}\n\n"
                      f"---\n\n{_markdown_to_html(full_md)[:3000]}")
-            except Exception:
-                pass
+            except Exception as e2:
+                print(f"[REPORT_FAIL_FALLBACK] {tk}: {e2}", flush=True)
     return sent
 
 
@@ -475,6 +478,11 @@ def daily_run() -> dict:
 
 
 if __name__ == "__main__":
+    import logging as _logging
+    _logging.basicConfig(
+        level=_logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "test":
         # test: 데이터 수집 없이 현재 캐시로 발송
