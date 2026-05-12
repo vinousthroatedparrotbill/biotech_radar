@@ -246,7 +246,7 @@ def send_document(path: str, caption: str = "",
     return r.json()
 
 
-def send_investment_reports(tickers: list[str], max_n: int = 10) -> int:
+def send_investment_reports(tickers: list[str], max_n: int = 5) -> int:
     """신규 신고가 종목 시총 TOP max_n — TL;DR 5-10줄을 텔레그램 메시지로,
     full report는 PDF 첨부로 발송. 발송 성공 종목 수 반환."""
     import os
@@ -397,7 +397,7 @@ def daily_run() -> dict:
     new_today = fetch_new_today_highs(limit=100)
     if not new_today.empty:
         tickers = new_today["ticker"].tolist()
-        sent_n = send_investment_reports(tickers, max_n=10)
+        sent_n = send_investment_reports(tickers, max_n=5)
         main_result["investment_reports"] = sent_n
 
     # 5) 매달 1일 — 월간 카탈리스트 요약
