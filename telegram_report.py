@@ -189,6 +189,16 @@ def compose_report() -> str:
     parts.append(_table_render(all_highs, max_rows=40))
     parts.append("")
 
+    # ── 오늘 상승폭 최대 (시총 ≥$500M, 1D ≥+5%) ──
+    from collectors.high_low import fetch_top_movers
+    movers = fetch_top_movers(limit=20, min_mcap=500, min_perf=5)
+    parts.append(f"🚀 <b>오늘 상승폭 최대</b> (시총≥$500M, +5%↑, {len(movers)}종목)")
+    if movers.empty:
+        parts.append("  <i>해당 종목 없음</i>")
+    else:
+        parts.append(_table_render(movers, max_rows=25))
+    parts.append("")
+
     # ── 메모 + 이후 변동 ──
     memos = memo_timeline(limit=30)
     parts.append(f"📝 <b>내 메모와 이후 주가 변동</b> ({len(memos)}건)")
