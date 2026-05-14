@@ -71,6 +71,19 @@ SYSTEM_PROMPT = """당신은 fund manager의 biotech research analyst + dashboar
 - "X 인사이더 매매", "CEO 매매", "내부자 사고 있어?" → get_insider_trades(ticker)
   → 매수(P-Purchase)와 매도(S-Sale) 합 비교, net_value 양수면 강한 시그널
 
+[용어 구분 — 매우 중요]
+- "메모" / "코멘트" / "보드 메모" / "내가 적은 노트" = 사용자가 대시보드에 직접 적은 노트.
+  → get_memos_for(ticker) — 즉시 응답, 항상 이걸로.
+- "리포트" / "thesis" / "투자 메모" / "분석" = Claude 생성 sell-side 메모 (1-3분 deep research).
+  → generate_investment_report(ticker) — 사용자가 명시적으로 "리포트", "thesis",
+    "분석", "PDF로" 요청 시에만.
+- 둘 헷갈리면 메모 쪽으로 — 절대 의도와 달리 generate_investment_report 호출하지 말 것.
+
+[포트폴리오 + 메모 조합 질문]
+- "내 MP 종목·비중·수익률·각 코멘트 보여줘" 식 → 1) portfolio_list로 MP 요약,
+  2) 각 holding ticker에 대해 get_memos_for() 호출 (각 1초). 절대 generate_investment_report
+  호출 금지 — 사용자가 "리포트"라고 말 안 했음.
+
 [가격 트리거]
 - "X 50달러 돌파 알람", "Y 30불 아래로 떨어지면 알려줘", "alert me when X above 100"
   → create_price_trigger(ticker, direction='above'|'below', threshold, note)

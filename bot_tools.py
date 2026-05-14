@@ -805,6 +805,62 @@ def portfolio_list() -> list[dict]:
     return out
 
 
+def portfolio_detail(name_or_id=None) -> dict:
+    """단일 포트폴리오 상세 — 편입 종목별 weight/return + 각 종목의 사용자 메모.
+    name_or_id 없으면 첫 번째 포트폴리오. 메모 = memo.list_for(ticker) (Claude 메모 아님,
+    사용자가 보드에 적은 코멘트).
+    "MP·비중·수익률·코멘트" 류 질문 한 번에 처리 — generate_investment_report 호출 금지."""
+    from portfolio import list_all, summary, get as pf_get
+    from memo import list_for as memo_list_for
+    ports = list_all()
+    if not ports:
+        return {"error": "no portfolios"}
+    if name_or_id is None:
+        p = ports[0]
+    elif isinstance(name_or_id, int) or str(name_or_id).isdigit():
+        p = pf_get(int(name_or_id))
+        if not p:
+            return {"error": f"portfolio id {name_or_id} not found"}
+    else:
+        # name match (case-insensitive 부분 일치)
+        matches = [x for x in ports
+                   if str(name_or_id).lower() in (x.get("name") or "").lower()]
+        if not matches:
+            return {"error": f"portfolio '{name_or_id}' not found",
+                    "available": [x["name"] for x in ports]}
+        p = matches[0]
+    s = summary(p["id"])
+    if not s:
+        return {"error": "summary 실패"}
+    holdings_out = []
+    for h in s.get("holdings", []):
+        tk = h["ticker"]
+        memos = memo_list_for(tk)[:3]   # 최근 3개
+        holdings_out.append({
+            "ticker": tk,
+            "weight_pct": h.get("weight_pct"),
+            "entry_price": h.get("entry_price"),
+            "current_price": h.get("curr_price"),
+            "return_pct": h.get("return_pct"),
+            "amt_initial_m": (h.get("amt_initial") or 0) / 1e6,
+            "amt_current_m": (h.get("amt_current") or 0) / 1e6,
+            "note": h.get("note"),
+            "memos": [{"body": m["body"][:300], "created_at": m["created_at"]}
+                      for m in memos],
+        })
+    return {
+        "portfolio": {
+            "id": p["id"], "name": p["name"],
+            "initial_size_m": p["initial_size"] / 1e6,
+            "current_size_m": s["current_size"] / 1e6,
+            "return_pct": round(s.get("return_pct", 0), 2),
+            "cash_pct": round(s.get("cash_pct", 0), 1),
+            "total_weight_pct": round(s.get("total_weight", 0), 1),
+        },
+        "holdings": holdings_out,
+    }
+
+
 # ───────────────────────── 가격 트리거 ─────────────────────────
 def create_price_trigger(ticker: str, direction: str, threshold: float,
                          note: str = "") -> dict:
@@ -1342,6 +1398,23 @@ TOOL_DEFS = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
+        "name": "portfolio_detail",
+        "description": "Single portfolio detail in ONE call — per-holding ticker, weight, "
+                       "entry/current price, return %, and the user's saved memos (보드 "
+                       "코멘트). Use this whenever user asks about portfolio holdings + "
+                       "comments/memos/returns together. DO NOT call generate_investment_report "
+                       "for each holding — 보드 메모는 사용자가 직접 적은 노트라 그 자체로 답.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name_or_id": {
+                    "type": ["string", "integer"],
+                    "description": "Portfolio id or name (부분 매칭). Empty면 첫 번째.",
+                },
+            },
+        },
+    },
+    {
         "name": "create_price_trigger",
         "description": "Register a price trigger. When ticker's live price crosses threshold "
                        "in the specified direction, the bot sends a Telegram alert with "
@@ -1585,6 +1658,7 @@ def run_tool(name: str, args: dict):
         "portfolio_remove_holding": portfolio_remove_holding,
         "portfolio_create": portfolio_create,
         "portfolio_list": portfolio_list,
+        "portfolio_detail": portfolio_detail,
         "excluded_add": excluded_add,
         "create_price_trigger": create_price_trigger,
         "list_price_triggers": list_price_triggers,
