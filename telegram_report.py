@@ -405,6 +405,66 @@ def _fmt_catalyst_line(row: dict) -> str:
     return f"  {emoji} <i>{_esc(date_label)}</i>  {tk_str}{_esc(title)}"
 
 
+def _format_trigger_alert(trig: dict, ctx: dict) -> str:
+    """가격 트리거 발동 알림 HTML."""
+    direction_label = "📈 위로 돌파" if trig["direction"] == "above" else "📉 아래로 돌파"
+    parts = [
+        f"🚨 <b>{trig['ticker']} 트리거 발동</b>",
+        f"{direction_label} ${trig['threshold']:.2f} — "
+        f"현재 <b>${trig['triggered_price']:.2f}</b>",
+        "",
+    ]
+    if trig.get("note"):
+        parts.append(f"📝 메모: <i>{_esc(trig['note'])}</i>")
+        parts.append("")
+    if ctx.get("volume_ratio"):
+        parts.append(
+            f"📊 거래량: {ctx['volume_today']/1e6:.1f}M "
+            f"(30d avg {ctx['volume_30d_avg']/1e6:.1f}M, "
+            f"{ctx['volume_ratio']:.1f}x · z={ctx.get('volume_zscore', 0):.1f})"
+        )
+    if ctx.get("recent_news"):
+        parts.append("")
+        parts.append("📰 <b>최근 14일 뉴스</b>")
+        for n in ctx["recent_news"][:3]:
+            title = (n.get("title") or "")[:140]
+            link = n.get("link", "")
+            src = (n.get("source") or "").replace("Finviz/", "")
+            if link:
+                parts.append(f'  • <a href="{_esc(link)}">{_esc(title)}</a> '
+                             f"<i>({_esc(src)})</i>")
+            else:
+                parts.append(f"  • {_esc(title)} <i>({_esc(src)})</i>")
+    if ctx.get("memos"):
+        parts.append("")
+        parts.append("📝 <b>이전 메모</b>")
+        for m in ctx["memos"][:2]:
+            body = (m.get("body") or "").strip()
+            if len(body) > 200:
+                body = body[:200] + "…"
+            parts.append(f"  • <i>{_esc(body)}</i>")
+    return "\n".join(parts)
+
+
+def send_trigger_alerts() -> int:
+    """active 가격 트리거 체크 → 발동 시 알림 발송. 발송 건수 반환."""
+    import price_triggers as pt
+    fired = pt.check_all_triggers()
+    sent = 0
+    for trig in fired:
+        try:
+            ctx = pt.enrich_for_alert(trig["ticker"])
+            msg = _format_trigger_alert(trig, ctx)
+            send(msg)
+            sent += 1
+        except Exception as e:
+            try:
+                send(f"⚠️ {trig['ticker']} 트리거 알림 발송 실패: {e}")
+            except Exception:
+                pass
+    return sent
+
+
 def send_monthly_catalyst_summary() -> int:
     """매달 1일 — 그달 카탈리스트 정리 발송."""
     import catalysts as cat
@@ -521,6 +581,12 @@ def daily_run() -> dict:
         main_result["watched_alerts"] = alert_counts
     except Exception as e:
         main_result["watched_alerts_error"] = str(e)
+
+    # 7) 가격 트리거 체크 (가벼움 — 별도 cron에서도 30분마다 호출됨)
+    try:
+        main_result["triggers_fired"] = send_trigger_alerts()
+    except Exception as e:
+        main_result["triggers_error"] = str(e)
 
     return main_result
 

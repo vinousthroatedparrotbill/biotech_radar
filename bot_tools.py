@@ -805,6 +805,40 @@ def portfolio_list() -> list[dict]:
     return out
 
 
+# ───────────────────────── 가격 트리거 ─────────────────────────
+def create_price_trigger(ticker: str, direction: str, threshold: float,
+                         note: str = "") -> dict:
+    """가격 트리거 등록. direction='above' (이상 돌파) 또는 'below' (이하 하락).
+    PHVS 32달러 돌파 → direction='above', threshold=32.0.
+    30분마다 + PC 부팅·로그온 시 체크되어 발동 시 텔레그램 알림.
+    한 번 발동되면 status='fired'로 마킹 — 재발송 없음."""
+    import price_triggers as pt
+    tid = pt.create(ticker, direction, threshold, note=note)
+    return {"ok": True, "trigger_id": tid, "ticker": ticker.upper(),
+            "direction": direction, "threshold": threshold,
+            "msg": f"✓ #{tid}: {ticker.upper()} {direction} ${threshold:.2f} 등록"}
+
+
+def list_price_triggers(status: str = "active") -> list[dict]:
+    """가격 트리거 목록. status='active' (기본) / 'fired' / 'cancelled'."""
+    import price_triggers as pt
+    return pt.list_all(status=status)
+
+
+def cancel_price_trigger(trigger_id: int) -> dict:
+    """가격 트리거 취소."""
+    import price_triggers as pt
+    pt.cancel(trigger_id)
+    return {"ok": True, "trigger_id": trigger_id, "msg": f"✓ #{trigger_id} 취소"}
+
+
+def check_price_triggers_now() -> dict:
+    """즉시 트리거 체크 + 발동 시 알림 발송 (테스트용)."""
+    from telegram_report import send_trigger_alerts
+    n = send_trigger_alerts()
+    return {"ok": True, "fired": n}
+
+
 def excluded_add(ticker: str, note: str = "") -> dict:
     """ticker 블랙리스트(상승폭/52w high 표시 제외)에 추가."""
     import excluded as ex
@@ -1308,6 +1342,47 @@ TOOL_DEFS = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
+        "name": "create_price_trigger",
+        "description": "Register a price trigger. When ticker's live price crosses threshold "
+                       "in the specified direction, the bot sends a Telegram alert with "
+                       "volume z-score, recent news, and past memos. Fires only once. "
+                       "Trigger when user says like 'PHVS 32달러 돌파 알림', "
+                       "'X 50불 아래로 떨어지면 알려줘', 'alert me when X above 100'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string"},
+                "direction": {"type": "string", "enum": ["above", "below"]},
+                "threshold": {"type": "number"},
+                "note": {"type": "string"},
+            },
+            "required": ["ticker", "direction", "threshold"],
+        },
+    },
+    {
+        "name": "list_price_triggers",
+        "description": "List price triggers. status='active' (default) / 'fired' / 'cancelled'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"status": {"type": "string", "default": "active"}},
+        },
+    },
+    {
+        "name": "cancel_price_trigger",
+        "description": "Cancel an active price trigger by id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"trigger_id": {"type": "integer"}},
+            "required": ["trigger_id"],
+        },
+    },
+    {
+        "name": "check_price_triggers_now",
+        "description": "Immediately check all active triggers and send alerts. "
+                       "Use only if user explicitly wants to force-check now.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
         "name": "excluded_add",
         "description": "Add a ticker to the non-biotech blacklist (hides from 52w/top movers boards). "
                        "Use when user says X is not biotech / not relevant / 제외해줘.",
@@ -1511,6 +1586,10 @@ def run_tool(name: str, args: dict):
         "portfolio_create": portfolio_create,
         "portfolio_list": portfolio_list,
         "excluded_add": excluded_add,
+        "create_price_trigger": create_price_trigger,
+        "list_price_triggers": list_price_triggers,
+        "cancel_price_trigger": cancel_price_trigger,
+        "check_price_triggers_now": check_price_triggers_now,
         # 카탈리스트 / 인사이더
         "get_catalysts": get_catalysts,
         "get_upcoming_pdufa": get_upcoming_pdufa,

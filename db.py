@@ -141,6 +141,20 @@ CREATE TABLE IF NOT EXISTS ai_reports (
     generated_at    TEXT NOT NULL,
     model           TEXT
 );
+
+CREATE TABLE IF NOT EXISTS price_triggers (
+    id              BIGSERIAL PRIMARY KEY,
+    ticker          TEXT NOT NULL,
+    direction       TEXT NOT NULL,           -- 'above' | 'below'
+    threshold       DOUBLE PRECISION NOT NULL,
+    note            TEXT,
+    created_at      TEXT NOT NULL,
+    triggered_at    TEXT,                    -- 발동 시각 (NULL = 대기 중)
+    triggered_price DOUBLE PRECISION,
+    status          TEXT NOT NULL DEFAULT 'active'   -- active / fired / cancelled
+);
+CREATE INDEX IF NOT EXISTS idx_triggers_active
+    ON price_triggers(status, ticker) WHERE status = 'active';
 """
 
 
