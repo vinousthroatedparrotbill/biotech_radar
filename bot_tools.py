@@ -95,6 +95,66 @@ def search_pubmed(query: str, max_results: int = 5) -> list[dict]:
     return out
 
 
+# ───────────────────────── 밸류에이션 ─────────────────────────
+def get_valuation_metrics(ticker: str) -> dict:
+    """yfinance 기반 밸류에이션 지표.
+    Returns: market_cap, enterprise_value, P/E (trailing+forward), EV/Revenue,
+             EV/EBITDA, P/S, P/B, cash, debt, revenue (TTM), ebit, ebitda, net_income.
+    EV/EBIT은 EBITDA로 근사 (yfinance가 EBIT 별도 제공 안 함).
+    bio-pharma는 P/E·EV/EBIT 무의미한 경우 많음 (적자) — null로 명시."""
+    import yfinance as yf
+    tk = ticker.upper()
+    try:
+        info = yf.Ticker(tk).info or {}
+    except Exception as e:
+        return {"ticker": tk, "error": f"yfinance: {e}"}
+
+    def _b(v):
+        """USD raw → $B (소수 2자리)."""
+        return round(v / 1e9, 3) if v else None
+
+    def _f(v, ndigits=2):
+        return round(v, ndigits) if (v is not None and v == v) else None
+
+    out = {
+        "ticker": tk,
+        "name": info.get("longName") or info.get("shortName"),
+        "currency": info.get("currency"),
+        # 시총 / EV
+        "market_cap_b_usd": _b(info.get("marketCap")),
+        "enterprise_value_b_usd": _b(info.get("enterpriseValue")),
+        # 손익
+        "revenue_ttm_b_usd": _b(info.get("totalRevenue")),
+        "ebitda_b_usd": _b(info.get("ebitda")),
+        "net_income_b_usd": _b(info.get("netIncomeToCommon")),
+        "gross_margin_pct": _f((info.get("grossMargins") or 0) * 100, 1)
+                            if info.get("grossMargins") else None,
+        "operating_margin_pct": _f((info.get("operatingMargins") or 0) * 100, 1)
+                                 if info.get("operatingMargins") else None,
+        # 멀티플
+        "pe_trailing": _f(info.get("trailingPE")),
+        "pe_forward": _f(info.get("forwardPE")),
+        "ev_revenue": _f(info.get("enterpriseToRevenue")),
+        "ev_ebitda": _f(info.get("enterpriseToEbitda")),
+        "ps_trailing": _f(info.get("priceToSalesTrailing12Months")),
+        "pb": _f(info.get("priceToBook")),
+        # 현금/부채 (cash runway 추정용)
+        "cash_b_usd": _b(info.get("totalCash")),
+        "debt_b_usd": _b(info.get("totalDebt")),
+        # 주식
+        "shares_outstanding_m": _f(
+            (info.get("sharesOutstanding") or 0) / 1e6, 1
+        ) if info.get("sharesOutstanding") else None,
+        "free_cash_flow_b_usd": _b(info.get("freeCashflow")),
+    }
+    # 적자 시 P/E·EV/EBITDA를 None으로 명시 (학습 데이터로 만들지 말라는 신호)
+    if out["net_income_b_usd"] and out["net_income_b_usd"] < 0:
+        out["note_pe"] = "적자 — P/E 무의미"
+    if out["ebitda_b_usd"] and out["ebitda_b_usd"] < 0:
+        out["note_ev_ebitda"] = "EBITDA 적자 — EV/EBITDA 무의미"
+    return out
+
+
 # ───────────────────────── Supabase 조회 ─────────────────────────
 def get_ticker_info(ticker: str) -> dict:
     """ticker_master + 최신 high_low_cache 조회. market_cap은 $M (백만달러) 단위.
@@ -1015,6 +1075,20 @@ TOOL_DEFS = [
         },
     },
     {
+        "name": "get_valuation_metrics",
+        "description": "Valuation multiples + financials for a ticker via yfinance. Returns "
+                       "market cap, enterprise value, P/E (trailing+forward), EV/Revenue, "
+                       "EV/EBITDA, P/S, P/B, revenue (TTM), EBITDA, net income, cash, debt, "
+                       "shares outstanding, FCF — all in $B. Loss-making biotechs are "
+                       "flagged with note_pe / note_ev_ebitda ('적자 — 무의미'). Always call "
+                       "this before stating any valuation multiple — never guess from training.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"ticker": {"type": "string"}},
+            "required": ["ticker"],
+        },
+    },
+    {
         "name": "get_memos_for",
         "description": "Fetch user's personal memos saved for a specific ticker (their notes/thesis).",
         "input_schema": {
@@ -1416,6 +1490,7 @@ def run_tool(name: str, args: dict):
         "search_clinicaltrials": search_clinicaltrials,
         "search_pubmed": search_pubmed,
         "get_ticker_info": get_ticker_info,
+        "get_valuation_metrics": get_valuation_metrics,
         "get_memos_for": get_memos_for,
         "get_drug_moa": get_drug_moa,
         "fetch_recent_news_for": fetch_recent_news_for,

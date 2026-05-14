@@ -934,15 +934,76 @@ def _render_news_section(ticker: str, name: str):
                 )
 
 
+def _build_valuation_template(ticker: str, v: dict) -> str:
+    """yfinance 밸류에이션 dict → 메모용 마크다운 템플릿."""
+    def _fmt(val, unit="", precision=2):
+        if val is None:
+            return "—"
+        if isinstance(val, (int, float)):
+            return f"{val:,.{precision}f}{unit}"
+        return f"{val}{unit}"
+
+    pe_t = _fmt(v.get("pe_trailing"), "x")
+    pe_f = _fmt(v.get("pe_forward"), "x")
+    if v.get("note_pe"):
+        pe_t = f"N/M ({v['note_pe']})"
+    ev_ebitda = _fmt(v.get("ev_ebitda"), "x")
+    if v.get("note_ev_ebitda"):
+        ev_ebitda = f"N/M ({v['note_ev_ebitda']})"
+    ev_rev = _fmt(v.get("ev_revenue"), "x")
+    ps = _fmt(v.get("ps_trailing"), "x")
+    pb = _fmt(v.get("pb"), "x")
+
+    cash = v.get("cash_b_usd") or 0
+    debt = v.get("debt_b_usd") or 0
+    net_cash = cash - debt
+
+    return (
+        f"## 💰 밸류에이션 ({ticker})\n\n"
+        f"- 시총 ${_fmt(v.get('market_cap_b_usd'))}B · "
+        f"EV ${_fmt(v.get('enterprise_value_b_usd'))}B\n"
+        f"- **P/E** trailing {pe_t}, forward {pe_f}\n"
+        f"- **EV/EBITDA** {ev_ebitda} · EV/Revenue {ev_rev} · P/S {ps} · P/B {pb}\n"
+        f"- 매출 (TTM) ${_fmt(v.get('revenue_ttm_b_usd'))}B · "
+        f"EBITDA ${_fmt(v.get('ebitda_b_usd'))}B · "
+        f"순이익 ${_fmt(v.get('net_income_b_usd'))}B\n"
+        f"- 현금 ${_fmt(v.get('cash_b_usd'))}B - 부채 ${_fmt(v.get('debt_b_usd'))}B = "
+        f"순현금 ${net_cash:,.2f}B\n"
+        f"- 영업이익률 {_fmt(v.get('operating_margin_pct'), '%', 1)} · "
+        f"매출총이익률 {_fmt(v.get('gross_margin_pct'), '%', 1)}\n\n"
+        f"### Peak sales 시나리오 (사용자 입력)\n"
+        f"- 자산1: peak $___B × ___x EV/Rev = $___B EV → 현 대비 ___%\n"
+        f"- 자산2: peak $___B × ___x = $___B → ___%\n"
+        f"- **합산 implied EV**: $___B → 현 EV ${_fmt(v.get('enterprise_value_b_usd'))}B 대비 ___%\n\n"
+        f"### 코멘트\n"
+        f"- "
+    )
+
+
 def _render_memo_section(ticker: str):
     from memo import add as memo_add, update as memo_update, delete as memo_delete, list_for
 
     st.markdown("##### 📝 메모")
 
+    # 💰 밸류에이션 자동 템플릿 — 누르면 현재 yfinance 지표로 마크다운 채워줌
+    if st.button("💰 밸류에이션 템플릿 채우기", key=f"val_tpl_{ticker}",
+                 help="yfinance에서 시총·EV·P/E·EV/EBITDA·매출 fetch 후 메모 텍스트박스에 채움. "
+                      "Peak sales 부분은 사용자가 직접 입력."):
+        with st.spinner("밸류에이션 fetch..."):
+            try:
+                from bot_tools import get_valuation_metrics
+                v = get_valuation_metrics(ticker)
+                template = _build_valuation_template(ticker, v)
+                # session_state로 textarea 초기값 주입
+                st.session_state[f"new_body_{ticker}"] = template
+                st.rerun()
+            except Exception as e:
+                st.error(f"실패: {e}")
+
     # 새 메모
     with st.form(f"new_memo_{ticker}", clear_on_submit=True):
         new_body = st.text_area("새 메모", key=f"new_body_{ticker}",
-                                placeholder="여기에 생각 적기…", height=80)
+                                placeholder="여기에 생각 적기…", height=160)
         if st.form_submit_button("추가"):
             if new_body.strip():
                 memo_add(ticker, new_body)
