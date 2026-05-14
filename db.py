@@ -235,6 +235,39 @@ class _Conn:
             self._raw.close()
 
 
+def _is_transient_db_error(e: Exception) -> bool:
+    """일시적 네트워크/DNS/연결 오류 — retry 가능."""
+    msg = str(e).lower()
+    return any(s in msg for s in (
+        "could not translate host name",
+        "name or service not known",
+        "temporary failure in name resolution",
+        "connection refused",
+        "connection reset",
+        "server closed the connection unexpectedly",
+        "timeout expired",
+        "ssl syscall error",
+        "could not connect to server",
+    ))
+
+
+def _retry_db(func, *args, max_attempts: int = 3, base_delay: float = 1.0, **kwargs):
+    """일시적 에러일 때 exponential backoff retry."""
+    import time
+    last_exc: Exception | None = None
+    for attempt in range(max_attempts):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            last_exc = e
+            if not _is_transient_db_error(e) or attempt == max_attempts - 1:
+                raise
+            sleep_s = base_delay * (2 ** attempt)
+            time.sleep(sleep_s)
+    if last_exc:
+        raise last_exc
+
+
 def connect():
     url = _database_url()
     if not url:
@@ -242,9 +275,11 @@ def connect():
             "DATABASE_URL not set. 로컬: .env 파일, 클라우드: Streamlit Secrets에 "
             "'DATABASE_URL = \"postgresql://...\"' 추가."
         )
-    raw = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
-    raw.autocommit = False
-    return _Conn(raw)
+    def _do_connect():
+        raw = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
+        raw.autocommit = False
+        return _Conn(raw)
+    return _retry_db(_do_connect)
 
 
 def init_db() -> None:
@@ -254,15 +289,18 @@ def init_db() -> None:
 
 def pd_read_sql(sql: str, params=None):
     """pandas 전용 — RealDictCursor 우회 (pandas는 tuple row 필요).
-    '?' → '%s' 자동 변환. 매 호출마다 fresh raw connection 사용 (가벼움)."""
+    '?' → '%s' 자동 변환. 매 호출마다 fresh raw connection 사용 (가벼움).
+    트랜지언트 DNS/연결 오류엔 자동 retry."""
     import pandas as pd
     if isinstance(sql, str) and "?" in sql:
         sql = sql.replace("?", "%s")
-    raw = psycopg2.connect(_database_url())   # 기본 tuple cursor
-    try:
-        return pd.read_sql_query(sql, raw, params=params)
-    finally:
-        raw.close()
+    def _do_query():
+        raw = psycopg2.connect(_database_url())
+        try:
+            return pd.read_sql_query(sql, raw, params=params)
+        finally:
+            raw.close()
+    return _retry_db(_do_query)
 
 
 if __name__ == "__main__":
