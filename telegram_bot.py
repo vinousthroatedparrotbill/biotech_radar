@@ -299,21 +299,28 @@ async def _ask_claude(user_msg: str, chat_id: int) -> str:
     messages: list[dict] = list(history) + [{"role": "user", "content": user_msg}]
 
     final_text = ""
-    for _step in range(8):
+    MAX_STEPS = 15
+    last_stop_reason = ""
+    for _step in range(MAX_STEPS):
         resp = client.messages.create(
             model=CLAUDE_MODEL,
-            max_tokens=2000,
+            max_tokens=4000,
             system=SYSTEM_PROMPT,
             tools=TOOL_DEFS,
             messages=messages,
         )
+        last_stop_reason = resp.stop_reason or ""
         if resp.stop_reason == "tool_use":
             tool_uses = [b for b in resp.content if b.type == "tool_use"]
             messages.append({"role": "assistant", "content": resp.content})
             tool_results = []
             for tu in tool_uses:
-                log.info("tool call: %s args=%s", tu.name, tu.input)
-                result = run_tool(tu.name, tu.input)
+                log.info("tool call %d: %s args=%s", _step, tu.name,
+                         str(tu.input)[:200])
+                try:
+                    result = run_tool(tu.name, tu.input)
+                except Exception as e:
+                    result = {"error": f"{type(e).__name__}: {e}"}
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tu.id,
@@ -321,10 +328,32 @@ async def _ask_claude(user_msg: str, chat_id: int) -> str:
                 })
             messages.append({"role": "user", "content": tool_results})
             continue
+        # 도구 호출 안 함 — 텍스트 추출
         for b in resp.content:
             if b.type == "text":
                 final_text += b.text
         break
+
+    # 도구 호출 한도 초과로 텍스트 없이 빠져나옴 → 마지막에 한 번 더 강제 응답 요청
+    if not final_text and last_stop_reason == "tool_use":
+        log.warning("tool_use loop exhausted (%d steps) — forcing final text", MAX_STEPS)
+        messages.append({
+            "role": "user",
+            "content": "더 이상 도구 호출 없이, 지금까지 모은 데이터로 사용자에게 최종 답변을 한국어로 작성하세요.",
+        })
+        try:
+            resp = client.messages.create(
+                model=CLAUDE_MODEL,
+                max_tokens=4000,
+                system=SYSTEM_PROMPT,
+                messages=messages,   # tools 빼서 강제 텍스트만 응답
+            )
+            for b in resp.content:
+                if b.type == "text":
+                    final_text += b.text
+        except Exception as e:
+            log.exception("forced final attempt 실패: %s", e)
+            final_text = f"(응답 생성 실패: {e})"
 
     # 히스토리 업데이트 — 최종 텍스트 페어만 보관 (tool_use 중간 단계 제외)
     new_history = (history + [
