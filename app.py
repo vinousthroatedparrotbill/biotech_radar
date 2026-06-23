@@ -481,7 +481,22 @@ def render_stock_detail(ticker: str, name: str):
             hist = None
 
     if hist is None or hist.empty:
-        st.info("차트 데이터 없음")
+        _cached_fetch_chart.clear()   # 빈 결과 캐시 방지 — 새로고침 시 재시도
+        try:
+            import toss_market as tm
+            toss_ok = tm.available()
+        except Exception:
+            toss_ok = False
+        if not toss_ok:
+            st.warning(
+                "차트 데이터 없음 — **토스 API 미연결**(키 미설정/형식 오류).\n\n"
+                "클라우드면 Streamlit **Secrets**에 `TOSS_API_KEY` / `TOSS_API_SECRET`이 "
+                "따옴표 포함·주석(#) 없이 들어갔는지 확인하세요. (Yahoo는 클라우드 IP 차단)"
+            )
+        elif "." in (ticker or ""):
+            st.info(f"차트 데이터 없음 — `{ticker}`는 토스 미지원 심볼(미국/국내 외).")
+        else:
+            st.info("차트 데이터 없음 (일시적일 수 있음 — 새로고침 시 재시도).")
     else:
         fig = go.Figure()
         if period == "1d":
