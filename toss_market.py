@@ -33,6 +33,28 @@ def available() -> bool:
     return bool(cid and sec)
 
 
+def diagnose() -> dict:
+    """연결 상태 진단 — 키 존재 + 실제 토큰 발급까지 테스트. 값은 노출 안 함.
+    {ok, stage, msg}. UI에서 클라우드 원인 파악용."""
+    cid, sec = _creds()
+    if not (cid and sec):
+        miss = [n for n, v in [("TOSS_API_KEY", cid), ("TOSS_API_SECRET", sec)] if not v]
+        return {"ok": False, "stage": "creds",
+                "msg": f"키 미설정: {', '.join(miss)} (Secrets 확인)"}
+    try:
+        global _TOKEN
+        _TOKEN = {"value": None, "exp": 0.0}      # 캐시 무시하고 실제 발급 테스트
+        t = _token()
+        return {"ok": True, "stage": "token", "msg": f"토큰 발급 OK (len={len(t)})"}
+    except Exception as e:
+        detail = ""
+        resp = getattr(e, "response", None)
+        if resp is not None:
+            detail = f" [HTTP {resp.status_code}] {str(resp.text)[:120]}"
+        return {"ok": False, "stage": "token",
+                "msg": f"토큰 발급 실패: {type(e).__name__}{detail}"}
+
+
 def _token() -> str:
     if _TOKEN["value"] and time.time() < _TOKEN["exp"] - 60:
         return _TOKEN["value"]
