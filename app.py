@@ -281,6 +281,7 @@ if st.sidebar.button(_mobile_label, key="toggle_mobile",
 
 
 # ───────────────────────── 메모 타임라인 페이지 ─────────────────────────
+@st.fragment
 def _section_memos():
     """탭 컨텐츠 — 메모 타임라인."""
     from memo import timeline as memo_timeline
@@ -1162,6 +1163,7 @@ def _render_table(df: pd.DataFrame):
                 cells[10].write(f"${row['high_52w']:,.2f}" if pd.notna(row["high_52w"]) else "—")
 
 
+@st.fragment
 def _section_high():
     """탭 컨텐츠 — 52주 신고가."""
     if last is None:
@@ -1350,6 +1352,7 @@ def render_main_page():
 
 
 # ───────────────────────── 카탈리스트 캘린더 ─────────────────────────
+@st.fragment
 def _section_catalysts():
     import catalysts as cat
     import ir_milestones as irm
@@ -1779,6 +1782,7 @@ def _section_chat():
         st.rerun(scope="fragment")
 
 
+@st.fragment
 def _section_daily_news():
     """탭 컨텐츠 — 데일리 바이오 뉴스 (M&A/라이센싱/임상/FDA)."""
     cc = st.columns([1, 2, 1, 4])
