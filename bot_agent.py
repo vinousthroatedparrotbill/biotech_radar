@@ -61,8 +61,9 @@ SYSTEM_PROMPT = """당신은 fund manager의 biotech research analyst + dashboar
   generate_investment_report(시총 큰 순 TOP 5) → 최종 답변에 요약 + 종목별 메모 포함.
 
 [차트 발송]
-- "X 차트", "X 차트 보여줘", "show me X chart" → send_chart(ticker, period=1m/3m/6m/1y/5y,
-  기본 6m). 차트 이미지를 텔레그램으로 발송(이평선 20/60/120 포함). 답변엔 "차트 발송 완료" 한 줄.
+- "X 차트", "X 차트 보여줘", "show me X chart" → send_chart(ticker, period). **기본 2년 일봉
+  캔들스틱**(거래량·이평선 포함). period 미지정이면 2y. 차트 이미지를 텔레그램 발송.
+  답변엔 "차트 발송 완료" 한 줄.
 
 [카탈리스트 / 인사이더 매매 질문]
 - "X 다음 카탈리스트", "X 언제 데이터 나와" → get_catalysts(ticker)

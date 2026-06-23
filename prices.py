@@ -15,7 +15,7 @@ PERIOD_LABELS: dict[PeriodKey, str] = {
 }
 PERIOD_DAYS: dict[PeriodKey, int] = {
     "1d": 1, "5d": 7, "1m": 31, "3m": 95,
-    "6m": 190, "1y": 380, "5y": 1860, "max": 365 * 30,
+    "6m": 190, "1y": 380, "2y": 740, "3y": 1100, "5y": 1860, "max": 365 * 30,
 }
 
 

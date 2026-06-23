@@ -74,10 +74,16 @@ def _token() -> str:
 
 
 def _get(path: str, params: dict) -> dict:
-    r = requests.get(f"{BASE}{path}", params=params,
-                     headers={"Authorization": f"Bearer {_token()}"}, timeout=20)
-    r.raise_for_status()
-    return r.json()
+    # 401(동시 토큰 발급 충돌로 무효화) 시 토큰 재발급 후 1회 재시도
+    global _TOKEN
+    for attempt in range(2):
+        r = requests.get(f"{BASE}{path}", params=params,
+                         headers={"Authorization": f"Bearer {_token()}"}, timeout=20)
+        if r.status_code == 401 and attempt == 0:
+            _TOKEN = {"value": None, "exp": 0.0}
+            continue
+        r.raise_for_status()
+        return r.json()
 
 
 def _is_supported(ticker: str) -> bool:
@@ -166,7 +172,8 @@ def get_ohlcv(ticker: str, period: str, interval: str = "1d") -> pd.DataFrame:
         return pd.DataFrame()
     # 기간 → 필요 거래일 수 (이평선 buffer 포함, prices.py와 동일 취지)
     period_days = {"1d": 1, "5d": 7, "1m": 31, "3m": 95, "6m": 190,
-                   "1y": 380, "5y": 1860, "max": 365 * 30}.get(period, 380)
+                   "1y": 380, "2y": 740, "3y": 1100, "5y": 1860,
+                   "max": 365 * 30}.get(period, 380)
     if period == "1d":                    # 인트라데이: 1m → 5m 리샘플
         df = _history(sym, "1m", 200, max_pages=3)
         if df.empty:
