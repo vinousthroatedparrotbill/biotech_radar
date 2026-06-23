@@ -1268,6 +1268,40 @@ def send_card(ticker: str) -> dict:
         return {"error": str(e)}
 
 
+def send_text_telegram(text: str) -> dict:
+    """임의 텍스트(요약/정리 등)를 텔레그램으로 발송. '텔레그램으로 보내줘' 요청 시.
+    text는 markdown 가능 — HTML로 변환해 발송(실패 시 평문). 길면 자동 분할."""
+    try:
+        from telegram_report import send, _markdown_to_html
+        send(_markdown_to_html(text))
+        return {"ok": True, "msg": "텔레그램 전송 완료"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def export_pdf(title: str, markdown: str) -> dict:
+    """markdown 본문을 PDF로 만들어 텔레그램으로 발송. '원페이저/PDF로 뽑아줘' 요청 시.
+    모델이 직접 요약·정리 본문을 작성해 markdown에 담아 전달. title은 문서 제목."""
+    import os
+    if not (markdown or "").strip():
+        return {"error": "markdown 본문이 비어 있음 — 요약 내용을 작성해 전달하세요"}
+    try:
+        from pdf_gen import render_pdf_to_file
+        from telegram_report import send_document
+        safe = (title or "문서").strip()
+        path = render_pdf_to_file(markdown, ticker=(safe[:18] or "doc"), title=safe)
+        try:
+            send_document(path, caption=f"📄 <b>{safe}</b>")
+        finally:
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
+        return {"ok": True, "msg": f"'{safe}' PDF 텔레그램 전송 완료"}
+    except Exception as e:
+        return {"error": f"PDF 생성/발송 실패: {e}"}
+
+
 # ───────────────────────── Tool 스키마 (Claude API용) ─────────────────────────
 TOOL_DEFS = [
     {
@@ -1852,6 +1886,35 @@ TOOL_DEFS = [
             "required": ["ticker"],
         },
     },
+    {
+        "name": "export_pdf",
+        "description": "Compile a one-pager PDF from markdown YOU write and SEND it to Telegram. "
+                       "Use when the user asks to '원페이저/PDF로 뽑아줘', 'summarize our DFTX "
+                       "discussion into a PDF', etc. FIRST write the full summary/synthesis "
+                       "yourself (markdown: headings, bullets, tables ok), THEN call this with "
+                       "that markdown. Distinct from generate_investment_report (that builds a "
+                       "fresh stock memo); export_pdf packages content you authored.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "문서 제목 (예: 'DFTX 논의 요약')"},
+                "markdown": {"type": "string",
+                             "description": "PDF 본문 — 모델이 작성한 요약/정리 markdown"},
+            },
+            "required": ["title", "markdown"],
+        },
+    },
+    {
+        "name": "send_text_telegram",
+        "description": "Send arbitrary text (a summary/answer YOU wrote) to Telegram as a "
+                       "message. Use when the user asks '이거 텔레그램으로 보내줘', 'send that "
+                       "to telegram'. For a PDF document instead, use export_pdf.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+        },
+    },
 ]
 
 
@@ -1904,6 +1967,8 @@ def run_tool(name: str, args: dict):
         "send_thesis_pdf": send_thesis_pdf,
         "send_chart": send_chart,
         "send_card": send_card,
+        "export_pdf": export_pdf,
+        "send_text_telegram": send_text_telegram,
         "get_new_today_highs": get_new_today_highs,
         "search_company_milestones": search_company_milestones,
     }

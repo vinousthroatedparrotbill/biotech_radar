@@ -1731,6 +1731,19 @@ def _cached_daily_news(days: int):
     return fetch_global_healthcare_news(days=days, max_items=200)
 
 
+def _chat_to_markdown(msgs: list[dict]) -> str:
+    """챗 히스토리 → PDF용 마크다운."""
+    from datetime import datetime as _dt
+    out = [f"# Biotech Radar — AI 챗 대화\n",
+           f"_{_dt.now().strftime('%Y-%m-%d %H:%M')}_\n"]
+    for m in msgs:
+        if m.get("role") == "user":
+            out.append(f"\n---\n\n## ❓ {m.get('content','')}\n")
+        else:
+            out.append(f"\n{m.get('content','')}\n")
+    return "\n".join(out)
+
+
 @st.fragment
 def _section_chat():
     """탭 — 텔레그램 봇과 동일한 AI 리서치 애널리스트 채팅창 (bot_agent 공용).
@@ -1748,14 +1761,35 @@ def _section_chat():
         unsafe_allow_html=True,
     )
 
-    top = st.columns([6, 1])
+    msgs0 = st.session_state.get("chat_history", [])
+    top = st.columns([5, 1.4, 0.9])
     with top[0]:
         st.caption(
             "💬 텔레그램 봇과 **동일한** AI 애널리스트 — 약물·기전·모달리티·적응증·임상·논문·"
             "프리프린트·학회(ASCO/AACR)·종목까지 자유 질문 (상장 여부 무관)."
         )
     with top[1]:
-        if st.button("🗑️ 초기화", key="chat_reset", use_container_width=True):
+        if st.button("📄 PDF→텔레", key="chat_pdf_tg", use_container_width=True,
+                     disabled=not msgs0, help="전체 대화를 PDF로 만들어 텔레그램 발송"):
+            try:
+                import os as _os
+                from pdf_gen import render_pdf_to_file
+                from telegram_report import send_document
+                with st.spinner("PDF 생성·전송 중…"):
+                    path = render_pdf_to_file(_chat_to_markdown(msgs0), ticker="chat",
+                                              title="AI 챗 대화")
+                    try:
+                        send_document(path, caption="💬 <b>AI 챗 대화</b>")
+                    finally:
+                        try:
+                            _os.unlink(path)
+                        except Exception:
+                            pass
+                st.toast("📄 대화 PDF 텔레그램 전송 완료")
+            except Exception as e:
+                st.toast(f"⚠️ {type(e).__name__}: {e}")
+    with top[2]:
+        if st.button("🗑️", key="chat_reset", use_container_width=True, help="대화 초기화"):
             st.session_state.pop("chat_history", None)
             st.rerun(scope="fragment")
 
@@ -1766,9 +1800,18 @@ def _section_chat():
     with box:
         if not msgs:
             st.caption("아직 대화가 없습니다. 아래에 질문을 입력하세요.")
-        for m in msgs:
+        for i, m in enumerate(msgs):
             with st.chat_message(m["role"]):
                 st.markdown(m["content"])
+                if m["role"] == "assistant" and not str(m["content"]).startswith("⚠️"):
+                    if st.button("📤 텔레그램", key=f"tg_msg_{i}",
+                                 help="이 답변을 텔레그램으로 전송"):
+                        try:
+                            from telegram_report import send, _markdown_to_html
+                            send(_markdown_to_html(m["content"]))
+                            st.toast("📤 텔레그램 전송 완료")
+                        except Exception as e:
+                            st.toast(f"⚠️ {type(e).__name__}: {e}")
 
     prompt = st.chat_input(
         "질문 입력  (예: KRAS G12D degrader 기전 / ASCO 2026 daraxonrasib 데이터 / RVMD 분석)"
