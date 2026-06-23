@@ -419,22 +419,22 @@ def _ensure_urls_discovered(ticker: str) -> None:
     flag = f"_auto_disc_{ticker}"
     if st.session_state.get(flag):
         return
-    st.session_state[flag] = True
     try:
         from discover import discover as auto_discover
         with st.spinner("IR/Pipeline URL 자동 탐색..."):
             result = auto_discover(ticker)
-        # 비어있는 쪽만 새로 채움
-        new_ir = urls.get("ir_url") or result.get("ir_url", "")
-        new_pl = urls.get("pipeline_url") or result.get("pipeline_url", "")
-        if (new_ir != urls.get("ir_url", "")) or (new_pl != urls.get("pipeline_url", "")):
-            ticker_urls.set_urls(ticker, ir_url=new_ir, pipeline_url=new_pl)
-            if new_ir and not have_ir:
-                st.session_state[f"ir_in_{ticker}"] = new_ir
-            if new_pl and not have_pl:
-                st.session_state[f"pl_in_{ticker}"] = new_pl
     except Exception:
-        pass
+        return   # 일시적 실패(네트워크 등) → 플래그 미설정 → 다음에 열 때 재시도
+    st.session_state[flag] = True   # discover 정상 실행됨(빈 결과여도 재시도 안 함)
+    # 비어있는 쪽만 새로 채움
+    new_ir = urls.get("ir_url") or result.get("ir_url", "")
+    new_pl = urls.get("pipeline_url") or result.get("pipeline_url", "")
+    if new_ir or new_pl:
+        ticker_urls.set_urls(ticker, ir_url=new_ir, pipeline_url=new_pl)
+        if new_ir and not have_ir:
+            st.session_state[f"ir_in_{ticker}"] = new_ir
+        if new_pl and not have_pl:
+            st.session_state[f"pl_in_{ticker}"] = new_pl
 
 
 def render_stock_detail(ticker: str, name: str):
