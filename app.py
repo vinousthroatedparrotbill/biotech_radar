@@ -1033,6 +1033,8 @@ def _render_memo_section(ticker: str):
 def _memo_fragment(ticker: str):
     """모달 메모 영역 — fragment로 격리해 메모 추가/수정/삭제 시 대시보드 전체 rerun 방지
     (모달 안에서 이 영역만 갱신)."""
+    from memo import (add as memo_add, update as memo_update,
+                      delete as memo_delete, list_for)
     # 새 메모
     with st.form(f"new_memo_{ticker}", clear_on_submit=True):
         new_body = st.text_area("새 메모", key=f"new_body_{ticker}",
