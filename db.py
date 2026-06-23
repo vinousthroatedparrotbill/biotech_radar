@@ -163,6 +163,22 @@ CREATE TABLE IF NOT EXISTS report_sends (
     sent_at     TEXT NOT NULL              -- ISO YYYY-MM-DDTHH:MM:SS
 );
 CREATE INDEX IF NOT EXISTS idx_report_sends_ticker ON report_sends(ticker, sent_at DESC);
+
+-- MP 거래내역 — 비중 조정을 현재가 체결로 기록(실현손익/현금 반영). 평균단가 회계.
+CREATE TABLE IF NOT EXISTS portfolio_transactions (
+    id            BIGSERIAL PRIMARY KEY,
+    portfolio_id  BIGINT NOT NULL REFERENCES portfolios(id) ON DELETE CASCADE,
+    ticker        TEXT NOT NULL,
+    action        TEXT NOT NULL,            -- 'buy' | 'sell'
+    shares        DOUBLE PRECISION NOT NULL,    -- 항상 양수
+    price         DOUBLE PRECISION NOT NULL,    -- 체결가
+    amount        DOUBLE PRECISION NOT NULL,    -- shares*price (현금흐름 크기)
+    realized_pnl  DOUBLE PRECISION NOT NULL DEFAULT 0,   -- 매도 시 실현손익(평단 기준)
+    trade_date    TEXT NOT NULL,            -- ISO YYYY-MM-DD
+    note          TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ptx_portfolio
+    ON portfolio_transactions(portfolio_id, ticker, trade_date, id);
 """
 
 

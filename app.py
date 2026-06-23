@@ -1508,76 +1508,119 @@ def _portfolio_dialog(portfolio_id: int):
             st.session_state.pop("pf_open_id", None)
             st.rerun()
 
-    # 요약 metric
+    # 요약 metric (거래기반: NAV / 총수익률 / 현금 / 실현손익)
     m = st.columns(4)
     color = "#26a69a" if s["return_pct"] >= 0 else "#ef5350"
-    m[0].markdown(f"<div style='font-size:0.8em; color:#666;'>현재 사이즈</div>"
+    rcolor = "#26a69a" if s.get("realized_pnl", 0) >= 0 else "#ef5350"
+    m[0].markdown(f"<div style='font-size:0.8em; color:#666;'>현재 NAV</div>"
                   f"<div style='font-size:1.4em; font-weight:700;'>${s['current_size']/1e6:,.2f}M</div>",
                   unsafe_allow_html=True)
-    m[1].markdown(f"<div style='font-size:0.8em; color:#666;'>수익률</div>"
+    m[1].markdown(f"<div style='font-size:0.8em; color:#666;'>총수익률</div>"
                   f"<div style='font-size:1.4em; font-weight:700; color:{color};'>{s['return_pct']:+.2f}%</div>",
                   unsafe_allow_html=True)
-    m[2].markdown(f"<div style='font-size:0.8em; color:#666;'>편입 비중</div>"
-                  f"<div style='font-size:1.4em; font-weight:700;'>{s['total_weight']:.1f}%</div>",
-                  unsafe_allow_html=True)
-    m[3].markdown(f"<div style='font-size:0.8em; color:#666;'>현금</div>"
+    m[2].markdown(f"<div style='font-size:0.8em; color:#666;'>현금</div>"
                   f"<div style='font-size:1.4em; font-weight:700;'>${s['cash_amt']/1e6:,.1f}M</div>",
                   unsafe_allow_html=True)
+    m[3].markdown(f"<div style='font-size:0.8em; color:#666;'>실현손익</div>"
+                  f"<div style='font-size:1.4em; font-weight:700; color:{rcolor};'>${s.get('realized_pnl',0)/1e6:+,.2f}M</div>",
+                  unsafe_allow_html=True)
+    st.caption(
+        f"미실현 ${s.get('unrealized_pnl',0)/1e6:+,.2f}M · 투자원가 ${s.get('invested',0)/1e6:,.1f}M · "
+        f"편입 {s['total_weight']:.1f}% · 현금 {s['cash_pct']:.1f}%"
+    )
 
     st.divider()
 
-    # 종목 추가 (form)
-    with st.expander("＋ 종목 추가", expanded=not s["holdings"]):
+    # 종목 추가 (form) — 목표 비중까지 현재가로 매수
+    with st.expander("＋ 종목 편입 (현재가 매수)", expanded=not s["holdings"]):
         with st.form(f"add_holding_{portfolio_id}", clear_on_submit=True):
             cc = st.columns([2, 1, 1])
             with cc[0]:
                 ticker_in = st.text_input("티커", placeholder="VRTX")
             with cc[1]:
-                weight_in = st.number_input("비중 %", min_value=0.0, max_value=100.0,
+                weight_in = st.number_input("목표 비중 %", min_value=0.0, max_value=100.0,
                                             value=5.0, step=0.5)
             with cc[2]:
                 st.write("")
-                submitted = st.form_submit_button("추가", type="primary",
+                submitted = st.form_submit_button("편입", type="primary",
                                                   use_container_width=True)
             if submitted and ticker_in.strip():
                 try:
-                    pf.add_holding(portfolio_id, ticker_in, weight_in)
-                    st.success(f"{ticker_in.upper()} 추가됨")
+                    r = pf.add_holding(portfolio_id, ticker_in, weight_in)
+                    st.success(f"{ticker_in.upper()} 편입 — {r.get('action')} "
+                               f"${r.get('amount_usd',0)/1e6:,.2f}M @ ${r.get('price',0):,.2f}")
                     st.rerun()
                 except Exception as e:
                     st.error(f"실패: {e}")
 
-    # 종목 리스트
+    # 종목 리스트 + 비중 조정
     if not s["holdings"]:
         st.info("아직 편입 종목 없음.")
         return
 
-    st.markdown("##### 편입 종목")
-    schema = [("티커", 1), ("회사명", 4), ("비중%", 1), ("편입일", 2),
-              ("편입가", 2), ("현재가", 2), ("수익률", 2), ("현재가치", 2), ("", 1)]
+    st.markdown("##### 편입 종목  ·  목표 비중% 입력 후 **조정** → 현재가 체결(실현손익·현금 반영)")
+    schema = [("티커", 1.1), ("회사명", 2.4), ("비중%", 1.0), ("평단", 1.4),
+              ("현재가", 1.4), ("수익률", 1.3), ("평가액", 1.5), ("실현", 1.3),
+              ("목표%", 1.3), ("", 1.0), ("", 0.6)]
     weights = [w for _, w in schema]
     hdr = st.columns(weights, vertical_alignment="center")
     for i, (label, _) in enumerate(schema):
         hdr[i].markdown(f"**{label}**")
 
     for h in s["holdings"]:
+        tk = h["ticker"]
         cells = st.columns(weights, vertical_alignment="center")
-        cells[0].caption(h["ticker"])
-        cells[1].caption((h.get("name") or h["ticker"])[:30])
+        cells[0].caption(tk)
+        cells[1].caption((h.get("name") or tk)[:24])
         cells[2].write(f"{h['weight_pct']:.1f}%")
-        cells[3].caption(h["entry_date"])
-        cells[4].write(f"${h['entry_price']:,.2f}")
-        cells[5].write(f"${h['curr_price']:,.2f}")
+        cells[3].write(f"${h['avg_cost']:,.2f}")
+        cells[4].write(f"${h['curr_price']:,.2f}")
         ret = h["return_pct"]
         clr = "#26a69a" if ret >= 0 else "#ef5350"
-        cells[6].markdown(
-            f"<span style='color:{clr}; font-weight:600;'>{ret:+.2f}%</span>",
-            unsafe_allow_html=True,
-        )
-        cells[7].write(f"${h['amt_current']/1e6:,.2f}M")
-        if cells[8].button("✗", key=f"rm_{h['id']}", help="이 종목 제거"):
-            pf.remove_holding(h["id"])
-            st.rerun()
+        cells[5].markdown(f"<span style='color:{clr}; font-weight:600;'>{ret:+.1f}%</span>",
+                          unsafe_allow_html=True)
+        cells[6].write(f"${h['amt_current']/1e6:,.2f}M")
+        rp = h.get("realized_pnl", 0)
+        if abs(rp) >= 1:
+            rpc = "#26a69a" if rp >= 0 else "#ef5350"
+            cells[7].markdown(f"<span style='color:{rpc}; font-size:0.85em;'>${rp/1e6:+,.2f}M</span>",
+                              unsafe_allow_html=True)
+        else:
+            cells[7].caption("—")
+        tgt = cells[8].number_input("목표%", min_value=0.0, max_value=100.0,
+                                    value=round(float(h["weight_pct"]), 1), step=0.5,
+                                    key=f"tgt_{portfolio_id}_{tk}",
+                                    label_visibility="collapsed")
+        if cells[9].button("조정", key=f"adj_{portfolio_id}_{tk}",
+                           use_container_width=True):
+            try:
+                r = pf.set_target_weight(portfolio_id, tk, float(tgt))
+                act = {"sold": "매도", "bought": "매수", "noop": "변동없음"}.get(r.get("action"), r.get("action"))
+                st.toast(f"{tk} {act} ${r.get('amount_usd',0)/1e6:,.2f}M @ ${r.get('price',0):,.2f}"
+                         + (f" · 실현 ${r.get('realized_pnl',0)/1e6:+,.2f}M" if r.get('realized_pnl') else ""))
+                st.rerun()
+            except Exception as e:
+                st.toast(f"⚠️ {tk}: {e}")
+        if cells[10].button("✗", key=f"rm_{portfolio_id}_{tk}", help="전량 매도"):
+            try:
+                pf.sell_all(portfolio_id, tk)
+                st.rerun()
+            except Exception as e:
+                st.toast(f"⚠️ {e}")
+
+    # 거래내역 로그
+    txs = pf.transactions_log(portfolio_id, limit=40)
+    if txs:
+        with st.expander(f"📒 거래내역 ({len(txs)})"):
+            for t in txs:
+                act = "🟢 매수" if t["action"] == "buy" else "🔴 매도"
+                rp = (f" · 실현 ${t['realized_pnl']/1e6:+,.2f}M"
+                      if t["action"] == "sell" and t.get("realized_pnl") else "")
+                st.caption(
+                    f"{t['trade_date']}  {act}  **{t['ticker']}**  "
+                    f"{t['shares']:,.0f}주 @ ${t['price']:,.2f}  "
+                    f"(${t['amount']/1e6:,.2f}M){rp}"
+                )
 
 
 @st.dialog("새 포트폴리오 만들기", width="small")
@@ -1651,8 +1694,10 @@ def _cached_daily_news(days: int):
     return fetch_global_healthcare_news(days=days, max_items=200)
 
 
+@st.fragment
 def _section_chat():
-    """탭 — 텔레그램 봇과 동일한 AI 리서치 애널리스트 채팅창 (bot_agent 공용)."""
+    """탭 — 텔레그램 봇과 동일한 AI 리서치 애널리스트 채팅창 (bot_agent 공용).
+    @st.fragment — 질문/응답 시 대시보드 전체가 아니라 이 채팅 영역만 rerun."""
     import bot_agent
     st.caption(
         "💬 텔레그램 봇과 **동일한** AI 애널리스트입니다. 약물·기전(MOA)·모달리티·적응증·"

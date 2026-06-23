@@ -828,32 +828,19 @@ def _find_portfolio(name: str) -> dict | None:
 
 def portfolio_set_holding(portfolio_name: str, ticker: str,
                           weight_pct: float) -> dict:
-    """포트폴리오에 종목 추가 또는 비중 조정.
-    - 이미 보유 → weight 업데이트 (편입가 유지)
-    - 미보유 → 새로 편입 (편입가 = 현재가)
-    - weight=0 → 제거"""
-    from portfolio import (
-        list_holdings, add_holding as add_h, update_weight as upd, remove_holding,
-    )
+    """포트폴리오 비중을 **현재 NAV 대비 목표 %**로 조정 — 현재가로 체결(매수/매도)하여
+    실현손익 확정 + 현금 반영(거래기반·평균단가). 미보유면 신규 편입, weight=0이면 전량 매도.
+    예: 'X를 3%로 축소', 'Y 8%로 확대', 'Z 편입 5%'."""
+    from portfolio import set_target_weight
     p = _find_portfolio(portfolio_name)
     if not p:
         return {"error": f"포트폴리오 '{portfolio_name}' 못 찾음"}
-    tk = ticker.strip().upper()
-    holdings = list_holdings(p["id"])
-    existing = next((h for h in holdings if h["ticker"] == tk), None)
-
-    if existing and weight_pct == 0:
-        remove_holding(existing["id"])
-        return {"ok": True, "action": "removed", "portfolio": p["name"], "ticker": tk}
-    if existing:
-        upd(existing["id"], weight_pct)
-        return {"ok": True, "action": "updated",
-                "portfolio": p["name"], "ticker": tk,
-                "old_weight": existing["weight_pct"], "new_weight": weight_pct}
-    # 새 편입
-    add_h(p["id"], tk, weight_pct)
-    return {"ok": True, "action": "added",
-            "portfolio": p["name"], "ticker": tk, "weight": weight_pct}
+    try:
+        r = set_target_weight(p["id"], ticker.strip().upper(), float(weight_pct))
+        r["portfolio"] = p["name"]
+        return r
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def portfolio_remove_holding(portfolio_name: str, ticker: str) -> dict:
@@ -1434,17 +1421,19 @@ TOOL_DEFS = [
     },
     {
         "name": "portfolio_set_holding",
-        "description": "Add a ticker to a Model Portfolio OR update its weight. "
-                       "If ticker already in portfolio, updates the weight. "
-                       "If not, adds new holding with current price as entry. "
-                       "Setting weight_pct=0 removes the holding. "
-                       "portfolio_name supports partial match (e.g., 'mp1', 'Bio Fund').",
+        "description": "Adjust a ticker's weight in a Model Portfolio to a TARGET % of "
+                       "current NAV. Executes a buy or sell at the current price — realized "
+                       "P&L is booked and cash updated (transaction-based, average-cost). "
+                       "Use for trim ('cut X to 3%'), add ('raise Y to 8%'), new entry, or "
+                       "weight_pct=0 to liquidate the whole position. portfolio_name supports "
+                       "partial match (e.g., 'mp1').",
         "input_schema": {
             "type": "object",
             "properties": {
                 "portfolio_name": {"type": "string"},
                 "ticker": {"type": "string"},
-                "weight_pct": {"type": "number", "description": "% of fund (0~100)"},
+                "weight_pct": {"type": "number",
+                               "description": "target weight as % of current NAV (0~100)"},
             },
             "required": ["portfolio_name", "ticker", "weight_pct"],
         },
