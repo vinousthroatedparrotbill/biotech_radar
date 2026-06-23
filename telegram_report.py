@@ -596,9 +596,24 @@ def _esc_html(s) -> str:
     return (str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
+def _decode_gnews(url: str) -> str:
+    """구글뉴스 RSS 인코딩 URL → 실제 기사 URL. 실패 시 원본."""
+    if not url or "news.google.com" not in url:
+        return url
+    try:
+        from googlenewsdecoder import gnewsdecoder
+        r = gnewsdecoder(url)
+        if isinstance(r, dict) and r.get("status") and r.get("decoded_url"):
+            return r["decoded_url"]
+    except Exception:
+        pass
+    return url
+
+
 def _curated_news(ticker: str, name: str, n: int = 2) -> list[dict]:
-    """주가를 움직였을 만한 fundamental/catalyst 뉴스 n개 (제목+링크).
-    investment_report의 fundamental 필터 재사용(임상/FDA/M&A/데이터 등, 노이즈 제외)."""
+    """주가를 움직였을 만한 fundamental/catalyst 뉴스 n개 (제목+유효 링크).
+    investment_report의 fundamental 필터 재사용(임상/FDA/M&A/데이터 등, 노이즈 제외).
+    구글뉴스 RSS 링크는 실제 기사 URL로 디코딩."""
     try:
         from investment_report import _fundamental_news
         items = _fundamental_news(ticker, days=21, limit=n)
@@ -607,7 +622,7 @@ def _curated_news(ticker: str, name: str, n: int = 2) -> list[dict]:
     out = []
     for it in items[:n]:
         title = (it.get("title") or "").strip()
-        url = it.get("link") or it.get("url") or ""
+        url = _decode_gnews(it.get("link") or it.get("url") or "")
         if title:
             out.append({"title": title, "url": url})
     return out
@@ -751,14 +766,18 @@ def send_card(ticker: str) -> dict:
         else:
             send(cap)
     except Exception as e:
-        return {"error": f"발송 실패: {e}"}
+        return {"error": f"카드 발송 실패: {e}"}
     finally:
         if path:
             try:
                 os.unlink(path)
             except Exception:
                 pass
-    return {"ok": True, "ticker": tk, "msg": f"{tk} 카드 발송 완료"}
+    # 카드 직후 투자 메모 PDF도 함께 (생성 1-3분 소요)
+    memo_ok = _send_memo_pdf(tk)
+    return {"ok": True, "ticker": tk, "memo_pdf": memo_ok,
+            "msg": f"{tk} 카드" + (" + 메모 PDF 발송 완료" if memo_ok
+                                  else " 발송(메모 생성 실패)")}
 
 
 def daily_run() -> dict:
