@@ -51,6 +51,12 @@ def main() -> int:
     try:
         result = daily_run()
         print(f"daily_runner: complete — {result}")
+        # 로컬(한국 IP) OHLCV 백필 → 클라우드 차트용 ohlcv_cache 갱신 (best-effort)
+        try:
+            import ohlcv_bridge as _ob
+            print(f"daily_runner: ohlcv 백필 — {_ob.backfill_board()}")
+        except Exception as _e:
+            print(f"daily_runner: ohlcv 백필 실패(무시) — {_e}", file=sys.stderr)
         MARKER.parent.mkdir(parents=True, exist_ok=True)
         MARKER.write_text(today, encoding="utf-8")
         return 0

@@ -296,6 +296,22 @@ def send_document(path: str, caption: str = "",
     return r.json()
 
 
+def send_photo(path: str, caption: str = "", parse_mode: str = "HTML") -> dict:
+    """이미지 첨부 발송 — sendPhoto API (봇 차트 등)."""
+    token, chat_id = _load_env()
+    url = f"https://api.telegram.org/bot{token}/sendPhoto"
+    safe_cap, mode = _safe_caption(caption, limit=1024)
+    if parse_mode is None:
+        mode = None
+    with open(path, "rb") as fp:
+        files = {"photo": fp}
+        data = {"chat_id": chat_id, "caption": safe_cap}
+        if mode:
+            data["parse_mode"] = mode
+        r = requests.post(url, data=data, files=files, timeout=60)
+    return r.json()
+
+
 def send_investment_reports(tickers: list[str], max_n: int = 5,
                             skip_days: int = 7) -> int:
     """신규 신고가 종목 시총 TOP max_n — TL;DR 5-10줄을 텔레그램 메시지로,

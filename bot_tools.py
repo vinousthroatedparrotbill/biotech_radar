@@ -1194,6 +1194,55 @@ def search_company_milestones(ticker: str, year: int = 2026) -> list[dict]:
     return out[:15]
 
 
+def send_chart(ticker: str, period: str = "6m") -> dict:
+    """종목 차트 이미지를 텔레그램으로 발송. OHLCV는 토스(로컬)/DB캐시(클라우드) 사용.
+    period: 1m/3m/6m/1y/5y. 이평선(20/60/120) 포함."""
+    import os
+    import tempfile
+    from prices import fetch_chart
+    tk = (ticker or "").strip().upper()
+    if not tk:
+        return {"error": "ticker required"}
+    iv = "1d" if period in ("1m", "3m", "6m", "1y") else ("1wk" if period == "5y" else "1d")
+    try:
+        df = fetch_chart(tk, period, iv)
+    except Exception as e:
+        return {"error": f"차트 로드 실패: {e}"}
+    if df is None or df.empty:
+        return {"error": f"{tk} 차트 데이터 없음 (토스 미지원/캐시 없음)"}
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.plot(df.index, df["Close"], color="#1f77b4", lw=1.5, label="Close")
+        for ma, col in [("MA20", "#ff9800"), ("MA60", "#26a69a"), ("MA120", "#9c27b0")]:
+            if ma in df.columns:
+                ax.plot(df.index, df[ma], lw=0.9, alpha=0.85, label=ma)
+        ax.set_title(f"{tk}  ·  {period}", fontsize=13)
+        ax.legend(fontsize=8, loc="upper left")
+        ax.grid(alpha=0.25)
+        fig.tight_layout()
+        path = os.path.join(tempfile.gettempdir(), f"chart_{tk}_{period}.png")
+        fig.savefig(path, dpi=120)
+        plt.close(fig)
+    except Exception as e:
+        return {"error": f"차트 렌더 실패: {e}"}
+    last = float(df["Close"].iloc[-1])
+    try:
+        from telegram_report import send_photo
+        send_photo(path, caption=f"📈 <b>{tk}</b> · {period} · 종가 ${last:,.2f}")
+    except Exception as e:
+        return {"error": f"발송 실패: {e}"}
+    finally:
+        try:
+            os.unlink(path)
+        except Exception:
+            pass
+    return {"ok": True, "ticker": tk, "period": period, "last_close": last,
+            "msg": f"{tk} {period} 차트 발송 완료"}
+
+
 # ───────────────────────── Tool 스키마 (Claude API용) ─────────────────────────
 TOOL_DEFS = [
     {
@@ -1749,6 +1798,22 @@ TOOL_DEFS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "send_chart",
+        "description": "Render a price chart (with MA20/60/120) for a ticker and SEND it as "
+                       "an image to Telegram. Use when the user asks to see/show a chart "
+                       "('X 차트 보여줘', 'show me the chart for X'). OHLCV via Toss/DB cache. "
+                       "After calling, reply with one short line (chart sent).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string"},
+                "period": {"type": "string",
+                           "description": "1m/3m/6m/1y/5y (default 6m)"},
+            },
+            "required": ["ticker"],
+        },
+    },
 ]
 
 
@@ -1799,6 +1864,7 @@ def run_tool(name: str, args: dict):
         "get_earnings_call_milestones": get_earnings_call_milestones,
         "generate_investment_report": generate_investment_report,
         "send_thesis_pdf": send_thesis_pdf,
+        "send_chart": send_chart,
         "get_new_today_highs": get_new_today_highs,
         "search_company_milestones": search_company_milestones,
     }

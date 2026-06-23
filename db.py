@@ -164,6 +164,21 @@ CREATE TABLE IF NOT EXISTS report_sends (
 );
 CREATE INDEX IF NOT EXISTS idx_report_sends_ticker ON report_sends(ticker, sent_at DESC);
 
+-- OHLCV 캐시 — 로컬(한국 IP)이 토스로 일봉을 채우고, 클라우드(해외 IP, 토스 차단)는
+-- 여기서 차트를 읽는다. [[로컬 브릿지]]
+CREATE TABLE IF NOT EXISTS ohlcv_cache (
+    ticker      TEXT NOT NULL,
+    d           TEXT NOT NULL,            -- YYYY-MM-DD
+    o           DOUBLE PRECISION,
+    h           DOUBLE PRECISION,
+    l           DOUBLE PRECISION,
+    c           DOUBLE PRECISION,
+    v           DOUBLE PRECISION,
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (ticker, d)
+);
+CREATE INDEX IF NOT EXISTS idx_ohlcv_ticker ON ohlcv_cache(ticker, d);
+
 -- MP 거래내역 — 비중 조정을 현재가 체결로 기록(실현손익/현금 반영). 평균단가 회계.
 CREATE TABLE IF NOT EXISTS portfolio_transactions (
     id            BIGSERIAL PRIMARY KEY,

@@ -147,6 +147,14 @@ def _history(symbol: str, interval: str, bars_needed: int, max_pages: int = 12) 
     return df
 
 
+def daily(symbol: str, bars: int = 420) -> pd.DataFrame:
+    """일봉 OHLCV `bars`개 (브릿지 백필용). Open/High/Low/Close/Volume DataFrame."""
+    sym = (symbol or "").strip().upper()
+    if not _is_supported(sym):
+        return pd.DataFrame()
+    return _history(sym, "1d", bars, max_pages=max(3, bars // 200 + 2))
+
+
 _RESAMPLE = {"1wk": "W", "1mo": "ME"}
 
 

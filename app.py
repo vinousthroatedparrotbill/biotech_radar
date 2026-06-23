@@ -386,6 +386,14 @@ def _cached_fetch_chart(ticker: str, period: str, interval: str):
     return fetch_chart(ticker, period, interval)
 
 
+@st.cache_data(ttl=45, show_spinner=False)
+def _cached_pf_summary(portfolio_id: int):
+    """MP 요약 캐시 — 매 rerun마다 보유종목별 시세 재호출 방지(rerun 가속).
+    거래(편입/조정/매도) 후엔 _cached_pf_summary.clear()로 즉시 무효화."""
+    import portfolio as pf
+    return pf.summary(portfolio_id)
+
+
 @st.cache_data(ttl=600, show_spinner=False)
 def _cached_top_pipelines(ticker: str, name: str, days: int):
     from news import top_pipelines, news_count
@@ -1506,7 +1514,7 @@ def _section_catalysts():
 @st.dialog("💼 포트폴리오 상세", width="large")
 def _portfolio_dialog(portfolio_id: int):
     import portfolio as pf
-    s = pf.summary(portfolio_id)
+    s = _cached_pf_summary(portfolio_id)
     if not s:
         st.error("포트폴리오 없음")
         return
@@ -1565,6 +1573,7 @@ def _portfolio_dialog(portfolio_id: int):
                     r = pf.add_holding(portfolio_id, ticker_in, weight_in)
                     st.success(f"{ticker_in.upper()} 편입 — {r.get('action')} "
                                f"${r.get('amount_usd',0)/1e6:,.2f}M @ ${r.get('price',0):,.2f}")
+                    _cached_pf_summary.clear()
                     st.rerun()
                 except Exception as e:
                     st.error(f"실패: {e}")
@@ -1614,12 +1623,14 @@ def _portfolio_dialog(portfolio_id: int):
                 act = {"sold": "매도", "bought": "매수", "noop": "변동없음"}.get(r.get("action"), r.get("action"))
                 st.toast(f"{tk} {act} ${r.get('amount_usd',0)/1e6:,.2f}M @ ${r.get('price',0):,.2f}"
                          + (f" · 실현 ${r.get('realized_pnl',0)/1e6:+,.2f}M" if r.get('realized_pnl') else ""))
+                _cached_pf_summary.clear()
                 st.rerun()
             except Exception as e:
                 st.toast(f"⚠️ {tk}: {e}")
         if cells[10].button("✗", key=f"rm_{portfolio_id}_{tk}", help="전량 매도"):
             try:
                 pf.sell_all(portfolio_id, tk)
+                _cached_pf_summary.clear()
                 st.rerun()
             except Exception as e:
                 st.toast(f"⚠️ {e}")
@@ -1683,7 +1694,7 @@ def _section_portfolios():
         cols = st.columns(cols_per_row)
         for col, p in zip(cols, row_pfs):
             with col:
-                s = pf.summary(p["id"])
+                s = _cached_pf_summary(p["id"])
                 ret = s.get("return_pct", 0.0)
                 clr = "#26a69a" if ret >= 0 else "#ef5350"
                 with st.container(border=True):

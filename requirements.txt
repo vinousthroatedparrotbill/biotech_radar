@@ -12,5 +12,6 @@ playwright>=1.40
 googlenewsdecoder>=0.1.7
 pypdf>=4.0
 markdown>=3.5
+matplotlib>=3.8
 anthropic>=0.40
 python-telegram-bot>=21.0
