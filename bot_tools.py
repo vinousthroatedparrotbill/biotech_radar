@@ -831,10 +831,14 @@ def portfolio_set_holding(portfolio_name: str, ticker: str,
     """포트폴리오 비중을 **현재 NAV 대비 목표 %**로 조정 — 현재가로 체결(매수/매도)하여
     실현손익 확정 + 현금 반영(거래기반·평균단가). 미보유면 신규 편입, weight=0이면 전량 매도.
     예: 'X를 3%로 축소', 'Y 8%로 확대', 'Z 편입 5%'."""
-    from portfolio import set_target_weight
-    p = _find_portfolio(portfolio_name)
+    from portfolio import set_target_weight, list_all
+    p = _find_portfolio(portfolio_name) if portfolio_name else None
+    if not p:                                   # 이름 미지정 또는 단일 MP → 기본 사용
+        ports = list_all()
+        if ports and (not portfolio_name or len(ports) == 1):
+            p = ports[0]
     if not p:
-        return {"error": f"포트폴리오 '{portfolio_name}' 못 찾음"}
+        return {"error": f"포트폴리오 '{portfolio_name}' 못 찾음 (이름을 확인하세요)"}
     try:
         r = set_target_weight(p["id"], ticker.strip().upper(), float(weight_pct))
         r["portfolio"] = p["name"]
@@ -1484,7 +1488,7 @@ TOOL_DEFS = [
                 "weight_pct": {"type": "number",
                                "description": "target weight as % of current NAV (0~100)"},
             },
-            "required": ["portfolio_name", "ticker", "weight_pct"],
+            "required": ["ticker", "weight_pct"],
         },
     },
     {
