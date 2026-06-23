@@ -583,8 +583,75 @@ def send_watched_alerts() -> dict:
     return {"month": sent_m, "week": sent_w}
 
 
+def _esc_html(s) -> str:
+    return (str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def _curated_news(ticker: str, name: str, n: int = 2) -> list[dict]:
+    """주가를 움직였을 만한 fundamental/catalyst 뉴스 n개 (제목+링크).
+    investment_report의 fundamental 필터 재사용(임상/FDA/M&A/데이터 등, 노이즈 제외)."""
+    try:
+        from investment_report import _fundamental_news
+        items = _fundamental_news(ticker, days=21, limit=n)
+    except Exception:
+        items = []
+    out = []
+    for it in items[:n]:
+        title = (it.get("title") or "").strip()
+        url = it.get("link") or it.get("url") or ""
+        if title:
+            out.append({"title": title, "url": url})
+    return out
+
+
+def send_ticker_cards(df, max_n: int = 15) -> int:
+    """종목별 메시지 — 캔들차트 + 기본정보(시총/현재가/수익률) + 주가변동 뉴스 2개.
+    시총 상위 max_n개. 발송 종목 수 반환."""
+    import os
+    import bot_tools as bt
+    if df is None or df.empty:
+        return 0
+    df = df.sort_values("market_cap", ascending=False, na_position="last").head(max_n)
+    sent = 0
+    for _, r in df.iterrows():
+        tk = str(r.get("ticker") or "").upper()
+        if not tk:
+            continue
+        name = str(r.get("name") or tk)
+        mcap_b = (r.get("market_cap") or 0) / 1000.0
+        close = r.get("close") if "close" in r else r.get("today_close")
+        cap = f"<b>{_esc_html(name)} ({tk})</b>\n💰 ${mcap_b:,.1f}B"
+        if pd.notna(close):
+            cap += f" · ${close:,.2f}"
+        for col, lab in [("perf_1d", "1D"), ("perf_1m", "1M"), ("perf_1y", "1Y")]:
+            v = r.get(col)
+            if pd.notna(v):
+                cap += f" · {lab} {v:+.1f}%"
+        for nz in _curated_news(tk, name, 2):
+            t = _esc_html(nz["title"][:90])
+            cap += (f"\n📰 <a href=\"{nz['url']}\">{t}</a>" if nz["url"] else f"\n📰 {t}")
+        cap = cap[:1024]
+        path, _last = bt.render_candle_png(tk, "2y")
+        try:
+            if path:
+                send_photo(path, caption=cap)
+            else:
+                send(cap)
+            sent += 1
+        except Exception as e:
+            print(f"[CARD_FAIL] {tk}: {type(e).__name__}: {e}", flush=True)
+        finally:
+            if path:
+                try:
+                    os.unlink(path)
+                except Exception:
+                    pass
+    return sent
+
+
 def daily_run() -> dict:
-    """수집 + 요약 + 발송 — 스케줄러에서 호출."""
+    """수집 + 발송 — 스케줄러에서 호출. 구성: ①신고가/상승폭 목록 → ②종목별 카드(차트+뉴스)
+    → ③투자메모 PDF(상위6, 7일 제외) → ④MP 현황."""
     from universe import load_universe
     from collectors.high_low import collect as hl_collect
     from collectors.high_low import fetch_new_today_highs
@@ -593,24 +660,34 @@ def daily_run() -> dict:
     n_uni = load_universe()
     # 2) 52w 신고가 갱신
     n_hl = hl_collect(industry_filter=None)
-    # 3) 요약 + 발송
-    text = compose_report()
-    text = f"<i>auto-run: universe={n_uni}, snapshot={n_hl}</i>\n\n" + text
-    main_result = send(text)
+    # 3) ① 52주 신고가 목록 + ② 최대 상승폭 목록 (각 1 메시지)
+    from collectors.high_low import fetch_new_highs, fetch_top_movers, latest_run_date
+    highs = fetch_new_highs("high", limit=40)
+    movers = fetch_top_movers(limit=40, min_mcap=1500.0, min_perf=5.0)
+    main_result = send(
+        f"🧬 <b>Biotech Radar — {datetime.now().strftime('%Y-%m-%d')}</b>\n"
+        f"<i>auto-run: universe={n_uni}, snapshot={n_hl} · 기준일 {latest_run_date() or '—'}</i>\n\n"
+        f"📈 <b>52주 신고가</b> ({len(highs)}종목)\n{_table_render(highs, max_rows=30)}"
+    )
+    send(f"🚀 <b>최대 상승폭 (1D)</b> ({len(movers)}종목)\n{_table_render(movers, max_rows=30)}")
 
-    # 4) Model Portfolio 일일 스냅샷 (전체 MP 수익률 + 편입 종목별)
+    # 4) 종목별 카드 — 캔들차트 + 기본정보 + 주가변동 뉴스 2개 (신고가∪상승폭, 시총 상위)
+    card_df = pd.concat([highs, movers], ignore_index=True).drop_duplicates("ticker")
     try:
-        mp_chunks = send_portfolio_snapshots()
-        main_result["mp_chunks"] = mp_chunks
+        main_result["ticker_cards"] = send_ticker_cards(card_df, max_n=15)
+    except Exception as e:
+        main_result["cards_error"] = str(e)
+
+    # 5) 투자 메모 PDF — 시총 상위 6 (최근 7일 발송분 제외, 대상 없으면 생략)
+    memo_tickers = card_df["ticker"].tolist()
+    if memo_tickers:
+        main_result["investment_reports"] = send_investment_reports(memo_tickers, max_n=6)
+
+    # 6) MP 현황
+    try:
+        main_result["mp_chunks"] = send_portfolio_snapshots()
     except Exception as e:
         main_result["mp_error"] = str(e)
-
-    # 5) 신규 신고가 종목 자동 투자 메모 (시총 큰 순 TOP 5)
-    new_today = fetch_new_today_highs(limit=100)
-    if not new_today.empty:
-        tickers = new_today["ticker"].tolist()
-        sent_n = send_investment_reports(tickers, max_n=5)
-        main_result["investment_reports"] = sent_n
 
     # 5) 매달 1일 — 월간 카탈리스트 요약
     if datetime.now().day == 1:

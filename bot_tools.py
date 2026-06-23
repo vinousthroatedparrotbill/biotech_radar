@@ -1198,42 +1198,51 @@ def search_company_milestones(ticker: str, year: int = 2026) -> list[dict]:
     return out[:15]
 
 
-def send_chart(ticker: str, period: str = "2y") -> dict:
-    """종목 **캔들스틱** 차트를 텔레그램으로 발송. 기본 **2년 일봉**.
-    OHLCV는 토스(로컬)/DB캐시(클라우드). period: 6m/1y/2y/3y/5y (기본 2y).
-    3y/5y는 주봉, 그 이하는 일봉 캔들. 이평선 + 거래량 포함."""
+def render_candle_png(ticker: str, period: str = "2y"):
+    """캔들 차트 PNG 렌더 → (파일경로, 마지막종가). 실패 시 (None, None). 호출자가 파일 삭제.
+    OHLCV는 토스(로컬)/DB캐시(클라우드). 3y/5y는 주봉, 그 이하는 일봉. 이평선+거래량."""
     import os
     import tempfile
     from prices import fetch_chart
     tk = (ticker or "").strip().upper()
     if not tk:
-        return {"error": "ticker required"}
-    interval = "1wk" if period in ("3y", "5y") else "1d"   # 3y 이상만 주봉
+        return None, None
+    interval = "1wk" if period in ("3y", "5y") else "1d"
     try:
         df = fetch_chart(tk, period, interval)
-    except Exception as e:
-        return {"error": f"차트 로드 실패: {e}"}
+    except Exception:
+        return None, None
     if df is None or df.empty:
-        return {"error": f"{tk} 차트 데이터 없음 (토스 미지원/캐시 없음)"}
+        return None, None
     df = df[["Open", "High", "Low", "Close", "Volume"]].dropna()
     if len(df) < 3:
-        return {"error": f"{tk} 차트 데이터 부족"}
-    is_w = interval == "1wk"
+        return None, None
     try:
         import matplotlib
         matplotlib.use("Agg")
         import mplfinance as mpf
-        path = os.path.join(tempfile.gettempdir(), f"chart_{tk}_{period}.png")
         mc = mpf.make_marketcolors(up="#26a69a", down="#ef5350", inherit=True)
         style = mpf.make_mpf_style(base_mpf_style="yahoo", marketcolors=mc)
-        mav = (10, 30) if is_w else (20, 60)
-        mpf.plot(df, type="candle", style=style, mav=mav, volume=True,
-                 figsize=(11, 6),
-                 title=f"{tk}  ·  {period} {'주봉' if is_w else '일봉'}",
+        mav = (10, 30) if interval == "1wk" else (20, 60)
+        path = os.path.join(tempfile.gettempdir(), f"chart_{tk}_{period}.png")
+        mpf.plot(df, type="candle", style=style, mav=mav, volume=True, figsize=(11, 6),
+                 title=f"{tk}  ·  {period} {'주봉' if interval == '1wk' else '일봉'}",
                  savefig=dict(fname=path, dpi=120, bbox_inches="tight"))
-    except Exception as e:
-        return {"error": f"차트 렌더 실패: {e}"}
-    last = float(df["Close"].iloc[-1])
+        return path, float(df["Close"].iloc[-1])
+    except Exception:
+        return None, None
+
+
+def send_chart(ticker: str, period: str = "2y") -> dict:
+    """종목 캔들스틱 차트(기본 2년 일봉)를 텔레그램으로 발송. period: 6m/1y/2y/3y/5y."""
+    import os
+    tk = (ticker or "").strip().upper()
+    if not tk:
+        return {"error": "ticker required"}
+    path, last = render_candle_png(tk, period)
+    if not path:
+        return {"error": f"{tk} 차트 데이터 없음 (토스 미지원/캐시 없음)"}
+    is_w = period in ("3y", "5y")
     try:
         from telegram_report import send_photo
         send_photo(path, caption=f"📊 <b>{tk}</b> · {period} "
@@ -1245,8 +1254,8 @@ def send_chart(ticker: str, period: str = "2y") -> dict:
             os.unlink(path)
         except Exception:
             pass
-    return {"ok": True, "ticker": tk, "period": period, "interval": interval,
-            "last_close": last, "msg": f"{tk} {period} {'주봉' if is_w else '일봉'} 캔들차트 발송"}
+    return {"ok": True, "ticker": tk, "period": period,
+            "last_close": last, "msg": f"{tk} {period} 캔들차트 발송"}
 
 
 # ───────────────────────── Tool 스키마 (Claude API용) ─────────────────────────
