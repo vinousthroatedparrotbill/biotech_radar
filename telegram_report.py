@@ -649,6 +649,71 @@ def send_ticker_cards(df, max_n: int = 15) -> int:
     return sent
 
 
+def send_card(ticker: str) -> dict:
+    """단일 종목 카드 1메시지 — 2년 일봉 캔들차트 + 시총/현재가/1D·1M·1Y +
+    주가 동인 뉴스 2개. 봇이 'X 카드/보여줘' 요청 시 사용."""
+    import os
+    import bot_tools as bt
+    from db import connect
+    tk = (ticker or "").strip().upper()
+    if not tk:
+        return {"error": "ticker required"}
+    name, mcap, close = tk, None, None
+    p1d = p1m = p1y = None
+    try:
+        with connect() as c:
+            row = c.execute(
+                "SELECT name, market_cap FROM ticker_master WHERE ticker = ?", (tk,)
+            ).fetchone()
+            if row:
+                name = row.get("name") or tk
+                mcap = row.get("market_cap")
+            hl = c.execute(
+                "SELECT today_close, market_cap, perf_1d, perf_1m, perf_1y "
+                "FROM high_low_cache WHERE ticker = ? ORDER BY computed_date DESC LIMIT 1",
+                (tk,),
+            ).fetchone()
+            if hl:
+                close = hl.get("today_close")
+                mcap = hl.get("market_cap") or mcap
+                p1d, p1m, p1y = hl.get("perf_1d"), hl.get("perf_1m"), hl.get("perf_1y")
+    except Exception:
+        pass
+    try:                                    # 현재가는 토스 live로 보강
+        import toss_market as tm
+        if tm.available():
+            pr = tm.price(tk)
+            if pr:
+                close = pr
+    except Exception:
+        pass
+    cap = f"<b>{_esc_html(name)} ({tk})</b>\n💰 ${(mcap or 0)/1000.0:,.1f}B"
+    if close:
+        cap += f" · ${close:,.2f}"
+    for v, lab in [(p1d, "1D"), (p1m, "1M"), (p1y, "1Y")]:
+        if v is not None:
+            cap += f" · {lab} {v:+.1f}%"
+    for nz in _curated_news(tk, name, 2):
+        t = _esc_html(nz["title"][:90])
+        cap += (f"\n📰 <a href=\"{nz['url']}\">{t}</a>" if nz["url"] else f"\n📰 {t}")
+    cap = cap[:1024]
+    path, _last = bt.render_candle_png(tk, "2y")
+    try:
+        if path:
+            send_photo(path, caption=cap)
+        else:
+            send(cap)
+    except Exception as e:
+        return {"error": f"발송 실패: {e}"}
+    finally:
+        if path:
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
+    return {"ok": True, "ticker": tk, "msg": f"{tk} 카드 발송 완료"}
+
+
 def daily_run() -> dict:
     """수집 + 발송 — 스케줄러에서 호출. 구성: ①신고가/상승폭 목록 → ②종목별 카드(차트+뉴스)
     → ③투자메모 PDF(상위6, 7일 제외) → ④MP 현황."""

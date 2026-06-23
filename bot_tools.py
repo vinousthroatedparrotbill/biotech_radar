@@ -1258,6 +1258,16 @@ def send_chart(ticker: str, period: str = "2y") -> dict:
             "last_close": last, "msg": f"{tk} {period} 캔들차트 발송"}
 
 
+def send_card(ticker: str) -> dict:
+    """단일 종목 **카드 1메시지** — 캔들차트 + 시총/현재가/수익률 + 주가동인 뉴스 2개를
+    하나로 묶어 텔레그램 발송. 'X 카드', 'X 보여줘'에 사용(차트만이면 send_chart)."""
+    try:
+        from telegram_report import send_card as _sc
+        return _sc(ticker)
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ───────────────────────── Tool 스키마 (Claude API용) ─────────────────────────
 TOOL_DEFS = [
     {
@@ -1829,6 +1839,19 @@ TOOL_DEFS = [
             "required": ["ticker"],
         },
     },
+    {
+        "name": "send_card",
+        "description": "Send a single COMBINED card for a ticker as ONE Telegram message: "
+                       "2y daily candlestick chart + market cap/price/1D·1M·1Y returns + "
+                       "2 curated price-moving news links — all in one message. Use when the "
+                       "user asks for a stock 'card' or 'show me X' (overview). For chart-only, "
+                       "use send_chart instead. Reply with one short line after.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"ticker": {"type": "string"}},
+            "required": ["ticker"],
+        },
+    },
 ]
 
 
@@ -1880,6 +1903,7 @@ def run_tool(name: str, args: dict):
         "generate_investment_report": generate_investment_report,
         "send_thesis_pdf": send_thesis_pdf,
         "send_chart": send_chart,
+        "send_card": send_card,
         "get_new_today_highs": get_new_today_highs,
         "search_company_milestones": search_company_milestones,
     }

@@ -60,10 +60,12 @@ SYSTEM_PROMPT = """당신은 fund manager의 biotech research analyst + dashboar
 - "오늘 신규 신고가 + 리포트" 류 → get_new_today_highs로 리스트 → 각 ticker에
   generate_investment_report(시총 큰 순 TOP 5) → 최종 답변에 요약 + 종목별 메모 포함.
 
-[차트 발송]
-- "X 차트", "X 차트 보여줘", "show me X chart" → send_chart(ticker, period). **기본 2년 일봉
-  캔들스틱**(거래량·이평선 포함). period 미지정이면 2y. 차트 이미지를 텔레그램 발송.
-  답변엔 "차트 발송 완료" 한 줄.
+[차트/카드 발송]
+- "X 카드", "X 보여줘", "X 카드 보여줘" → **send_card(ticker)**: 캔들차트 + 시총/현재가/
+  수익률 + 주가동인 뉴스 2개를 **한 메시지(카드)** 로 발송. (기본; 종합 보기 요청은 이걸로)
+- "X 차트", "X 차트만", "show me X chart" → send_chart(ticker, period): 차트 이미지만.
+  기본 2년 일봉 캔들. period 미지정이면 2y.
+- 둘 다 발송 후 답변엔 "발송 완료" 한 줄.
 
 [카탈리스트 / 인사이더 매매 질문]
 - "X 다음 카탈리스트", "X 언제 데이터 나와" → get_catalysts(ticker)
