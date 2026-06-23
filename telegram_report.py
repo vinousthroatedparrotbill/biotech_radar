@@ -604,15 +604,48 @@ def _curated_news(ticker: str, name: str, n: int = 2) -> list[dict]:
     return out
 
 
-def send_ticker_cards(df, max_n: int = 15) -> int:
+def _send_memo_pdf(ticker: str) -> bool:
+    """단일 종목 투자 메모 생성 + PDF 첨부 발송 + 발송 로그(mark_sent). 성공 여부."""
+    import os
+    import investment_report as ir
+    from pdf_gen import render_pdf_to_file
+    tk = (ticker or "").strip().upper()
+    try:
+        full_md = ir.generate(tk)
+        tldr, body = ir.split_tldr_and_body(full_md)
+        caption = (f"📊 <b>{tk} 투자 메모</b>\n\n{_markdown_to_html(tldr)}\n\n"
+                   f"<i>📎 전체 리포트는 첨부 PDF</i>")
+        if len(caption) > 1000:
+            caption = caption[:990] + "\n…(요약 잘림, 전체는 PDF)"
+        pdf_path = render_pdf_to_file(body, ticker=tk)
+        try:
+            send_document(pdf_path, caption=caption)
+            try:
+                ir.mark_sent(tk)
+            except Exception:
+                pass
+        finally:
+            try:
+                os.unlink(pdf_path)
+            except Exception:
+                pass
+        return True
+    except Exception as e:
+        print(f"[MEMO_FAIL] {tk}: {type(e).__name__}: {e}", flush=True)
+        return False
+
+
+def send_ticker_cards(df, memo_tickers=None, max_n: int = 15):
     """종목별 메시지 — 캔들차트 + 기본정보(시총/현재가/수익률) + 주가변동 뉴스 2개.
-    시총 상위 max_n개. 발송 종목 수 반환."""
+    시총 상위 max_n개. memo_tickers에 든 종목은 **카드 직후 투자 메모 PDF도 함께** 발송.
+    (카드 발송수, 메모 발송수) 반환."""
     import os
     import bot_tools as bt
     if df is None or df.empty:
-        return 0
+        return 0, 0
+    memo_set = {str(t).upper() for t in (memo_tickers or [])}
     df = df.sort_values("market_cap", ascending=False, na_position="last").head(max_n)
-    sent = 0
+    sent = memos = 0
     for _, r in df.iterrows():
         tk = str(r.get("ticker") or "").upper()
         if not tk:
@@ -646,7 +679,10 @@ def send_ticker_cards(df, max_n: int = 15) -> int:
                     os.unlink(path)
                 except Exception:
                     pass
-    return sent
+        # 시총 상위 6(메모 대상)은 카드 바로 뒤에 투자 메모 PDF도 함께
+        if tk in memo_set and _send_memo_pdf(tk):
+            memos += 1
+    return sent, memos
 
 
 def send_card(ticker: str) -> dict:
@@ -736,19 +772,25 @@ def daily_run() -> dict:
     )
     send(f"🚀 <b>최대 상승폭 (1D)</b> ({len(movers)}종목)\n{_table_render(movers, max_rows=30)}")
 
-    # 4) 종목별 카드 — 캔들차트 + 기본정보 + 주가변동 뉴스 2개 (신고가∪상승폭, 시총 상위)
+    # 4) 종목별 카드 (시총 상위 15) — 차트+정보+뉴스. 시총 상위 6(최근 7일 미발송)은
+    #    카드 바로 뒤에 투자 메모 PDF도 함께 발송. 대상 없으면 메모 생략.
+    import investment_report as _ir
     card_df = pd.concat([highs, movers], ignore_index=True).drop_duplicates("ticker")
+    card_df = card_df.sort_values("market_cap", ascending=False, na_position="last")
     try:
-        main_result["ticker_cards"] = send_ticker_cards(card_df, max_n=15)
+        recent = _ir.recently_sent_tickers(7)
+    except Exception:
+        recent = set()
+    memo_tickers = [t for t in card_df["ticker"].tolist()
+                    if t and str(t).upper() not in recent][:6]
+    try:
+        cards, memos = send_ticker_cards(card_df, memo_tickers=memo_tickers, max_n=15)
+        main_result["ticker_cards"] = cards
+        main_result["investment_reports"] = memos
     except Exception as e:
         main_result["cards_error"] = str(e)
 
-    # 5) 투자 메모 PDF — 시총 상위 6 (최근 7일 발송분 제외, 대상 없으면 생략)
-    memo_tickers = card_df["ticker"].tolist()
-    if memo_tickers:
-        main_result["investment_reports"] = send_investment_reports(memo_tickers, max_n=6)
-
-    # 6) MP 현황
+    # 5) MP 현황
     try:
         main_result["mp_chunks"] = send_portfolio_snapshots()
     except Exception as e:
