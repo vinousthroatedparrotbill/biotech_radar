@@ -174,6 +174,27 @@ def _names_for(tickers: list[str]) -> dict:
     return {r["ticker"]: dict(r) for r in rows}
 
 
+def _prices_for(tickers) -> dict:
+    """여러 종목 현재가 일괄 — 토스 /prices 배치(1콜, 최대 200) 우선, 미수신분만 개별 fallback.
+    (보유종목 1개씩 순차 호출하던 병목 제거 — MP 요약/모달 가속)."""
+    tickers = [t for t in tickers if t]
+    out: dict = {}
+    if not tickers:
+        return out
+    try:
+        import toss_market as tm
+        if tm.available():
+            out.update({k: v for k, v in tm.quote(list(tickers)).items() if v})
+    except Exception:
+        pass
+    for tk in tickers:                       # 토스 미수신분만 캐시/yfinance fallback
+        if not out.get(tk):
+            p = _fetch_current_price(tk)
+            if p:
+                out[tk] = p
+    return out
+
+
 def _record_tx(portfolio_id, ticker, action, shares, price, realized_pnl, note):
     with connect() as conn:
         conn.execute(
@@ -191,11 +212,10 @@ def nav(portfolio_id: int) -> float:
     if not p:
         return 0.0
     initial = float(p["initial_size"])
-    mv = 0.0
-    for tk, d in _positions(portfolio_id).items():
-        if d["shares"] <= 1e-9:
-            continue
-        mv += d["shares"] * (_fetch_current_price(tk) or d["avg_cost"])
+    pos = _positions(portfolio_id)
+    active = [tk for tk, d in pos.items() if d["shares"] > 1e-9]
+    pmap = _prices_for(active)
+    mv = sum(pos[tk]["shares"] * (pmap.get(tk) or pos[tk]["avg_cost"]) for tk in active)
     return _cash(portfolio_id, initial) + mv
 
 
@@ -218,10 +238,10 @@ def set_target_weight(portfolio_id: int, ticker: str, target_weight_pct: float,
     if not price:
         raise RuntimeError(f"{ticker}: 현재가 못 가져옴")
     cash = _cash(portfolio_id, initial)
-    nav_now = cash + sum(
-        d["shares"] * (_fetch_current_price(tk) or d["avg_cost"])
-        for tk, d in pos.items() if d["shares"] > 1e-9
-    )
+    active = [tk for tk, d in pos.items() if d["shares"] > 1e-9]
+    pmap = _prices_for(active)
+    nav_now = cash + sum(pos[tk]["shares"] * (pmap.get(tk) or pos[tk]["avg_cost"])
+                         for tk in active)
     cur_mv = cur["shares"] * price
     delta_mv = nav_now * (target_weight_pct / 100.0) - cur_mv
     if abs(delta_mv) < max(1.0, nav_now * 1e-6):
@@ -295,11 +315,12 @@ def summary(portfolio_id: int) -> dict:
     cash = _cash(portfolio_id, initial)
     realized_total = sum(d["realized_pnl"] for d in pos.values())
 
+    active = [tk for tk, d in pos.items() if d["shares"] > 1e-9]
+    pmap = _prices_for(active)                 # 1콜 배치
     prices, mv_total = {}, 0.0
-    for tk, d in pos.items():
-        if d["shares"] <= 1e-9:
-            continue
-        prices[tk] = _fetch_current_price(tk) or d["avg_cost"]
+    for tk in active:
+        d = pos[tk]
+        prices[tk] = pmap.get(tk) or d["avg_cost"]
         mv_total += d["shares"] * prices[tk]
     nav_val = cash + mv_total
     names = _names_for(list(prices.keys()))
