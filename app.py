@@ -1699,38 +1699,57 @@ def _section_chat():
     """탭 — 텔레그램 봇과 동일한 AI 리서치 애널리스트 채팅창 (bot_agent 공용).
     @st.fragment — 질문/응답 시 대시보드 전체가 아니라 이 채팅 영역만 rerun."""
     import bot_agent
-    st.caption(
-        "💬 텔레그램 봇과 **동일한** AI 애널리스트입니다. 약물·기전(MOA)·모달리티·적응증·"
-        "임상·논문·프리프린트·학회(ASCO/AACR/ESMO/ASH)·종목까지 자유롭게 질문하세요 "
-        "(상장 여부 무관). 같은 도구·프롬프트를 씁니다."
+    # 입력창을 흰 배경 + 테두리로 구분
+    st.markdown(
+        """
+        <style>
+        [data-testid="stChatInput"] { background:#ffffff !important;
+            border:1px solid #cfd3da; border-radius:10px; }
+        [data-testid="stChatInput"] textarea { background:#ffffff !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
-    if st.button("🗑️ 대화 초기화", key="chat_reset"):
-        st.session_state.pop("chat_history", None)
-        st.rerun()
-    if "chat_history" not in st.session_state:
-        st.session_state["chat_history"] = []
 
-    for m in st.session_state["chat_history"]:
-        with st.chat_message(m["role"]):
-            st.markdown(m["content"])
+    top = st.columns([6, 1])
+    with top[0]:
+        st.caption(
+            "💬 텔레그램 봇과 **동일한** AI 애널리스트 — 약물·기전·모달리티·적응증·임상·논문·"
+            "프리프린트·학회(ASCO/AACR)·종목까지 자유 질문 (상장 여부 무관)."
+        )
+    with top[1]:
+        if st.button("🗑️ 초기화", key="chat_reset", use_container_width=True):
+            st.session_state.pop("chat_history", None)
+            st.rerun(scope="fragment")
+
+    msgs = st.session_state.setdefault("chat_history", [])
+
+    # 대화 로그 — 고정 높이 스크롤 박스(일반 챗봇 형태). 입력창은 박스 아래 고정.
+    box = st.container(height=460, border=True)
+    with box:
+        if not msgs:
+            st.caption("아직 대화가 없습니다. 아래에 질문을 입력하세요.")
+        for m in msgs:
+            with st.chat_message(m["role"]):
+                st.markdown(m["content"])
 
     prompt = st.chat_input(
-        "질문 (예: KRAS G12D degrader 기전 / ASCO 2026 daraxonrasib 데이터 / RVMD 분석)"
+        "질문 입력  (예: KRAS G12D degrader 기전 / ASCO 2026 daraxonrasib 데이터 / RVMD 분석)"
     )
     if prompt:
-        st.session_state["chat_history"].append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        with st.chat_message("assistant"):
-            with st.spinner("조사 중… (도구 호출, 최대 1-2분)"):
-                try:
-                    text, _ = bot_agent.run_agent(
-                        prompt, st.session_state["chat_history"][:-1]
-                    )
-                except Exception as e:
-                    text = f"⚠️ 오류: {type(e).__name__}: {e}"
-            st.markdown(text)
-        st.session_state["chat_history"].append({"role": "assistant", "content": text})
+        msgs.append({"role": "user", "content": prompt})
+        with box:
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            with st.chat_message("assistant"):
+                with st.spinner("조사 중… (도구 호출, 최대 1-2분)"):
+                    try:
+                        text, _ = bot_agent.run_agent(prompt, msgs[:-1])
+                    except Exception as e:
+                        text = f"⚠️ 오류: {type(e).__name__}: {e}"
+                st.markdown(text)
+        msgs.append({"role": "assistant", "content": text})
+        st.rerun(scope="fragment")
 
 
 def _section_daily_news():
