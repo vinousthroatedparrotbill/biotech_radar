@@ -9,6 +9,8 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
+import yf_session  # noqa: F401 — yfinance 레이트리밋 패치 (import 부수효과)
+
 _ENV_PATH = Path(__file__).parent / ".env"
 TG_API = "https://api.telegram.org/bot{token}/sendMessage"
 MAX_MSG_LEN = 4000   # Telegram 4096 limit, leave headroom
@@ -294,14 +296,35 @@ def send_document(path: str, caption: str = "",
     return r.json()
 
 
-def send_investment_reports(tickers: list[str], max_n: int = 5) -> int:
+def send_investment_reports(tickers: list[str], max_n: int = 5,
+                            skip_days: int = 7) -> int:
     """신규 신고가 종목 시총 TOP max_n — TL;DR 5-10줄을 텔레그램 메시지로,
-    full report는 PDF 첨부로 발송. 발송 성공 종목 수 반환."""
+    full report는 PDF 첨부로 발송. 발송 성공 종목 수 반환.
+
+    skip_days > 0 이면 최근 `skip_days`일 내 이미 메모를 보낸 종목은
+    생성·발송 모두 스킵 (비용·중복 방지). 0이면 스킵 안 함."""
     import os
     import investment_report as ir
     from pdf_gen import render_pdf_to_file
     if not tickers:
         return 0
+    # 최근 skip_days일 내 발송 종목 제외 — generate() 호출 전에 걸러 비용 절감
+    if skip_days > 0:
+        try:
+            recent = ir.recently_sent_tickers(days=skip_days)
+        except Exception as e:
+            print(f"[REPORT_DEDUP_FAIL] {type(e).__name__}: {e}", flush=True)
+            recent = set()
+        if recent:
+            before = len(tickers)
+            tickers = [t for t in tickers if t.upper() not in recent]
+            skipped = before - len(tickers)
+            if skipped:
+                print(f"[REPORT_DEDUP] 최근 {skip_days}일 내 발송 {skipped}종목 스킵",
+                      flush=True)
+        if not tickers:
+            print("[REPORT_DEDUP] 발송 대상 없음 (전부 최근 발송됨)", flush=True)
+            return 0
     reports = ir.generate_for_tickers(tickers, max_n=max_n)
     sent = 0
     for r in reports:
@@ -320,6 +343,12 @@ def send_investment_reports(tickers: list[str], max_n: int = 5) -> int:
             try:
                 send_document(pdf_path, caption=caption)
                 sent += 1
+                # 발송 성공 → 중복 방지 로그 기록
+                try:
+                    ir.mark_sent(tk)
+                except Exception as e:
+                    print(f"[REPORT_MARK_FAIL] {tk}: {type(e).__name__}: {e}",
+                          flush=True)
             finally:
                 try:
                     os.unlink(pdf_path)

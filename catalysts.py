@@ -707,7 +707,7 @@ def discover_catalysts_via_ai(ticker: str) -> dict:
     try:
         for _step in range(12):
             resp = client.messages.create(
-                model="claude-opus-4-7",
+                model="claude-opus-4-8",
                 max_tokens=4000,
                 tools=TOOL_DEFS,
                 messages=messages,

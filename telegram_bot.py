@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from pathlib import Path
 
 import anthropic
@@ -29,7 +30,7 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 
-CLAUDE_MODEL = "claude-opus-4-7"   # 또는 "claude-sonnet-4-6" (저비용)
+CLAUDE_MODEL = "claude-opus-4-8"   # 또는 "claude-sonnet-4-6" (저비용)
 SYSTEM_PROMPT = """당신은 fund manager의 biotech research analyst + dashboard 조작 어시스턴트.
 
 [조회 능력]
@@ -291,7 +292,10 @@ async def _handle_keyword(update: Update, msg_lower: str) -> bool:
         await _send_watchlist(update); return True
     if any(k in msg_lower for k in ("상승폭", "top mover", "오늘 상승")):
         await _send_top_movers(update); return True
-    if any(k in msg_lower for k in ("포트폴리오", "portfolio", "model portfolio", "mp")):
+    # "mp"는 너무 짧아 substring 매칭하면 "compass", "cmps", "company" 등에 오매칭됨
+    # → 독립 단어(word boundary)로만 인식. 나머지는 substring으로 충분.
+    if (any(k in msg_lower for k in ("포트폴리오", "portfolio", "model portfolio"))
+            or re.search(r"\bmp\b", msg_lower)):
         await _send_portfolios(update); return True
     if any(k in msg_lower for k in ("오늘뉴스", "데일리뉴스", "daily news", "biotech news")):
         await _send_daily_news(update); return True
@@ -440,8 +444,24 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     # 텔레그램 4096자 제한
     if len(reply) > 4000:
         reply = reply[:3990] + "\n…(잘림)"
-    await update.message.reply_text(reply, parse_mode=ParseMode.MARKDOWN,
-                                    disable_web_page_preview=True)
+    await _send_reply(update, reply)
+
+
+async def _send_reply(update: Update, text: str) -> None:
+    """최종 답변 전송 — 레거시 Markdown 파싱 실패(비대칭 *,_,[ 등) 시
+    일반 텍스트로 자동 fallback. 둘 다 실패해도 silent로 안 끝나게 로깅."""
+    try:
+        await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN,
+                                        disable_web_page_preview=True)
+        log.info("reply sent (markdown, %d chars)", len(text))
+        return
+    except Exception as e:
+        log.warning("markdown 전송 실패 (%s) — 일반 텍스트로 재시도", e)
+    try:
+        await update.message.reply_text(text, disable_web_page_preview=True)
+        log.info("reply sent (plain, %d chars)", len(text))
+    except Exception as e:
+        log.exception("일반 텍스트 전송도 실패: %s", e)
 
 
 # ───────────────────────── main ─────────────────────────
@@ -459,6 +479,10 @@ def main() -> None:
     app.add_handler(CommandHandler("help", cmd_start))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        log.exception("unhandled handler error", exc_info=context.error)
+    app.add_error_handler(_on_error)
 
     log.info("Bot starting (long-polling)...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)

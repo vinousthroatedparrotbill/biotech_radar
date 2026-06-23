@@ -13,6 +13,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent
 
+try:  # Windows cp949 콘솔 유니코드 print 안전 (exit 1 방지)
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 
 def main() -> int:
     logging.basicConfig(

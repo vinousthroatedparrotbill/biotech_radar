@@ -1,5 +1,11 @@
 """신규 신고가 종목 투자 메모 재발송 — universe/snapshot 스킵, 캐시된 high_low_cache 사용."""
 import logging
+import sys
+try:  # Windows cp949 콘솔 유니코드 print 안전 (exit 1 방지)
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 logging.basicConfig(level=logging.INFO)
 
 from collectors.high_low import fetch_new_today_highs

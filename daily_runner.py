@@ -19,6 +19,14 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 MARKER = ROOT / "data" / ".last_daily_run"
 
+# Windows cp949 콘솔에서 불릿(•) 등 유니코드 print 시 UnicodeEncodeError → exit 1 방지.
+# (작업은 성공해도 마지막 print에서 죽으면 마커 미기록 → 재실행/중복 발송 위험)
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 
 def _setup_logging() -> None:
     import logging

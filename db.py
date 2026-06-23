@@ -155,6 +155,14 @@ CREATE TABLE IF NOT EXISTS price_triggers (
 );
 CREATE INDEX IF NOT EXISTS idx_triggers_active
     ON price_triggers(status, ticker) WHERE status = 'active';
+
+-- 투자 메모 텔레그램 발송 로그 — 최근 N일 내 중복 발송 방지용
+CREATE TABLE IF NOT EXISTS report_sends (
+    id          BIGSERIAL PRIMARY KEY,
+    ticker      TEXT NOT NULL,
+    sent_at     TEXT NOT NULL              -- ISO YYYY-MM-DDTHH:MM:SS
+);
+CREATE INDEX IF NOT EXISTS idx_report_sends_ticker ON report_sends(ticker, sent_at DESC);
 """
 
 

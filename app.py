@@ -17,6 +17,7 @@ from datetime import datetime
 
 import pandas as pd
 
+import yf_session  # noqa: F401 — yfinance 레이트리밋 패치 (import 부수효과)
 import db
 from db import init_db
 from universe import load_universe, get_universe
@@ -638,7 +639,7 @@ def _render_ai_report_section(ticker: str, name: str):
     with st.expander(label, expanded=bool(cached)):
         if cached:
             st.markdown(cached["body"])
-            st.caption(f"_생성 모델: {cached.get('model') or 'claude-opus-4-7'}_")
+            st.caption(f"_생성 모델: {cached.get('model') or 'claude-opus-4-8'}_")
         else:
             st.info(
                 "아직 생성된 리포트가 없습니다. 아래 버튼을 누르면 Claude가 도구를 호출해 "
@@ -971,10 +972,10 @@ def _build_valuation_template(ticker: str, v: dict) -> str:
         f"순현금 ${net_cash:,.2f}B\n"
         f"- 영업이익률 {_fmt(v.get('operating_margin_pct'), '%', 1)} · "
         f"매출총이익률 {_fmt(v.get('gross_margin_pct'), '%', 1)}\n\n"
-        f"### Peak sales 시나리오 (사용자 입력)\n"
-        f"- 자산1: peak $___B × ___x EV/Rev = $___B EV → 현 대비 ___%\n"
-        f"- 자산2: peak $___B × ___x = $___B → ___%\n"
-        f"- **합산 implied EV**: $___B → 현 EV ${_fmt(v.get('enterprise_value_b_usd'))}B 대비 ___%\n\n"
+        f"### Peak sales × OPM × P/EBIT 시나리오 (사용자 입력)\n"
+        f"- 자산1: peak $___B × ___% OPM × ___x P/EBIT = $___B 시총\n"
+        f"- 자산2: peak $___B × ___% × ___x = $___B 시총\n"
+        f"- **합산 implied 시총**: $___B → 현 시총 ${_fmt(v.get('market_cap_b_usd'))}B 대비 ___%\n\n"
         f"### 코멘트\n"
         f"- "
     )

@@ -23,7 +23,7 @@ import db
 
 log = logging.getLogger(__name__)
 
-CLAUDE_MODEL = "claude-opus-4-7"
+CLAUDE_MODEL = "claude-opus-4-8"
 
 # app.py와 동일한 펀더멘탈 필터
 _FUND_PAT = re.compile(
@@ -215,7 +215,7 @@ SYSTEM_PROMPT = """당신은 Goldman Sachs / Morgan Stanley / Cowen / Leerink급
 - 분량 제한 없음 — substance 우선. Markdown.
 - 표 사용 권장 (head-to-head 비교).
 
-[필수 섹션 — 9개 빠짐없이]
+[필수 섹션 — 10개 빠짐없이]
 
 # {회사명} ({TICKER}) — 투자 메모
 
@@ -274,6 +274,17 @@ get_valuation_metrics(ticker) 호출 후 다음 표 또는 bullet:
 ## 9) 바텀라인
 종합 결론 — 핵심 변곡점, 추적 포인트, 시나리오.
 
+## 10) 용어 설명 (Glossary)
+이 리포트에 **실제 등장한** 전문 용어·약어만 골라, 비전문가(펀드매니저)도 바로 이해하도록 한 줄씩 설명.
+- 대상: 질환 약어, 임상 평가척도/지표, 타깃·기전(MOA), 임상 엔드포인트, 규제 용어, 약물 클래스 등.
+- 형식: `**약어/용어** = 영문 full name (한글 뜻 — 한 줄 의미, 필요시 해석 방향)`. 예:
+  - **MDD** = Major Depressive Disorder (주요우울장애)
+  - **GAD** = Generalized Anxiety Disorder (범불안장애)
+  - **MADRS** = Montgomery–Åsberg Depression Rating Scale (우울증 중증도 척도 — 점수↓일수록 호전)
+  - **ORR** = Objective Response Rate (객관적 반응률 — 종양 축소 환자 비율)
+- 본문에서 쓴 약자는 빠짐없이 포함. 리포트에 안 나온 용어는 넣지 말 것. 보통 5~15개.
+- markdown bullet list. 알파벳/중요도 순 무관하나 본문 등장 순서 권장.
+
 [원칙]
 - **펀더멘탈 데이터 풍부하게**: %, p-value, n, market size, peak sales 같은 구체 숫자
   도구로 확보 후 인용. "효능 좋음" 같은 추상 형용사 금지.
@@ -316,7 +327,7 @@ def generate(ticker: str, max_tool_calls: int = 15) -> str:
         "3. 각 메인 자산의 경쟁 약물(같은 target 또는 같은 적응증) 1-3개 조사 — "
         "search_news_by_query('경쟁자산명 phase 결과') + fetch_url로 PR 본문 읽기\n"
         "4. head-to-head 비교 표 + 차별 토론 포함\n"
-        "5. 시스템 프롬프트의 8개 섹션 모두 작성\n"
+        "5. 시스템 프롬프트의 10개 섹션 모두 작성 (마지막 '용어 설명' 포함)\n"
         "도구 사용 끝나면 최종 메모만 텍스트로 출력."
     )
     messages: list[dict] = [{"role": "user", "content": user_msg}]
@@ -360,6 +371,31 @@ def generate(ticker: str, max_tool_calls: int = 15) -> str:
     except Exception as e:
         log.exception("Claude 리포트 실패: %s", e)
         return f"*{ctx['name']} ({ticker})*\n\n{context_str}\n\n_(Claude 실패: {e})_"
+
+
+def recently_sent_tickers(days: int = 7) -> set[str]:
+    """최근 `days`일 내 텔레그램 투자 메모를 발송한 ticker 집합.
+    신규 신고가 자동 메모 중복 발송 방지용."""
+    import datetime as dt
+    cutoff = (dt.datetime.now() - dt.timedelta(days=days)).isoformat(timespec="seconds")
+    with db.connect() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT ticker FROM report_sends WHERE sent_at >= ?",
+            (cutoff,),
+        ).fetchall()
+    return {(r["ticker"] or "").upper() for r in rows}
+
+
+def mark_sent(ticker: str) -> None:
+    """투자 메모 발송 기록 — report_sends 로그에 1건 append."""
+    import datetime as dt
+    now = dt.datetime.now().isoformat(timespec="seconds")
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO report_sends (ticker, sent_at) VALUES (?, ?)",
+            (ticker.upper(), now),
+        )
+        conn.commit()
 
 
 def get_cached_report(ticker: str) -> dict | None:

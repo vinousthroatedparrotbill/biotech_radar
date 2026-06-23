@@ -6,6 +6,8 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
+import yf_session  # noqa: F401 — yfinance 레이트리밋 패치 (import 부수효과)
+
 # 모듈 import 시점에 .env 로드 (standalone 호출 / 테스트도 동작)
 load_dotenv(Path(__file__).parent / ".env", override=True)
 
