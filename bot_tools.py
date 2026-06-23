@@ -98,6 +98,86 @@ def search_pubmed(query: str, max_results: int = 5) -> list[dict]:
 
 
 # ───────────────────────── 밸류에이션 ─────────────────────────
+# ───────────── Europe PMC (논문 + 프리프린트 + 학회 초록 통합) ─────────────
+EUROPEPMC_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+
+
+def _europepmc_search(query: str, max_results: int = 6) -> list[dict]:
+    import time as _t
+    params = {
+        "query": query,
+        "format": "json",
+        "pageSize": max(1, min(int(max_results), 25)),
+        "resultType": "lite",
+        "sort": "P_PDATE_D desc",
+    }
+    last_err = None
+    for attempt in range(3):           # 일시적 5xx/타임아웃 재시도
+        try:
+            r = requests.get(EUROPEPMC_URL, params=params,
+                             headers={"User-Agent": "biotech_radar/1.0"}, timeout=20)
+            if r.status_code >= 500:
+                last_err = f"{r.status_code} {r.reason}"
+                _t.sleep(1.5 * (attempt + 1))
+                continue
+            r.raise_for_status()
+            res = ((r.json() or {}).get("resultList") or {}).get("result") or []
+            break
+        except Exception as e:
+            last_err = str(e)
+            _t.sleep(1.0 * (attempt + 1))
+    else:
+        return [{"_error": f"Europe PMC error: {last_err}"}]
+    out = []
+    for x in res[:max_results]:
+        src = x.get("source") or ""
+        pmid, doi = x.get("pmid"), x.get("doi")
+        if pmid:
+            url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+        elif doi:
+            url = f"https://doi.org/{doi}"
+        else:
+            url = f"https://europepmc.org/article/{src}/{x.get('id')}"
+        out.append({
+            "title": x.get("title"),
+            "authors": (x.get("authorString") or "")[:200],
+            "journal": x.get("journalTitle") or x.get("bookOrReportDetails") or src,
+            "year": x.get("pubYear"),
+            "source": src,                  # MED=PubMed, PMC, PPR=preprint
+            "is_preprint": src == "PPR",
+            "doi": doi,
+            "cited_by": x.get("citedByCount"),
+            "url": url,
+        })
+    return out or [{"_note": "결과 없음 — query를 단순화하거나 동의어로 재시도"}]
+
+
+def search_europepmc(query: str, max_results: int = 6) -> list[dict]:
+    """Europe PMC 통합 문헌 검색 — 논문 + 프리프린트 + 학회 초록까지 한 번에.
+    상장 여부 무관, 기전/모달리티/적응증/타깃 어떤 주제든. 본문 수치는 fetch_url로."""
+    return _europepmc_search(query, max_results)
+
+
+def search_preprints(query: str, max_results: int = 6) -> list[dict]:
+    """bioRxiv·medRxiv 등 프리프린트 검색 (Europe PMC SRC:PPR). peer-review 전 최신 연구."""
+    return _europepmc_search(f'({query}) AND (SRC:"PPR")', max_results)
+
+
+def search_conference_abstracts(query: str, society: str = "",
+                                max_results: int = 6) -> list[dict]:
+    """ASCO/AACR/ESMO/ASH 등 학회 발표·초록 검색. 학회 초록은 JCO(ASCO)·
+    Cancer Research(AACR) 보충판으로 Europe PMC에 색인됨."""
+    soc = (society or "").strip()
+    terms = f"({query})"
+    if soc:
+        terms += f' AND ("{soc}" OR {soc})'
+    q = f'{terms} AND (PUB_TYPE:"Meeting Abstract" OR "abstract" OR "meeting" OR "congress")'
+    res = _europepmc_search(q, max_results)
+    if res and (res[0].get("_error") or res[0].get("_note")):
+        res = _europepmc_search(terms, max_results)   # 너무 좁으면 fallback
+    return res
+
+
 def get_valuation_metrics(ticker: str) -> dict:
     """yfinance 기반 밸류에이션 지표.
     Returns: market_cap, enterprise_value, P/E (trailing+forward), EV/Revenue,
@@ -1630,6 +1710,56 @@ TOOL_DEFS = [
             "required": ["ticker"],
         },
     },
+    {
+        "name": "search_europepmc",
+        "description": "Search Europe PMC biomedical literature — peer-reviewed papers, "
+                       "preprints, AND conference abstracts in one query. Broader than PubMed "
+                       "(adds European journals + preprints). Use for ANY topic: drug "
+                       "mechanism/MOA, modality, indication, target biology — works for "
+                       "NON-LISTED / private companies too (it is literature, not tickers). "
+                       "Follow up with fetch_url for specific numbers (%, n, p-value).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string",
+                          "description": "drug/target/mechanism/modality/indication keywords"},
+                "max_results": {"type": "integer", "default": 6},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "search_preprints",
+        "description": "Search bioRxiv/medRxiv preprints (via Europe PMC). Latest, NOT-yet "
+                       "peer-reviewed research — track emerging targets/mechanisms. Always "
+                       "state in your answer that preprints are unreviewed.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "max_results": {"type": "integer", "default": 6},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "search_conference_abstracts",
+        "description": "Search medical CONGRESS abstracts — ASCO, AACR, ESMO, ASH, EASL, ADA, "
+                       "etc. (indexed via JCO / Cancer Research supplements in Europe PMC). "
+                       "Use for 'ASCO 2026 X data', 'AACR abstract on Y'. Pass the society "
+                       "abbreviation for precision. If sparse, also try search_news_by_query "
+                       "+ fetch_url on the abstract URL.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "drug/target/indication"},
+                "society": {"type": "string",
+                            "description": "society abbreviation, e.g. ASCO, AACR, ESMO, ASH"},
+                "max_results": {"type": "integer", "default": 6},
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 
@@ -1639,6 +1769,9 @@ def run_tool(name: str, args: dict):
         # 조회
         "search_clinicaltrials": search_clinicaltrials,
         "search_pubmed": search_pubmed,
+        "search_europepmc": search_europepmc,
+        "search_preprints": search_preprints,
+        "search_conference_abstracts": search_conference_abstracts,
         "get_ticker_info": get_ticker_info,
         "get_valuation_metrics": get_valuation_metrics,
         "get_memos_for": get_memos_for,

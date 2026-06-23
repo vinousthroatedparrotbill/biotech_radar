@@ -30,94 +30,7 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 
-CLAUDE_MODEL = "claude-opus-4-8"   # 또는 "claude-sonnet-4-6" (저비용)
-SYSTEM_PROMPT = """당신은 fund manager의 biotech research analyst + dashboard 조작 어시스턴트.
-
-[조회 능력]
-- 제공된 tools로 최신·정확한 정보 답변
-- 약물/회사 질문 시: MOA, 임상 단계, PFS/OS/ORR/PSA50/safety, 시장 포지션, 경쟁 약물
-- 사용자의 universe / memos / portfolio도 tool로 조회
-
-[검색 원칙 — 절대 일찍 포기 금지]
-약물 코드(VIR-5500, RM-055 등)나 임상 데이터 질문 시 다음 순서로 끝까지 파고들기:
-  1) search_clinicaltrials(코드) + search_clinicaltrials(코드 + disease) — 다양한 query
-  2) search_news_by_query(코드) + search_news_by_query("회사명 + 코드 + Phase X")
-  3) search_pubmed(코드) — 학술 논문
-  4) get_pipeline_info(ticker) — 회사 자체 파이프라인 페이지
-  5) **검색에서 관련 URL 발견하면 무조건 fetch_url로 본문 읽기** — 헤드라인만 보고 답하지 말기. PSA50·ORR·CR 같은 구체 수치는 article 본문에 있음.
-  6) 수치 찾을 때까지 다양한 query로 search_news_by_query 재시도 ("VIR-5500 Phase 1", "VIR-5500 PSA50", "VIR-5500 prostate cancer data" 등)
-
-답변 못 찾으면 "현재 공개된 자료 한정" 명시하고, 시도한 검색·확인한 URL 간략히 언급.
-
-[투자 리포트 요청]
-- "X 리포트", "X 투자 메모", "X 분석해줘" → generate_investment_report(ticker)
-  → top-tier 애널리스트 메모 (thesis / 최근 주가 동향 / 카탈리스트 워치 / 인사이더 /
-    리스크 / bottom line) ~15-25줄 자동 생성. 결과 그대로 사용자에게 전달.
-- "X PDF", "X thesis PDF로", "X 메모 파일로", "X report as PDF" → send_thesis_pdf(ticker)
-  → 메모 PDF 텔레그램에 첨부 발송. 도구가 직접 sendDocument 함 — 답변에는 "PDF 발송 완료"
-    한 줄 정도만. refresh=true 옵션은 사용자가 "새로 분석해서" 명시 시.
-- "오늘 신규 신고가 + 리포트", "신고가 종목들 분석해서 보내줘" 류 → 1) get_new_today_highs로
-  리스트 확보 → 2) 각 ticker에 generate_investment_report 호출(시총 큰 순 TOP 5) →
-  최종 답변에 리스트 요약 + 종목별 메모 차례로 포함.
-
-[카탈리스트 / 인사이더 매매 질문]
-- "X 다음 카탈리스트", "X 다가오는 일정", "X 언제 데이터 나와" → get_catalysts(ticker)
-  + **반드시 함께**: get_earnings_call_milestones(ticker) — investing.com transcripts
-    (분기 어닝콜 + Leerink/JPM/TD Cowen/Goldman 등 학회 발표) 자동 수집 →
-    forward-looking 멘션 (Q3 26 readout, 2H 26 initial data 등)
-  + 보강: get_ir_milestones(ticker) — IR 자료 PDF에서 추출 (접근 가능시)
-  + 추출 실패 시 search_company_milestones → fetch_url로 PR 본문 직접 읽기
-- "이번 주/달 PDUFA", "다가오는 PDUFA" → get_upcoming_pdufa(days)
-- "ASCO 언제", "올해 학회" → get_upcoming_conferences(area="oncology")
-- "X 인사이더 매매", "CEO 매매", "내부자 사고 있어?" → get_insider_trades(ticker)
-  → 매수(P-Purchase)와 매도(S-Sale) 합 비교, net_value 양수면 강한 시그널
-
-[용어 구분 — 매우 중요]
-- "메모" / "코멘트" / "보드 메모" / "내가 적은 노트" = 사용자가 대시보드에 직접 적은 노트.
-  → get_memos_for(ticker) — 즉시 응답, 항상 이걸로.
-- "리포트" / "thesis" / "투자 메모" / "분석" = Claude 생성 sell-side 메모 (1-3분 deep research).
-  → generate_investment_report(ticker) — 사용자가 명시적으로 "리포트", "thesis",
-    "분석", "PDF로" 요청 시에만.
-- 둘 헷갈리면 메모 쪽으로 — 절대 의도와 달리 generate_investment_report 호출하지 말 것.
-
-[포트폴리오 + 메모 조합 질문]
-- "내 MP 종목·비중·수익률·각 코멘트 보여줘" 식 → 1) portfolio_list로 MP 요약,
-  2) 각 holding ticker에 대해 get_memos_for() 호출 (각 1초). 절대 generate_investment_report
-  호출 금지 — 사용자가 "리포트"라고 말 안 했음.
-
-[가격 트리거]
-- "X 50달러 돌파 알람", "Y 30불 아래로 떨어지면 알려줘", "alert me when X above 100"
-  → create_price_trigger(ticker, direction='above'|'below', threshold, note)
-- "트리거 목록", "알람 뭐 걸어둔 거 있어?" → list_price_triggers()
-- "X 알람 해제", "#5 취소" → cancel_price_trigger(trigger_id)
-- 등록 후엔 PC 켜져있을 때 30분마다 + 부팅·로그온 즉시 체크 → 발동 시 자동 알림
-
-[조작 능력 — write tools]
-사용자가 명시 요청하면 대시보드를 직접 수정:
-- "X 관심종목에 추가" → watchlist_add
-- "X 관심종목 해제" → watchlist_remove
-- "X에 [메모내용] 적어줘" → memo_add
-- "MP1에 X 비중 N%로" → portfolio_set_holding
-- "MP1에서 X 빼줘" → portfolio_remove_holding
-- "X는 비-biotech이니까 제외" → excluded_add
-- 새 포트폴리오 → portfolio_create
-조작 후 "✓ N를 ~~ 했습니다" 짧게 확인.
-
-[대화 컨텍스트]
-이전 메시지의 종목/약물을 기억하고 후속 질문에서 활용.
-예: "VIR 알려줘" → 답변 → "지금 주가는?" → VIR의 주가로 이해.
-
-[답변 스타일]
-- 간결한 한국어, 핵심부터
-- 텔레그램 답변이라 markdown bold 가능, 표는 monospace
-- 모르거나 불확실하면 솔직히 말하고 추측 금지
-
-[종목 재무 수치 — 반드시 도구로]
-- 시총·주가·52w 고가/저가·1D/1M/1Y 수익률·EPS 등 **모든 재무 수치는 절대 학습 데이터로
-  추측하지 말 것**. 매번 get_ticker_info 또는 get_realtime_quote 호출 후 그 값만 인용.
-- 시총 단위 주의: get_ticker_info의 market_cap은 **$M (백만달러)** 단위. 4400 = $4.4B.
-  실시간 정확한 시총은 get_realtime_quote의 market_cap_b_usd (이미 $B 변환됨).
-- 종목 thesis 작성·종목 분석 시 반드시 첫 단계: get_realtime_quote 또는 get_ticker_info."""
+from bot_agent import CLAUDE_MODEL, SYSTEM_PROMPT, run_agent
 
 
 def _allowed_user_ids() -> set[str]:
@@ -317,76 +230,12 @@ MAX_HISTORY_TURNS = 6   # user-assistant 쌍 6개 = 메시지 12개까지 유지
 
 
 async def _ask_claude(user_msg: str, chat_id: int) -> str:
-    """Claude에게 tool 사용 권한 + 대화 히스토리 주고 답변 받기."""
-    client = _claude_client()
+    """공용 run_agent에 위임 — chat_id별 히스토리만 telegram 측에서 관리.
+    SYSTEM_PROMPT·도구·멀티스텝 루프는 bot_agent 단일 소스(웹 채팅과 100% 동일)."""
     history = _chat_history.get(chat_id, [])
-    messages: list[dict] = list(history) + [{"role": "user", "content": user_msg}]
-
-    final_text = ""
-    MAX_STEPS = 15
-    last_stop_reason = ""
-    for _step in range(MAX_STEPS):
-        resp = client.messages.create(
-            model=CLAUDE_MODEL,
-            max_tokens=4000,
-            system=SYSTEM_PROMPT,
-            tools=TOOL_DEFS,
-            messages=messages,
-        )
-        last_stop_reason = resp.stop_reason or ""
-        if resp.stop_reason == "tool_use":
-            tool_uses = [b for b in resp.content if b.type == "tool_use"]
-            messages.append({"role": "assistant", "content": resp.content})
-            tool_results = []
-            for tu in tool_uses:
-                log.info("tool call %d: %s args=%s", _step, tu.name,
-                         str(tu.input)[:200])
-                try:
-                    result = run_tool(tu.name, tu.input)
-                except Exception as e:
-                    result = {"error": f"{type(e).__name__}: {e}"}
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tu.id,
-                    "content": json.dumps(result, ensure_ascii=False, default=str)[:8000],
-                })
-            messages.append({"role": "user", "content": tool_results})
-            continue
-        # 도구 호출 안 함 — 텍스트 추출
-        for b in resp.content:
-            if b.type == "text":
-                final_text += b.text
-        break
-
-    # 도구 호출 한도 초과로 텍스트 없이 빠져나옴 → 마지막에 한 번 더 강제 응답 요청
-    if not final_text and last_stop_reason == "tool_use":
-        log.warning("tool_use loop exhausted (%d steps) — forcing final text", MAX_STEPS)
-        messages.append({
-            "role": "user",
-            "content": "더 이상 도구 호출 없이, 지금까지 모은 데이터로 사용자에게 최종 답변을 한국어로 작성하세요.",
-        })
-        try:
-            resp = client.messages.create(
-                model=CLAUDE_MODEL,
-                max_tokens=4000,
-                system=SYSTEM_PROMPT,
-                messages=messages,   # tools 빼서 강제 텍스트만 응답
-            )
-            for b in resp.content:
-                if b.type == "text":
-                    final_text += b.text
-        except Exception as e:
-            log.exception("forced final attempt 실패: %s", e)
-            final_text = f"(응답 생성 실패: {e})"
-
-    # 히스토리 업데이트 — 최종 텍스트 페어만 보관 (tool_use 중간 단계 제외)
-    new_history = (history + [
-        {"role": "user", "content": user_msg},
-        {"role": "assistant", "content": final_text or "(응답 없음)"},
-    ])[-MAX_HISTORY_TURNS * 2:]
-    _chat_history[chat_id] = new_history
-
-    return final_text or "(응답 없음)"
+    text, new_history = run_agent(user_msg, history)
+    _chat_history[chat_id] = new_history[-MAX_HISTORY_TURNS * 2:]
+    return text
 
 
 def _reset_history(chat_id: int) -> None:

@@ -1284,7 +1284,7 @@ def render_main_page():
     )
 
     # 탭 — 컴팩트 라디오 (사이드바 버튼이 외부에서 변경 가능)
-    tab_options = ["high", "top_movers", "daily_news", "memos", "portfolios", "catalysts"]
+    tab_options = ["high", "top_movers", "daily_news", "memos", "portfolios", "catalysts", "chat"]
     tab_labels = {
         "high": "📈 52주 신고가",
         "top_movers": "🚀 상승폭 최대",
@@ -1292,6 +1292,7 @@ def render_main_page():
         "memos": "📝 메모 타임라인",
         "portfolios": "💼 MP 현황",
         "catalysts": "📅 카탈리스트",
+        "chat": "💬 AI 챗",
     }
     # 사이드바에서 _force_tab을 set했으면 위젯 상태 강제 동기화
     if "_force_tab" in st.session_state:
@@ -1320,6 +1321,8 @@ def render_main_page():
         _section_portfolios()
     elif chosen == "catalysts":
         _section_catalysts()
+    elif chosen == "chat":
+        _section_chat()
 
 
 # ───────────────────────── 카탈리스트 캘린더 ─────────────────────────
@@ -1646,6 +1649,43 @@ def _section_portfolios():
 def _cached_daily_news(days: int):
     from news import fetch_global_healthcare_news
     return fetch_global_healthcare_news(days=days, max_items=200)
+
+
+def _section_chat():
+    """탭 — 텔레그램 봇과 동일한 AI 리서치 애널리스트 채팅창 (bot_agent 공용)."""
+    import bot_agent
+    st.caption(
+        "💬 텔레그램 봇과 **동일한** AI 애널리스트입니다. 약물·기전(MOA)·모달리티·적응증·"
+        "임상·논문·프리프린트·학회(ASCO/AACR/ESMO/ASH)·종목까지 자유롭게 질문하세요 "
+        "(상장 여부 무관). 같은 도구·프롬프트를 씁니다."
+    )
+    if st.button("🗑️ 대화 초기화", key="chat_reset"):
+        st.session_state.pop("chat_history", None)
+        st.rerun()
+    if "chat_history" not in st.session_state:
+        st.session_state["chat_history"] = []
+
+    for m in st.session_state["chat_history"]:
+        with st.chat_message(m["role"]):
+            st.markdown(m["content"])
+
+    prompt = st.chat_input(
+        "질문 (예: KRAS G12D degrader 기전 / ASCO 2026 daraxonrasib 데이터 / RVMD 분석)"
+    )
+    if prompt:
+        st.session_state["chat_history"].append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        with st.chat_message("assistant"):
+            with st.spinner("조사 중… (도구 호출, 최대 1-2분)"):
+                try:
+                    text, _ = bot_agent.run_agent(
+                        prompt, st.session_state["chat_history"][:-1]
+                    )
+                except Exception as e:
+                    text = f"⚠️ 오류: {type(e).__name__}: {e}"
+            st.markdown(text)
+        st.session_state["chat_history"].append({"role": "assistant", "content": text})
 
 
 def _section_daily_news():
