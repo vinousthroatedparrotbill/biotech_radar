@@ -297,18 +297,27 @@ def send_document(path: str, caption: str = "",
 
 
 def send_photo(path: str, caption: str = "", parse_mode: str = "HTML") -> dict:
-    """이미지 첨부 발송 — sendPhoto API (봇 차트 등)."""
+    """이미지 첨부 발송 — sendPhoto API. 캡션 HTML 파싱 400이면 평문으로 재시도,
+    그래도 실패하면 예외(호출자가 인지하도록 — 조용한 실패 방지)."""
     token, chat_id = _load_env()
     url = f"https://api.telegram.org/bot{token}/sendPhoto"
     safe_cap, mode = _safe_caption(caption, limit=1024)
     if parse_mode is None:
         mode = None
     with open(path, "rb") as fp:
-        files = {"photo": fp}
         data = {"chat_id": chat_id, "caption": safe_cap}
         if mode:
             data["parse_mode"] = mode
-        r = requests.post(url, data=data, files=files, timeout=60)
+        r = requests.post(url, data={**data}, files={"photo": fp}, timeout=60)
+    if r.status_code == 400 and mode:
+        import re as _re
+        plain = _re.sub(r"<[^>]+>", "", caption)[:1024]
+        with open(path, "rb") as fp:
+            r = requests.post(url, data={"chat_id": chat_id, "caption": plain},
+                              files={"photo": fp}, timeout=60)
+    if not r.ok:
+        raise requests.HTTPError(
+            f"{r.status_code} sendPhoto: {r.text[:300]}", response=r)
     return r.json()
 
 
@@ -662,7 +671,8 @@ def send_ticker_cards(df, memo_tickers=None, max_n: int = 15):
                 cap += f" · {lab} {v:+.1f}%"
         for nz in _curated_news(tk, name, 2):
             t = _esc_html(nz["title"][:90])
-            cap += (f"\n📰 <a href=\"{nz['url']}\">{t}</a>" if nz["url"] else f"\n📰 {t}")
+            u = (nz["url"] or "").replace("&", "&amp;").replace('"', "%22")
+            cap += (f"\n📰 <a href=\"{u}\">{t}</a>" if u else f"\n📰 {t}")
         cap = cap[:1024]
         path, _last = bt.render_candle_png(tk, "2y")
         try:
@@ -731,7 +741,8 @@ def send_card(ticker: str) -> dict:
             cap += f" · {lab} {v:+.1f}%"
     for nz in _curated_news(tk, name, 2):
         t = _esc_html(nz["title"][:90])
-        cap += (f"\n📰 <a href=\"{nz['url']}\">{t}</a>" if nz["url"] else f"\n📰 {t}")
+        u = (nz["url"] or "").replace("&", "&amp;").replace('"', "%22")
+        cap += (f"\n📰 <a href=\"{u}\">{t}</a>" if u else f"\n📰 {t}")
     cap = cap[:1024]
     path, _last = bt.render_candle_png(tk, "2y")
     try:
