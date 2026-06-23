@@ -1026,6 +1026,13 @@ def _render_memo_section(ticker: str):
             except Exception as e:
                 st.error(f"실패: {e}")
 
+    _memo_fragment(ticker)
+
+
+@st.fragment
+def _memo_fragment(ticker: str):
+    """모달 메모 영역 — fragment로 격리해 메모 추가/수정/삭제 시 대시보드 전체 rerun 방지
+    (모달 안에서 이 영역만 갱신)."""
     # 새 메모
     with st.form(f"new_memo_{ticker}", clear_on_submit=True):
         new_body = st.text_area("새 메모", key=f"new_body_{ticker}",
@@ -1033,7 +1040,7 @@ def _render_memo_section(ticker: str):
         if st.form_submit_button("추가"):
             if new_body.strip():
                 memo_add(ticker, new_body)
-                st.rerun()
+                st.rerun(scope="fragment")
 
     # 기존 메모들
     memos = list_for(ticker)
@@ -1056,19 +1063,19 @@ def _render_memo_section(ticker: str):
                 if cc[0].button("저장", key=f"save_{m['id']}", type="primary"):
                     memo_update(m["id"], txt)
                     st.session_state[edit_key] = False
-                    st.rerun()
+                    st.rerun(scope="fragment")
                 if cc[1].button("취소", key=f"cancel_{m['id']}"):
                     st.session_state[edit_key] = False
-                    st.rerun()
+                    st.rerun(scope="fragment")
             else:
                 st.markdown(m["body"])
                 cc = st.columns([1, 1, 6])
                 if cc[0].button("수정", key=f"editbtn_{m['id']}"):
                     st.session_state[edit_key] = True
-                    st.rerun()
+                    st.rerun(scope="fragment")
                 if cc[1].button("삭제", key=f"del_{m['id']}"):
                     memo_delete(m["id"])
-                    st.rerun()
+                    st.rerun(scope="fragment")
 
 
 # ───────────────────────── main: 신고가 테이블 페이지 ─────────────────────────
