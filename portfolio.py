@@ -57,7 +57,15 @@ def get(portfolio_id: int) -> dict | None:
 
 # ───────────────────────── Holding CRUD ─────────────────────────
 def _fetch_current_price(ticker: str) -> float | None:
-    """현재가 fetch — high_low_cache 우선, 없으면 yfinance live."""
+    """현재가 fetch — 토스 live 우선, 없으면 high_low_cache, 그다음 yfinance."""
+    try:
+        import toss_market as tm
+        if tm.available():
+            p = tm.price(ticker)
+            if p:
+                return float(p)
+    except Exception:
+        pass
     with connect() as conn:
         r = conn.execute(
             "SELECT today_close FROM high_low_cache "

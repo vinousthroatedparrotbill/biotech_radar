@@ -24,6 +24,16 @@ def fetch_ohlcv(ticker: str, period: PeriodKey, interval: Interval = "1d") -> pd
     interval: 1d/1wk/1mo. period: 1d~5y.
     1d period + 1d interval은 단일 점이므로 yfinance가 1m 분봉으로 자동 처리(1d period면 1m default).
     """
+    # 토스증권 우선 — 클라우드 IP 차단 없음(토큰 인증). 미지원 심볼/실패 시 yfinance fallback.
+    try:
+        import toss_market as tm
+        if tm.available():
+            tdf = tm.get_ohlcv(ticker, period, interval)
+            if tdf is not None and not tdf.empty:
+                return tdf
+    except Exception:
+        pass
+
     end = datetime.now()
     if period == "1d":
         df = yf.download(ticker, period="1d", interval="5m",
