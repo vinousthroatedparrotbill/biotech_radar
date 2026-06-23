@@ -12,10 +12,8 @@ Yahoo Finance 레이트리밋(Too Many Requests / 429) 완화용.
 from __future__ import annotations
 
 import logging
-import os
 import time
 
-import pandas as pd
 import yfinance as yf
 
 log = logging.getLogger(__name__)
@@ -24,65 +22,6 @@ _SESSION = None          # curl_cffi 세션 싱글톤 (False = 생성 실패 sen
 _PATCHED = False
 _RETRIES = 4
 _BASE_DELAY = 2.0
-_CLOUD_WARNED = False
-
-
-def _live_disabled() -> bool:
-    """라이브 yfinance 호출을 막아야 하는 환경인지(주로 Streamlit Cloud).
-
-    Yahoo Finance는 데이터센터/클라우드 IP 대역을 통째로 throttle 하므로,
-    curl_cffi 임퍼소네이션으로도 클라우드에선 거의 항상 rate-limit 된다.
-    → 클라우드에선 라이브 호출을 단락하고 DB 캐시에 의존한다.
-
-    판정: 환경변수 DISABLE_LIVE_YF로 명시 override(1/0), 없으면
-    Streamlit Community Cloud 마커(/mount/src, HOME=/home/appuser) 자동 감지.
-    매 호출 시 평가 — env가 늦게 주입되는 경우(st.secrets→os.environ) 대응.
-    """
-    v = os.environ.get("DISABLE_LIVE_YF", "").strip().lower()
-    if v in ("1", "true", "yes", "on"):
-        return True
-    if v in ("0", "false", "no", "off"):
-        return False
-    try:
-        if os.path.isdir("/mount/src"):
-            return True
-        if os.environ.get("HOME") == "/home/appuser":
-            return True
-    except Exception:
-        pass
-    return False
-
-
-def _warn_cloud_skip(what: str) -> None:
-    global _CLOUD_WARNED
-    if not _CLOUD_WARNED:
-        log.warning("클라우드 환경 감지 — 라이브 yfinance(%s) 단락, DB 캐시 사용 "
-                    "(차트/실시간은 로컬에서만). 끄려면 DISABLE_LIVE_YF=0", what)
-        _CLOUD_WARNED = True
-
-
-class _StubTicker:
-    """클라우드용 no-op Ticker — 모든 데이터 접근이 빈 값. yfinance 미호출."""
-    def __init__(self, *a, **k):
-        pass
-
-    @property
-    def info(self) -> dict:
-        return {}
-
-    @property
-    def fast_info(self) -> dict:
-        return {}
-
-    @property
-    def news(self) -> list:
-        return []
-
-    def history(self, *a, **k) -> "pd.DataFrame":
-        return pd.DataFrame()
-
-    def __getattr__(self, name):
-        return lambda *a, **k: None
 
 
 def session():
@@ -131,18 +70,12 @@ def patch() -> None:
     _orig_ticker = yf.Ticker
 
     def download(*args, **kwargs):
-        if _live_disabled():                       # 클라우드: 라이브 단락
-            _warn_cloud_skip("download")
-            return pd.DataFrame()
         if "session" not in kwargs and session() is not None:
             kwargs["session"] = session()
         kwargs.setdefault("progress", False)
         return _with_retry(_orig_download, *args, **kwargs)
 
     def Ticker(*args, **kwargs):
-        if _live_disabled():                       # 클라우드: no-op Ticker
-            _warn_cloud_skip("Ticker")
-            return _StubTicker()
         if "session" not in kwargs and session() is not None:
             kwargs["session"] = session()
         return _orig_ticker(*args, **kwargs)
