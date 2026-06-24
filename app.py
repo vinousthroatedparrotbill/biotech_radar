@@ -632,30 +632,21 @@ def _cached_recent_articles(ticker: str, name: str, days: int):
         out = []
         try:
             import kr_news
-            for it in kr_news.for_query(name, limit=20, days=max(days, 14)):
+            # 1차: 네이버 금융 종목뉴스 (종목코드 기반 — 가장 풍부·정확)
+            for it in kr_news.naver_finance_news(_t, limit=20):
+                out.append({"title": it["title"], "link": it["link"],
+                            "source": it["source"], "published": it.get("published", "")})
+            # 보강: 한국 바이오 전문매체 (제목-회사명 매칭)
+            for it in kr_news.for_query(name, limit=10, days=30):
                 out.append({"title": it["title"], "link": it["link"],
                             "source": it["source"],
                             "published": it["published"].strftime("%Y-%m-%d")
                                          if it.get("published") else ""})
         except Exception:
             pass
-        try:
-            from news import fetch_google_news
-            for it in fetch_google_news(name, days=days, limit=20):
-                out.append({"title": it.get("title", ""), "link": it.get("link", ""),
-                            "source": it.get("source", "Google News"),
-                            "published": (it.get("published") or "")[:10]})
-        except Exception:
-            pass
-        _nm = str(name or "").strip()
-        _toks = [w for w in _nm.split() if len(w) >= 2]
-        _key = max(_toks, key=len) if _toks else _nm
         seen, ded = set(), []
         for it in out:
-            title = it.get("title") or ""
-            if _key and _key not in title and _nm not in title:
-                continue   # 제목에 회사명 없으면 제외 (타사 묶인 roundup 배제)
-            k = title[:60]
+            k = (it.get("title") or "")[:50]
             if k and k not in seen:
                 seen.add(k)
                 ded.append(it)

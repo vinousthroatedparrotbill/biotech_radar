@@ -1715,6 +1715,21 @@ TOOL_DEFS = [
         },
     },
     {
+        "name": "get_kr_news",
+        "description": "한국 종목/이슈 뉴스 — 네이버 금융 종목별 뉴스(6자리 코드 기반, 가장 풍부·정확) "
+                       "+ 한국 바이오 전문매체(히트뉴스·팜뉴스·청년의사·더바이오). "
+                       "**한국 종목/이슈 뉴스는 영문 소스(Finviz/Yahoo) 대신 반드시 이걸 사용.** "
+                       "한국 상장 종목이면 ticker(6자리), 자유 키워드면 query.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string", "description": "6자리 한국 종목코드(선택)"},
+                "query": {"type": "string", "description": "한국어 키워드(선택)"},
+                "limit": {"type": "integer", "default": 15},
+            },
+        },
+    },
+    {
         "name": "get_upcoming_pdufa",
         "description": "Upcoming FDA PDUFA decisions within next N days.",
         "input_schema": {
@@ -1999,6 +2014,38 @@ def get_dart_disclosures(ticker: str, days: int = 30, types: str = None):
         return {"error": f"{type(e).__name__}: {e}"}
 
 
+def get_kr_news(ticker: str = "", query: str = "", limit: int = 15):
+    """한국 종목/이슈 뉴스 — 네이버 금융 종목뉴스(6자리 코드 기반, 가장 풍부·정확) +
+    한국 바이오 전문매체(히트뉴스·팜뉴스·청년의사·더바이오). 한국 건은 영문 소스 대신 이걸 사용."""
+    try:
+        import kr_news
+        out, t = [], str(ticker or "").strip()
+        if t.isdigit() and len(t) == 6:
+            out += kr_news.naver_finance_news(t, limit=limit)
+        if query and query.strip():
+            out += kr_news.for_query(query, limit=10, days=30)
+        elif t.isdigit() and len(t) == 6:
+            try:
+                from db import connect
+                with connect() as c:
+                    row = c.execute(
+                        "SELECT name FROM ticker_master WHERE ticker=?", (t,)).fetchone()
+                if row and row["name"]:
+                    out += kr_news.for_query(row["name"], limit=8, days=30)
+            except Exception:
+                pass
+        seen, ded = set(), []
+        for it in out:
+            k = (it.get("title") or "")[:50]
+            if k and k not in seen:
+                seen.add(k)
+                ded.append({"title": it.get("title"), "source": it.get("source"),
+                            "date": it.get("published"), "link": it.get("link")})
+        return {"news": ded[:limit]} if ded else {"note": "한국 뉴스 없음"}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
 def run_tool(name: str, args: dict):
     """Tool name으로 디스패치."""
     funcs = {
@@ -2020,6 +2067,7 @@ def run_tool(name: str, args: dict):
         "get_premarket_movers": get_premarket_movers,
         "get_market_movers": get_market_movers,
         "get_dart_disclosures": get_dart_disclosures,
+        "get_kr_news": get_kr_news,
         # write
         "watchlist_add": watchlist_add,
         "watchlist_remove": watchlist_remove,

@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from xml.etree import ElementTree as ET
@@ -98,6 +99,49 @@ def for_query(query: str, limit: int = 10, days: int = 30) -> list[dict]:
         # 제목 매칭만 — 여러 종목 묶인 roundup 기사 오탐 방지(요약 매칭 제거)
         if q in it["title"] or key in it["title"]:
             out.append(it)
+        if len(out) >= limit:
+            break
+    return out
+
+
+import html as _html
+
+
+def _clean(s: str) -> str:
+    return _html.unescape(re.sub(r"<[^>]+>", "", s or "")).strip()
+
+
+def naver_finance_news(code: str, limit: int = 15) -> list[dict]:
+    """네이버 금융 종목별 뉴스 — **종목코드 기반**이라 이름 오탐 없음(가장 풍부·정확).
+    [{source, title, link, summary, published}]."""
+    code = str(code).strip()
+    if not (code.isdigit() and len(code) == 6):
+        return []
+    url = (f"https://finance.naver.com/item/news_news.naver?code={code}"
+           f"&page=1&sm=title_entity_id.basic")
+    try:
+        r = requests.get(url, headers={**_HDR, "Referer": "https://finance.naver.com/"},
+                         timeout=15)
+        r.encoding = "euc-kr"
+        html = r.text
+    except Exception as e:
+        log.warning("네이버 종목뉴스 실패 %s: %s", code, e)
+        return []
+    out = []
+    for row in re.split(r"<tr", html)[1:]:        # 행 단위 — 컬럼 순서/구조 변화에 견고
+        mt = re.search(r'class="title">\s*<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', row, re.S)
+        if not mt:
+            continue
+        title = _clean(mt.group(2))
+        if not title:
+            continue
+        href = mt.group(1)
+        link = ("https://finance.naver.com" + href) if href.startswith("/") else href
+        info = re.search(r'class="info"[^>]*>(.*?)</', row, re.S)
+        date = re.search(r'class="date"[^>]*>(.*?)</', row, re.S)
+        out.append({"source": _clean(info.group(1)) if info else "네이버",
+                    "title": title, "link": link, "summary": "",
+                    "published": _clean(date.group(1)) if date else ""})
         if len(out) >= limit:
             break
     return out
