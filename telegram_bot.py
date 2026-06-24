@@ -296,6 +296,63 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await _send_reply(update, reply)
 
 
+async def handle_file(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """문서(PDF/텍스트)·사진 업로드 → run_agent 첨부로 분석 (웹챗과 동일 메커니즘)."""
+    if not _is_authorized(update):
+        if update.message and update.message.chat.type == "private":
+            await update.message.reply_text("Unauthorized")
+        return
+    msg = update.message
+    # 그룹에선 캡션에 봇 멘션이 있을 때만 (스팸 방지). DM은 항상 처리.
+    if msg.chat.type in ("group", "supergroup"):
+        bu = (ctx.bot.username or "").lower()
+        if not (bu and f"@{bu}" in (msg.caption or "").lower()):
+            return
+    import base64
+    kind = name = media_type = None
+    try:
+        if msg.document:
+            doc = msg.document
+            data = bytes(await (await doc.get_file()).download_as_bytearray())
+            name = doc.file_name or "file"
+            ext = name.lower().rsplit(".", 1)[-1] if "." in name else ""
+            mime = (doc.mime_type or "").lower()
+            if ext == "pdf" or "pdf" in mime:
+                kind = "pdf"
+            elif ext in ("png", "jpg", "jpeg") or mime.startswith("image"):
+                kind = "image"
+                media_type = "image/png" if ext == "png" else "image/jpeg"
+            else:
+                kind = "text"
+        elif msg.photo:
+            data = bytes(await (await msg.photo[-1].get_file()).download_as_bytearray())
+            kind, media_type, name = "image", "image/jpeg", "photo.jpg"
+        else:
+            return
+    except Exception as e:
+        await msg.reply_text(f"파일 다운로드 실패: {e}")
+        return
+
+    if kind in ("pdf", "image"):
+        att = [{"kind": kind, "name": name, "media_type": media_type,
+                "data": base64.b64encode(data).decode()}]
+    else:
+        att = [{"kind": "text", "name": name,
+                "text": data.decode("utf-8", errors="replace")[:20000]}]
+    caption = (msg.caption or "").strip() or "첨부한 파일을 읽고 분석해줘."
+    await msg.chat.send_action(ChatAction.TYPING)
+    chat_id = msg.chat.id
+    try:
+        history = _chat_history.get(chat_id, [])
+        text, new_history = run_agent(caption, history, attachments=att)
+        _chat_history[chat_id] = new_history[-MAX_HISTORY_TURNS * 2:]
+    except Exception as e:
+        log.exception("file analysis error")
+        await msg.reply_text(f"분석 실패: {e}")
+        return
+    await _send_reply(update, text)
+
+
 async def _send_reply(update: Update, text: str) -> None:
     """최종 답변 전송 — 레거시 Markdown 파싱 실패(비대칭 *,_,[ 등) 시
     일반 텍스트로 자동 fallback. 둘 다 실패해도 silent로 안 끝나게 로깅."""
@@ -328,6 +385,7 @@ def main() -> None:
     app.add_handler(CommandHandler("help", cmd_start))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, handle_file))
 
     async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         log.exception("unhandled handler error", exc_info=context.error)
