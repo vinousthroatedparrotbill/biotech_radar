@@ -228,6 +228,20 @@ def discover(ticker: str) -> dict[str, str]:
       Step 5: 못 찾으면 → IR root 위에 /events-and-presentations 같은 경로 프로빙
       Step 6: 그래도 못 찾으면 IR root 자체를 ir_url로 반환
     """
+    # 한국(6자리): yfinance 홈페이지 없음 → DART 회사개황 hm_url을 IR/홈페이지로.
+    _t = str(ticker).strip()
+    if _t.isdigit() and len(_t) == 6:
+        try:
+            import dart
+            if not dart.available():
+                return {"_error": "DART_API_KEY 미설정 — 한국 IR은 DART 회사정보로 매칭됨"}
+            hm = (dart.company_info(_t) or {}).get("hm_url")
+            if hm:
+                return {"website": hm, "ir_url": hm}
+            return {"_error": f"DART에 {_t} 홈페이지 정보 없음 — 수동 URL 입력 사용"}
+        except Exception as e:
+            return {"_error": f"DART 회사정보 실패: {e}"}
+
     web = _company_website(ticker)
     if not web:
         return {"_error": f"yfinance에 {ticker} 홈페이지 없음"}

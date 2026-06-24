@@ -94,6 +94,28 @@ def corp_code(ticker: str) -> str | None:
     return corp_code_map().get(str(ticker).strip())
 
 
+def company_info(ticker: str) -> dict:
+    """DART 회사개황 — {hm_url(홈페이지), corp_name, corp_name_eng, ceo}. KR IR 매칭용."""
+    cc = corp_code(ticker)
+    if not cc:
+        return {}
+    try:
+        r = requests.get(f"{_BASE}/company.json",
+                         params={"crtfc_key": _key(), "corp_code": cc}, timeout=20)
+        r.raise_for_status()
+        j = r.json()
+    except Exception as e:
+        log.warning("DART company %s: %s", ticker, e)
+        return {}
+    if j.get("status") != "000":
+        return {}
+    hm = (j.get("hm_url") or "").strip()
+    if hm and not hm.startswith("http"):
+        hm = "https://" + hm
+    return {"hm_url": hm, "corp_name": j.get("corp_name"),
+            "corp_name_eng": j.get("corp_name_eng"), "ceo": j.get("ceo_nm")}
+
+
 def recent_disclosures(ticker: str, days: int = 30,
                        types: str | None = None, limit: int = 30) -> list[dict]:
     """종목의 최근 공시 [{date, title, url, filer, type}] (최신순).
