@@ -111,21 +111,15 @@ def _clean(s: str) -> str:
     return _html.unescape(re.sub(r"<[^>]+>", "", s or "")).strip()
 
 
-def naver_finance_news(code: str, limit: int = 15) -> list[dict]:
-    """네이버 금융 종목별 뉴스 — **종목코드 기반**이라 이름 오탐 없음(가장 풍부·정확).
-    [{source, title, link, summary, published}]."""
-    code = str(code).strip()
-    if not (code.isdigit() and len(code) == 6):
-        return []
-    url = (f"https://finance.naver.com/item/news_news.naver?code={code}"
-           f"&page=1&sm=title_entity_id.basic")
+def _naver_finance_rows(url: str, limit: int) -> list[dict]:
+    """네이버 금융 종목 페이지(뉴스/공시) 표 파싱 — [{source,title,link,summary,published}]."""
     try:
         r = requests.get(url, headers={**_HDR, "Referer": "https://finance.naver.com/"},
                          timeout=15)
         r.encoding = "euc-kr"
         html = r.text
     except Exception as e:
-        log.warning("네이버 종목뉴스 실패 %s: %s", code, e)
+        log.warning("네이버 금융 요청 실패: %s", e)
         return []
     out = []
     for row in re.split(r"<tr", html)[1:]:        # 행 단위 — 컬럼 순서/구조 변화에 견고
@@ -145,6 +139,26 @@ def naver_finance_news(code: str, limit: int = 15) -> list[dict]:
         if len(out) >= limit:
             break
     return out
+
+
+def naver_finance_news(code: str, limit: int = 15) -> list[dict]:
+    """네이버 금융 종목별 뉴스 — 종목코드 기반이라 이름 오탐 없음(가장 풍부·정확)."""
+    code = str(code).strip()
+    if not (code.isdigit() and len(code) == 6):
+        return []
+    return _naver_finance_rows(
+        f"https://finance.naver.com/item/news_news.naver?code={code}"
+        f"&page=1&sm=title_entity_id.basic", limit)
+
+
+def naver_disclosures(code: str, limit: int = 20) -> list[dict]:
+    """네이버 금융 종목 공시(전자공시) — **DART API보다 실시간**.
+    방금 올라온 유상증자·주요사항·거래소 공시도 즉시 잡힘(DART OpenAPI는 인덱싱 지연)."""
+    code = str(code).strip()
+    if not (code.isdigit() and len(code) == 6):
+        return []
+    return _naver_finance_rows(
+        f"https://finance.naver.com/item/news_notice.naver?code={code}&page=1", limit)
 
 
 if __name__ == "__main__":

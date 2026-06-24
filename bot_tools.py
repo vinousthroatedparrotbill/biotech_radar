@@ -1699,7 +1699,9 @@ TOOL_DEFS = [
     },
     {
         "name": "get_dart_disclosures",
-        "description": "한국 종목(KR, 6자리 코드) DART 전자공시 최근 목록 — 유상증자/CB·BW, "
+        "description": "한국 종목(KR, 6자리 코드) 공시 — **네이버 실시간 종목공시 + DART 병합** "
+                       "(당일 막 올라온 유증/주요사항도 포함; DART API 인덱싱 지연 보완). "
+                       "유상증자/CB·BW, "
                        "기술이전·단일판매공급계약(수주), 식약처 품목허가, 임상 관련 주요사항보고, "
                        "잠정실적, 임원·주요주주 소유보고 등 한국 카탈리스트·재무의 1차 출처. "
                        "types: 'B'(주요사항보고)·'I'(거래소)·'A'(정기)·'D'(지분) 단일문자, 생략 시 전체. "
@@ -1999,19 +2001,39 @@ TOOL_DEFS = [
 
 
 def get_dart_disclosures(ticker: str, days: int = 30, types: str = None):
-    """DART 전자공시 — 한국 종목 최근 공시(유증·기술이전·식약처 허가·수주·실적·임상 주요사항).
-    한국 카탈리스트/재무의 1차 출처. 미국·비상장은 corp_code 없어 빈 결과."""
+    """한국 종목 공시 — **네이버 실시간 종목공시 + DART 전자공시 병합**.
+    당일 막 올라온 유상증자·주요사항·거래소 공시도 포함(DART OpenAPI는 인덱싱 지연이 있어
+    네이버가 먼저 잡음). 미국·비상장은 빈 결과."""
+    out = []
+    # 1) 네이버 종목 공시 — 실시간(당일 공시 포함)
+    try:
+        import kr_news
+        for d in kr_news.naver_disclosures(ticker, limit=20):
+            out.append({"date": (d.get("published") or "").replace(".", "-"),
+                        "title": d["title"], "url": d["link"], "source": "네이버공시"})
+    except Exception:
+        pass
+    # 2) DART 전자공시 — 상세/뷰어 링크(지연 가능)
     try:
         import dart
-        if not dart.available():
-            return {"error": "DART_API_KEY 미설정 — .env에 추가 필요"}
-        items = dart.recent_disclosures(ticker, days=days, types=types, limit=30)
-        if not items:
-            return {"ticker": ticker, "disclosures": [],
-                    "note": "공시 없음 또는 비상장/미국(corp_code 없음)"}
-        return {"ticker": ticker, "disclosures": items}
+        if dart.available():
+            for d in dart.recent_disclosures(ticker, days=days, types=types, limit=30):
+                out.append({"date": d["date"], "title": d["title"], "url": d["url"],
+                            "filer": d.get("filer", ""), "source": "DART"})
+        elif not out:
+            return {"error": "DART_API_KEY 미설정 — 네이버 공시도 미수집"}
     except Exception as e:
-        return {"error": f"{type(e).__name__}: {e}"}
+        if not out:
+            return {"error": f"{type(e).__name__}: {e}"}
+    if not out:
+        return {"ticker": ticker, "disclosures": [], "note": "공시 없음 또는 비상장/미국"}
+    seen, ded = set(), []
+    for d in sorted(out, key=lambda x: x.get("date", ""), reverse=True):
+        k = "".join((d.get("title") or "").split())[:40]
+        if k and k not in seen:
+            seen.add(k)
+            ded.append(d)
+    return {"ticker": ticker, "disclosures": ded}
 
 
 def get_kr_news(ticker: str = "", query: str = "", limit: int = 15):
