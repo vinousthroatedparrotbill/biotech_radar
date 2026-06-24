@@ -166,6 +166,11 @@ FDA 라벨은 web_search로 DailyMed/accessdata.fda.gov, 미국 공시는 SEC ED
 [대화 컨텍스트]
 이전 메시지의 종목/약물을 기억하고 후속 질문에서 활용.
 
+[파일 첨부]
+사용자가 PDF·이미지·텍스트를 첨부하면 너는 그 내용을 **직접 읽고 분석할 수 있다**(문서/비전).
+"파일을 못 읽는다"고 하거나 내용을 지어내지 마라. 현재 메시지에 파일이 안 붙어있으면
+(예: "아까 보낸 그 PDF") 추측하지 말고 "질문과 함께 파일을 다시 첨부해 달라"고 요청하라.
+
 [답변 스타일]
 - 간결한 한국어, 핵심부터. markdown bold/표 가능.
 - 모르거나 불확실하면 솔직히 말하고 추측 금지. 출처(논문/임상/URL) 간략 명시.
@@ -222,8 +227,9 @@ def run_agent(user_msg: str, history: list[dict] | None = None,
 
     for _step in range(max_steps):
         resp = client.messages.create(
-            model=CLAUDE_MODEL, max_tokens=12000,
+            model=CLAUDE_MODEL, max_tokens=16000,
             thinking={"type": "adaptive"},
+            output_config={"effort": "high"},
             system=SYSTEM_PROMPT, tools=TOOL_DEFS + WEB_TOOLS, messages=messages,
         )
         last_stop = resp.stop_reason or ""
@@ -243,7 +249,7 @@ def run_agent(user_msg: str, history: list[dict] | None = None,
                     out = {"error": f"{type(e).__name__}: {e}"}
                 results.append({
                     "type": "tool_result", "tool_use_id": tu.id,
-                    "content": json.dumps(out, ensure_ascii=False, default=str)[:8000],
+                    "content": json.dumps(out, ensure_ascii=False, default=str)[:20000],
                 })
             messages.append({"role": "user", "content": results})
             continue

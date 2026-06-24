@@ -388,7 +388,7 @@ def generate(ticker: str, max_tool_calls: int = 15) -> str:
                         "type": "tool_result",
                         "tool_use_id": tu.id,
                         "content": _json.dumps(result, ensure_ascii=False,
-                                               default=str)[:10000],
+                                               default=str)[:20000],
                     })
                 messages.append({"role": "user", "content": tool_results})
                 continue

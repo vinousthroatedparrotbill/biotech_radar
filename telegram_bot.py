@@ -229,11 +229,15 @@ _chat_history: dict[int, list[dict]] = {}
 MAX_HISTORY_TURNS = 6   # user-assistant 쌍 6개 = 메시지 12개까지 유지
 
 
-async def _ask_claude(user_msg: str, chat_id: int) -> str:
+# 직전 업로드 파일 — 다음 텍스트 질문 1턴에 자동 재첨부(멀티턴 "그 pdf 분석해줘" 대응)
+_pending_file: dict[int, list] = {}
+
+
+async def _ask_claude(user_msg: str, chat_id: int, attachments=None) -> str:
     """공용 run_agent에 위임 — chat_id별 히스토리만 telegram 측에서 관리.
     SYSTEM_PROMPT·도구·멀티스텝 루프는 bot_agent 단일 소스(웹 채팅과 100% 동일)."""
     history = _chat_history.get(chat_id, [])
-    text, new_history = run_agent(user_msg, history)
+    text, new_history = run_agent(user_msg, history, attachments=attachments)
     _chat_history[chat_id] = new_history[-MAX_HISTORY_TURNS * 2:]
     return text
 
@@ -284,8 +288,9 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
     # 2) 자유 텍스트 → Claude (chat_id별 대화 히스토리 유지)
     chat_id = update.message.chat.id
+    att = _pending_file.pop(chat_id, None)   # 직전 업로드 파일을 이 질문에 1회 재첨부
     try:
-        reply = await _ask_claude(text, chat_id)
+        reply = await _ask_claude(text, chat_id, attachments=att)
     except Exception as e:
         log.exception("Claude error")
         await update.message.reply_text(f"실패: {e}")
@@ -339,6 +344,8 @@ async def handle_file(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         att = [{"kind": "text", "name": name,
                 "text": data.decode("utf-8", errors="replace")[:20000]}]
+    log.info("file received: name=%s kind=%s bytes=%d caption=%r",
+             name, kind, len(data) if data else 0, (msg.caption or "")[:60])
     caption = (msg.caption or "").strip() or "첨부한 파일을 읽고 분석해줘."
     await msg.chat.send_action(ChatAction.TYPING)
     chat_id = msg.chat.id
@@ -346,6 +353,7 @@ async def handle_file(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         history = _chat_history.get(chat_id, [])
         text, new_history = run_agent(caption, history, attachments=att)
         _chat_history[chat_id] = new_history[-MAX_HISTORY_TURNS * 2:]
+        _pending_file[chat_id] = att   # 다음 텍스트 후속질문에 재첨부 (그 pdf 분석해줘)
     except Exception as e:
         log.exception("file analysis error")
         await msg.reply_text(f"분석 실패: {e}")
