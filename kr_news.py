@@ -92,10 +92,11 @@ def for_query(query: str, limit: int = 10, days: int = 30) -> list[dict]:
     if not q:
         return []
     tokens = [t for t in q.replace(",", " ").split() if len(t) >= 2]
+    key = max(tokens, key=len) if tokens else q   # 식별력 높은 토큰(회사명 전체)
     out = []
     for it in _all_items(days):
-        hay = it["title"] + " " + it["summary"]
-        if any(tok in hay for tok in tokens):
+        # 제목 매칭만 — 여러 종목 묶인 roundup 기사 오탐 방지(요약 매칭 제거)
+        if q in it["title"] or key in it["title"]:
             out.append(it)
         if len(out) >= limit:
             break

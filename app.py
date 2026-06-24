@@ -647,9 +647,15 @@ def _cached_recent_articles(ticker: str, name: str, days: int):
                             "published": (it.get("published") or "")[:10]})
         except Exception:
             pass
+        _nm = str(name or "").strip()
+        _toks = [w for w in _nm.split() if len(w) >= 2]
+        _key = max(_toks, key=len) if _toks else _nm
         seen, ded = set(), []
         for it in out:
-            k = (it.get("title") or "")[:60]
+            title = it.get("title") or ""
+            if _key and _key not in title and _nm not in title:
+                continue   # 제목에 회사명 없으면 제외 (타사 묶인 roundup 배제)
+            k = title[:60]
             if k and k not in seen:
                 seen.add(k)
                 ded.append(it)

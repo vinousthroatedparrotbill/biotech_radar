@@ -85,6 +85,16 @@ PIPELINE_PATTERNS: list[tuple[re.Pattern, int]] = [
     (re.compile(r"\bclinical\s*(?:program|pipeline|trials?)\b", re.I), 6),
 ]
 
+# 한국 홈페이지 IR 앵커 (한국어 + 영문)
+_KR_IR_PATTERNS: list[tuple[re.Pattern, int]] = [
+    (re.compile(r"IR\s*센터|투자\s*정보|투자자\s*정보|투자자관계", re.I), 10),
+    (re.compile(r"투자자", re.I), 8),
+    (re.compile(r"\bIR\b", re.I), 8),
+    (re.compile(r"investor", re.I), 7),
+    (re.compile(r"공시\s*정보|공시", re.I), 5),
+    (re.compile(r"주주", re.I), 4),
+]
+
 
 def _company_website(ticker: str) -> str | None:
     try:
@@ -236,9 +246,12 @@ def discover(ticker: str) -> dict[str, str]:
             if not dart.available():
                 return {"_error": "DART_API_KEY 미설정 — 한국 IR은 DART 회사정보로 매칭됨"}
             hm = (dart.company_info(_t) or {}).get("hm_url")
-            if hm:
-                return {"website": hm, "ir_url": hm}
-            return {"_error": f"DART에 {_t} 홈페이지 정보 없음 — 수동 URL 입력 사용"}
+            if not hm:
+                return {"_error": f"DART에 {_t} 홈페이지 정보 없음 — 수동 URL 입력 사용"}
+            # 홈페이지에서 IR 서브페이지 링크 추출(한국어 앵커). 못 찾으면 홈페이지를 IR로.
+            html = _fetch_html(hm)
+            ir = _extract_best_link(html, hm, _KR_IR_PATTERNS) if html else None
+            return {"website": hm, "ir_url": ir or hm}
         except Exception as e:
             return {"_error": f"DART 회사정보 실패: {e}"}
 
