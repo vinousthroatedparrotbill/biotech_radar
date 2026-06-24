@@ -479,6 +479,29 @@ def render_stock_detail(ticker: str, name: str):
     with top[1]:
         _watch_excl_fragment(ticker)
 
+    _chart_fragment(ticker)
+
+    # ── 3-1, 3-2, 3-3 토글 섹션들 ──
+    st.divider()
+    _render_url_settings(ticker)
+    _render_ir_section(ticker, name)
+    _render_pipeline_section(ticker)
+    _render_news_section(ticker, name)
+    _render_recent_articles_section(ticker, name)
+    _render_catalyst_section(ticker)
+    _render_insider_section(ticker)
+    _render_ai_report_section(ticker, name)
+
+    # ── 메모 (토글들 밑) ──
+    st.divider()
+    _render_memo_section(ticker)
+
+
+@st.fragment
+def _chart_fragment(ticker: str):
+    """차트 섹션 — 기간/봉 변경 시 모달 전체(뉴스·파이프라인·밸류 등)가 아니라 차트만 rerun."""
+    import plotly.graph_objects as go
+    from prices import PERIOD_LABELS
     cc = st.columns([2, 2])
     with cc[0]:
         period = st.radio(
@@ -543,21 +566,6 @@ def render_stock_detail(ticker: str, name: str):
             legend=dict(orientation="h", y=1.05, x=0),
         )
         st.plotly_chart(fig, use_container_width=True)
-
-    # ── 3-1, 3-2, 3-3 토글 섹션들 ──
-    st.divider()
-    _render_url_settings(ticker)
-    _render_ir_section(ticker, name)
-    _render_pipeline_section(ticker)
-    _render_news_section(ticker, name)
-    _render_recent_articles_section(ticker, name)
-    _render_catalyst_section(ticker)
-    _render_insider_section(ticker)
-    _render_ai_report_section(ticker, name)
-
-    # ── 메모 (토글들 밑) ──
-    st.divider()
-    _render_memo_section(ticker)
 
 
 _FUNDAMENTAL_PAT = __import__("re").compile(
