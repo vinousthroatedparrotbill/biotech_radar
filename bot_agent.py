@@ -184,8 +184,30 @@ def _client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=key)
 
 
+def _build_user_content(user_msg: str, attachments: list[dict] | None):
+    """첨부(PDF/이미지/텍스트) → Claude content 블록. 없으면 평문 그대로."""
+    if not attachments:
+        return user_msg
+    blocks: list[dict] = []
+    for a in attachments:
+        kind = a.get("kind")
+        if kind == "pdf":
+            blocks.append({"type": "document", "source": {
+                "type": "base64", "media_type": "application/pdf", "data": a["data"]}})
+        elif kind == "image":
+            blocks.append({"type": "image", "source": {
+                "type": "base64",
+                "media_type": a.get("media_type", "image/png"), "data": a["data"]}})
+        elif kind == "text":
+            blocks.append({"type": "text",
+                           "text": f"[첨부파일: {a.get('name','file')}]\n{a.get('text','')}"})
+    blocks.append({"type": "text", "text": user_msg or "첨부한 파일을 분석해줘."})
+    return blocks
+
+
 def run_agent(user_msg: str, history: list[dict] | None = None,
-              max_steps: int = MAX_STEPS) -> tuple[str, list[dict]]:
+              max_steps: int = MAX_STEPS,
+              attachments: list[dict] | None = None) -> tuple[str, list[dict]]:
     """user_msg + 이전 히스토리 → (최종 답변 텍스트, 갱신된 히스토리).
 
     history: [{'role': 'user'|'assistant', 'content': str}, ...] 텍스트 페어 리스트.
@@ -193,7 +215,8 @@ def run_agent(user_msg: str, history: list[dict] | None = None,
     """
     history = list(history or [])
     client = _client()
-    messages: list[dict] = history + [{"role": "user", "content": user_msg}]
+    messages: list[dict] = history + [
+        {"role": "user", "content": _build_user_content(user_msg, attachments)}]
     final_text = ""
     last_stop = ""
 

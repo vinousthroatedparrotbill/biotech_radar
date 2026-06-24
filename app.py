@@ -1977,18 +1977,43 @@ def _section_chat():
                         except Exception as e:
                             st.toast(f"⚠️ {type(e).__name__}: {e}")
 
+    upfiles = st.file_uploader(
+        "📎 파일 첨부 (PDF·이미지·txt·csv·md) — 업로드 후 아래에 질문 입력",
+        type=["pdf", "png", "jpg", "jpeg", "txt", "md", "csv"],
+        accept_multiple_files=True, key="chat_files",
+    )
     prompt = st.chat_input(
-        "질문 입력  (예: KRAS G12D degrader 기전 / ASCO 2026 daraxonrasib 데이터 / RVMD 분석)"
+        "질문 입력  (예: KRAS G12D degrader 기전 / 첨부 IR PDF 요약·분석 / RVMD 분석)"
     )
     if prompt:
-        msgs.append({"role": "user", "content": prompt})
+        import base64 as _b64
+        attachments = []
+        for f in (upfiles or []):
+            try:
+                data = f.getvalue()
+                ext = (f.name.rsplit(".", 1)[-1] if "." in f.name else "").lower()
+                if ext == "pdf":
+                    attachments.append({"kind": "pdf", "name": f.name,
+                                        "data": _b64.b64encode(data).decode()})
+                elif ext in ("png", "jpg", "jpeg"):
+                    attachments.append({"kind": "image", "name": f.name,
+                                        "media_type": "image/png" if ext == "png" else "image/jpeg",
+                                        "data": _b64.b64encode(data).decode()})
+                else:
+                    attachments.append({"kind": "text", "name": f.name,
+                                        "text": data.decode("utf-8", errors="replace")[:20000]})
+            except Exception:
+                pass
+        _disp = prompt + (f"  \n_📎 {len(attachments)}개 파일 첨부됨_" if attachments else "")
+        msgs.append({"role": "user", "content": _disp})
         with box:
             with st.chat_message("user"):
-                st.markdown(prompt)
+                st.markdown(_disp)
             with st.chat_message("assistant"):
-                with st.spinner("조사 중… (도구 호출, 최대 1-2분)"):
+                with st.spinner("조사 중… (도구 호출/파일 분석, 최대 1-2분)"):
                     try:
-                        text, _ = bot_agent.run_agent(prompt, msgs[:-1])
+                        text, _ = bot_agent.run_agent(prompt, msgs[:-1],
+                                                      attachments=attachments)
                     except Exception as e:
                         text = f"⚠️ 오류: {type(e).__name__}: {e}"
                 st.markdown(text)
