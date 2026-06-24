@@ -241,6 +241,14 @@ def discover(ticker: str) -> dict[str, str]:
     # 한국(6자리): yfinance 홈페이지 없음 → DART 회사개황 hm_url을 IR/홈페이지로.
     _t = str(ticker).strip()
     if _t.isdigit() and len(_t) == 6:
+        # 0순위: 큐레이션 IR 맵 (주요 종목 정확한 IR 페이지)
+        try:
+            from kr_ir_urls import KR_IR_URLS
+            cur = KR_IR_URLS.get(_t)
+            if cur:
+                return {"website": cur, "ir_url": cur}
+        except Exception:
+            pass
         try:
             import dart
             if not dart.available():
