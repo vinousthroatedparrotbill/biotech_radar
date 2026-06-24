@@ -1302,6 +1302,34 @@ def export_pdf(title: str, markdown: str) -> dict:
         return {"error": f"PDF 생성/발송 실패: {e}"}
 
 
+def count_52w_highs(date: str = "") -> dict:
+    """특정 날짜(또는 최신)의 52주 신고가 바이오텍(시총≥$1.5B) **종목 수**.
+    date: 'YYYY-MM-DD' (없으면 최신 수집일). '신고가 종목 수', '대비 얼마나 늘었나' 류
+    날짜 비교 질문에 두 날짜로 각각 호출해 차이를 계산. (리스트가 아니라 카운트)."""
+    from db import connect
+    from collectors.high_low import BIOTECH_INDUSTRY_FILTER, _excluded_ticker_filter
+    with connect() as c:
+        if not date:
+            row = c.execute("SELECT max(computed_date) AS d FROM high_low_cache").fetchone()
+            date = row["d"] if row else None
+        if not date:
+            return {"error": "수집 데이터 없음"}
+        if not c.execute("SELECT 1 FROM high_low_cache WHERE computed_date=? LIMIT 1",
+                         (date,)).fetchone():
+            rng = c.execute("SELECT min(computed_date) AS mn, max(computed_date) AS mx "
+                            "FROM high_low_cache").fetchone()
+            return {"error": f"{date} 데이터 없음 (수집 범위 {rng['mn']}~{rng['mx']})"}
+        n = c.execute(
+            f"""SELECT count(*) AS n FROM high_low_cache h
+                LEFT JOIN ticker_master t ON t.ticker = h.ticker
+                WHERE h.computed_date = ? AND h.market_cap >= 1500
+                  AND {BIOTECH_INDUSTRY_FILTER} AND {_excluded_ticker_filter('h')}
+                  AND h.today_high >= h.high_52w * 0.999""",
+            (date,),
+        ).fetchone()["n"]
+    return {"date": date, "count_52w_high": int(n), "universe": "biotech, 시총≥$1.5B"}
+
+
 # ───────────────────────── Tool 스키마 (Claude API용) ─────────────────────────
 TOOL_DEFS = [
     {
@@ -1915,6 +1943,22 @@ TOOL_DEFS = [
             "required": ["text"],
         },
     },
+    {
+        "name": "count_52w_highs",
+        "description": "Return the NUMBER (count) of biotech 52-week-high stocks (mcap≥$1.5B) "
+                       "on a given date. Use for '신고가 종목 *수*', 'how MANY at 52w high', "
+                       "'X일 대비 얼마나 늘었나' — call once per date and compare. This is a "
+                       "COUNT, not a list (use get_new_today_highs for the list). Data range "
+                       "is limited to when collection started (~2026-05-07).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "date": {"type": "string",
+                         "description": "YYYY-MM-DD (생략 시 최신 수집일)"},
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -1970,6 +2014,7 @@ def run_tool(name: str, args: dict):
         "export_pdf": export_pdf,
         "send_text_telegram": send_text_telegram,
         "get_new_today_highs": get_new_today_highs,
+        "count_52w_highs": count_52w_highs,
         "search_company_milestones": search_company_milestones,
     }
     f = funcs.get(name)

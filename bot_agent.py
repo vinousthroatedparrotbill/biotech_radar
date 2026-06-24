@@ -84,6 +84,11 @@ SYSTEM_PROMPT = """당신은 fund manager의 biotech research analyst + dashboar
 - "ASCO 언제", "올해 학회" → get_upcoming_conferences(area="oncology")
 - "X 인사이더 매매" → get_insider_trades(ticker)
 
+[신고가 종목 *수* / 날짜 비교]
+- "신고가 종목 수", "몇 개나", "X일(예: 5월 8일) 대비 얼마나 늘었나/줄었나" →
+  count_52w_highs(date)로 **각 날짜의 개수**를 세서 비교(차이·증감 계산). 리스트가 아니라 카운트.
+  get_new_today_highs(리스트)·신고가 명령과 혼동 금지. 데이터 범위 ~2026-05-07부터(그 전 날짜는 없음).
+
 [용어 구분 — 매우 중요]
 - "메모"/"코멘트"/"보드 메모"/"내가 적은 노트" = 사용자가 대시보드에 직접 적은 노트.
   → get_memos_for(ticker) — 즉시 응답, 항상 이걸로.
