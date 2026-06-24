@@ -163,7 +163,60 @@ def collect(industry_filter: str | None = "Biotechnology") -> int:
     return len(rows)
 
 
-def fetch_new_highs(direction: str = "high", limit: int = 500) -> pd.DataFrame:
+def collect_kr() -> int:
+    """한국(KOR) 바이오 유니버스 52w 스냅샷 — 토스 기반(compute_snapshot_kr, yfinance 우회).
+    KR 종목 전부 수집(유니버스 소규모); 보드 표시 시총 하한은 조회 함수에서 필터."""
+    from perf import compute_snapshot_kr
+    uni = pd_read_sql("SELECT ticker, market_cap FROM ticker_master WHERE country = 'KOR'")
+    if uni.empty:
+        raise RuntimeError("KOR 유니버스 비어있음 — 먼저 kr_universe.seed() 실행")
+    tickers = uni["ticker"].tolist()
+    mcap_map = dict(zip(uni["ticker"], uni["market_cap"]))
+    snap = compute_snapshot_kr(tickers)
+    if snap.empty:
+        return 0
+    snap["market_cap"] = snap["ticker"].map(mcap_map)
+    today = datetime.now().strftime("%Y-%m-%d")
+    rows = [
+        (r["ticker"], today,
+         r.get("high_52w"), r.get("low_52w"),
+         r.get("today_high"), r.get("today_low"), r.get("today_close"),
+         r.get("market_cap"),
+         r.get("perf_1d"), r.get("perf_7d"), r.get("perf_1m"),
+         r.get("perf_3m"), r.get("perf_6m"), r.get("perf_1y"))
+        for _, r in snap.iterrows()
+    ]
+    with connect() as conn:
+        conn.executemany(
+            """
+            INSERT INTO high_low_cache
+              (ticker, computed_date, high_52w, low_52w, today_high, today_low,
+               today_close, market_cap, perf_1d, perf_7d, perf_1m, perf_3m, perf_6m, perf_1y)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(ticker, computed_date) DO UPDATE SET
+                high_52w=excluded.high_52w, low_52w=excluded.low_52w,
+                today_high=excluded.today_high, today_low=excluded.today_low,
+                today_close=excluded.today_close,
+                market_cap=excluded.market_cap,
+                perf_1d=excluded.perf_1d, perf_7d=excluded.perf_7d,
+                perf_1m=excluded.perf_1m, perf_3m=excluded.perf_3m,
+                perf_6m=excluded.perf_6m, perf_1y=excluded.perf_1y
+            """,
+            rows,
+        )
+        conn.commit()
+    return len(rows)
+
+
+def _country_clause(country: str | None, alias: str) -> str:
+    """country 지정 시 해당 국가만; None이면 KOR 제외(미국 보드 기본 — KR 혼입 방지)."""
+    if country:
+        return f"{alias}.country = '{country}'"
+    return f"({alias}.country IS NULL OR {alias}.country <> 'KOR')"
+
+
+def fetch_new_highs(direction: str = "high", limit: int = 500,
+                    country: str | None = None, min_mcap: float = 1500.0) -> pd.DataFrame:
     """오늘 52w 신고가/신저가 종목 — ticker_master와 join하여 회사명 포함."""
     with connect() as conn:
         latest = conn.execute(
@@ -185,20 +238,21 @@ def fetch_new_highs(direction: str = "high", limit: int = 500) -> pd.DataFrame:
         FROM high_low_cache h
         LEFT JOIN ticker_master t ON t.ticker = h.ticker
         WHERE h.computed_date = %s
-          AND h.market_cap >= 1500
+          AND h.market_cap >= %s
           AND {BIOTECH_INDUSTRY_FILTER}
+          AND {_country_clause(country, 't')}
           AND {_excluded_ticker_filter('h')}
           AND {cond}
         ORDER BY {order}
         LIMIT %s
         """,
-        params=(latest, limit),
+        params=(latest, min_mcap, limit),
     )
     return df
 
 
 def fetch_top_movers(limit: int = 100, min_mcap: float = 500.0,
-                     min_perf: float = 5.0) -> pd.DataFrame:
+                     min_perf: float = 5.0, country: str | None = None) -> pd.DataFrame:
     """오늘 일일 상승률 상위 종목 (1D% 내림차순).
     필터: industry 블랙리스트(retailer/시설/보험 등) + 사용자 ticker 블랙리스트."""
     return pd_read_sql(
@@ -213,6 +267,7 @@ def fetch_top_movers(limit: int = 100, min_mcap: float = 500.0,
           AND h.perf_1d IS NOT NULL
           AND h.perf_1d >= %s
           AND {BIOTECH_INDUSTRY_FILTER}
+          AND {_country_clause(country, 't')}
           AND {_excluded_ticker_filter('h')}
         ORDER BY h.perf_1d DESC
         LIMIT %s
@@ -227,7 +282,8 @@ def latest_run_date() -> str | None:
         return r["d"] if r else None
 
 
-def fetch_new_today_highs(limit: int = 200) -> pd.DataFrame:
+def fetch_new_today_highs(limit: int = 200, country: str | None = None,
+                          min_mcap: float = 1500.0) -> pd.DataFrame:
     """오늘 새로 52주 신고가를 찍은 종목들 (전일 대비 high_52w 상승).
     조건:
       - 오늘 today_high >= high_52w * 0.999 (오늘 신고가)
@@ -242,7 +298,8 @@ def fetch_new_today_highs(limit: int = 200) -> pd.DataFrame:
         today = dates[0]["computed_date"]
         yesterday = dates[1]["computed_date"] if len(dates) > 1 else None
 
-        bio_filter = _industry_filter("m") + " AND " + _excluded_ticker_filter("t")
+        bio_filter = (_industry_filter("m") + " AND " + _country_clause(country, "m")
+                      + " AND " + _excluded_ticker_filter("t"))
         if yesterday:
             sql = f"""
                 SELECT t.ticker, m.name, m.industry, t.today_close AS close,
@@ -254,14 +311,14 @@ def fetch_new_today_highs(limit: int = 200) -> pd.DataFrame:
                   ON y.ticker = t.ticker AND y.computed_date = %s
                 LEFT JOIN ticker_master m ON m.ticker = t.ticker
                 WHERE t.computed_date = %s
-                  AND t.market_cap >= 1500
+                  AND t.market_cap >= %s
                   AND {bio_filter}
                   AND t.today_high >= t.high_52w * 0.999
                   AND (y.high_52w IS NULL OR t.high_52w > y.high_52w)
                 ORDER BY (t.today_close / NULLIF(t.high_52w,0)) DESC
                 LIMIT %s
             """
-            params = (yesterday, today, limit)
+            params = (yesterday, today, min_mcap, limit)
         else:
             sql = f"""
                 SELECT t.ticker, m.name, m.industry, t.today_close AS close,
@@ -271,13 +328,13 @@ def fetch_new_today_highs(limit: int = 200) -> pd.DataFrame:
                 FROM high_low_cache t
                 LEFT JOIN ticker_master m ON m.ticker = t.ticker
                 WHERE t.computed_date = %s
-                  AND t.market_cap >= 1500
+                  AND t.market_cap >= %s
                   AND {bio_filter}
                   AND t.today_high >= t.high_52w * 0.999
                 ORDER BY (t.today_close / NULLIF(t.high_52w,0)) DESC
                 LIMIT %s
             """
-            params = (today, limit)
+            params = (today, min_mcap, limit)
 
     df = pd_read_sql(sql, params=params)
     return df

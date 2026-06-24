@@ -209,6 +209,23 @@ SYSTEM_PROMPT = """당신은 Goldman Sachs / Morgan Stanley / Cowen / Leerink급
    경쟁 약물 데이터 확보. 헤드라인만 보고 추측 금지.
 7) 경쟁 약물 조사 — "메인 자산이 X이면 X target / X 적응증의 경쟁 약물 Y, Z 모두 검색해서
    head-to-head 차별점 표/논의" 작성.
+8) **web_search / web_fetch (범용 웹)** — FDA 라벨(DailyMed/accessdata.fda.gov), SEC EDGAR
+   10-K/8-K, IR·실적발표 자료, 시장규모 리포트, trade press를 직접 발견·본문 회수. 비상장·
+   전임상·신생 자산은 회사 홈페이지·한국 매체(더바이오/바이오스펙테이터 등)에서 web_search로 발견.
+9) search_europepmc(논문+프리프린트+학회초록 통합) / search_conference_abstracts(학회) /
+   search_preprints(bioRxiv·medRxiv) — peer-review·학회 근거 폭넓게.
+10) **한국 종목(6자리)은 get_dart_disclosures(ticker)** — DART 전자공시(유증·기술이전·
+   단일판매공급계약·식약처 품목허가·잠정실적·임상 주요사항보고)를 카탈리스트·재무 1차 출처로.
+
+[출처 우선순위 — 매우 중요]
+1차(가장 신뢰): **IR·실적발표·컨콜 transcript, FDA/EMA 라벨, ClinicalTrials.gov, peer-reviewed
+  저널(NEJM/Nature/JCI/PMC 등), SEC 공시(10-K)**.
+보조(확인용): 시장규모 리포트(FMI/Precedence/IMARC), trade press(Retinal Physician 등),
+  학회초록, 일반 뉴스. → **보조 출처의 수치·주장은 반드시 1차로 교차확인**하고, 못 하면
+  "(보조출처, 미확인)"으로 표기. 핵심 투자 판단(효능 수치·승인·매출)은 1차 출처로만.
+
+[기전 정밀도] 같은 표적·경로라도 분자 작용점이 다르면 한 범주로 묶지 말 것(예: 직접 수용체
+  작용제 항체 vs 효소(VE-PTP) 억제 간접활성화 vs 리간드 모방 — 리간드 의존성·작용지속 차이 명시).
 
 [형식]
 - 한국어. 약물명·기전·회사명·임상명은 영문 유지 (ARO-MAPT, PSMA, CETP, PREVAIL 등).
@@ -302,6 +319,10 @@ def generate(ticker: str, max_tool_calls: int = 15) -> str:
     search_clinicaltrials/get_pipeline_info 등 자유롭게 호출해 경쟁 약물·구체 데이터 조사."""
     import json as _json
     from bot_tools import TOOL_DEFS, run_tool
+    WEB_TOOLS = [
+        {"type": "web_search_20250305", "name": "web_search"},
+        {"type": "web_fetch_20250910", "name": "web_fetch", "max_uses": 8},
+    ]
 
     ctx = _gather_context(ticker)
     api_key = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
@@ -338,11 +359,15 @@ def generate(ticker: str, max_tool_calls: int = 15) -> str:
         for step in range(max_tool_calls):
             resp = client.messages.create(
                 model=CLAUDE_MODEL,
-                max_tokens=8000,
+                max_tokens=16000,
+                thinking={"type": "adaptive"},
                 system=SYSTEM_PROMPT,
-                tools=TOOL_DEFS,
+                tools=TOOL_DEFS + WEB_TOOLS,
                 messages=messages,
             )
+            if resp.stop_reason == "pause_turn":
+                messages.append({"role": "assistant", "content": resp.content})
+                continue
             if resp.stop_reason == "tool_use":
                 tool_uses = [b for b in resp.content if b.type == "tool_use"]
                 messages.append({"role": "assistant", "content": resp.content})

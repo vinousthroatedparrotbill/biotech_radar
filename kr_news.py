@@ -1,0 +1,114 @@
+"""한국 바이오·제약 전문 매체 뉴스 — RSS 통합 + 종목명 매칭.
+
+소스(동일 CMS, /rss/allArticle.xml): 히트뉴스·팜뉴스·청년의사·더바이오(thebionews).
+표준 라이브러리만 사용(requests + xml.etree). news.fetch_google_news와 상보 — 한국 전문 매체
+헤드라인을 종목/자유주제로 끌어온다.
+
+함수:
+- latest(limit, days): 전체 매체 최신 기사 통합(최신순)
+- for_query(query, limit, days): 제목/요약에 query(종목명·키워드) 포함 기사
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
+from xml.etree import ElementTree as ET
+
+import requests
+
+log = logging.getLogger(__name__)
+
+RSS_FEEDS = {
+    "히트뉴스": "https://www.hitnews.co.kr/rss/allArticle.xml",
+    "팜뉴스": "https://www.pharmnews.com/rss/allArticle.xml",
+    "청년의사": "https://www.docdocdoc.co.kr/rss/allArticle.xml",
+    "더바이오": "https://www.thebionews.net/rss/allArticle.xml",
+}
+_HDR = {"User-Agent": "Mozilla/5.0"}
+
+
+_KST = timezone(timedelta(hours=9))
+
+
+def _parse_date(s: str | None) -> datetime | None:
+    if not s:
+        return None
+    s = s.strip()
+    # 한국 매체 CMS 형식: "YYYY-MM-DD HH:MM:SS" (KST, naive)
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=_KST)
+        except ValueError:
+            pass
+    try:                                     # RFC822 fallback (혹시 모를 표준 피드)
+        dt = parsedate_to_datetime(s)
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+    except Exception:
+        return None
+
+
+def _fetch_feed(name: str, url: str) -> list[dict]:
+    try:
+        r = requests.get(url, headers=_HDR, timeout=15)
+        r.raise_for_status()
+        root = ET.fromstring(r.content)
+    except Exception as e:
+        log.warning("RSS 실패 %s: %s", name, e)
+        return []
+    out = []
+    for item in root.iter("item"):
+        title = (item.findtext("title") or "").strip()
+        link = (item.findtext("link") or "").strip()
+        desc = (item.findtext("description") or "").strip()
+        pub = _parse_date(item.findtext("pubDate"))
+        if not title or not link:
+            continue
+        out.append({"source": name, "title": title, "link": link,
+                    "summary": desc[:300], "published": pub})
+    return out
+
+
+def _all_items(days: int) -> list[dict]:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    items: list[dict] = []
+    for name, url in RSS_FEEDS.items():
+        for it in _fetch_feed(name, url):
+            if it["published"] is None or it["published"] >= cutoff:
+                items.append(it)
+    items.sort(key=lambda x: x["published"] or datetime.min.replace(tzinfo=timezone.utc),
+               reverse=True)
+    return items
+
+
+def latest(limit: int = 30, days: int = 7) -> list[dict]:
+    """전체 한국 바이오 매체 최신 기사 (최신순)."""
+    return _all_items(days)[:limit]
+
+
+def for_query(query: str, limit: int = 10, days: int = 30) -> list[dict]:
+    """제목·요약에 query(종목명/키워드) 포함 기사. 공백 분리 토큰 중 하나라도 매칭."""
+    q = (query or "").strip()
+    if not q:
+        return []
+    tokens = [t for t in q.replace(",", " ").split() if len(t) >= 2]
+    out = []
+    for it in _all_items(days):
+        hay = it["title"] + " " + it["summary"]
+        if any(tok in hay for tok in tokens):
+            out.append(it)
+        if len(out) >= limit:
+            break
+    return out
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    import sys
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    for it in latest(8):
+        d = it["published"].strftime("%m-%d") if it["published"] else "??"
+        print(f"[{it['source']} {d}] {it['title']}")

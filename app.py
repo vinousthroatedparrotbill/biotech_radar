@@ -199,6 +199,22 @@ def _go_main_tab(tab: str):
     st.rerun()
 
 
+# 시장(국가)은 메인 상단 탭(🌏 해외 / 🇰🇷 한국)에서 선택 — 사이드바 버튼은 그 값을 읽음
+COUNTRY = st.session_state.get("country", "USA")
+
+
+def _board_scope():
+    """현재 선택 국가 + 52주 보드 시총 하한($M). 한국=5천억, 미국=$1.5B."""
+    c = st.session_state.get("country", "USA")
+    if c == "KOR":
+        import kr_universe as _ku
+        try:
+            return c, _ku.kr_min_mcap_usd_m()
+        except Exception:
+            return c, 324.0
+    return c, 1500.0
+
+
 if st.sidebar.button("🏠 메인"):
     _close_modal()
     st.session_state["page"] = "main"
@@ -251,23 +267,36 @@ except Exception:
 
 # ── 사이드바 좌하단: Universe 갱신 + 텔레그램 + 모바일 모드 ──
 st.sidebar.markdown("<div style='height:1.5rem;'></div>", unsafe_allow_html=True)
-if st.sidebar.button("🔄 Universe 갱신", key="uni_refresh",
-                     help="Finviz에서 Healthcare 전 종목 다시 로드"):
+_uni_help = ("네이버 업종+FDR로 한국 제약·바이오 다시 로드 + 52주 스냅샷"
+             if COUNTRY == "KOR" else "Finviz에서 Healthcare 전 종목 다시 로드")
+if st.sidebar.button("🔄 Universe 갱신", key="uni_refresh", help=_uni_help):
     _close_modal()
-    with st.spinner("Finviz 호출 중..."):
+    with st.spinner("갱신 중..."):
         try:
-            n = load_universe()
-            st.sidebar.success(f"{n}종목 로드")
+            if COUNTRY == "KOR":
+                import kr_universe as _ku
+                from collectors.high_low import collect_kr
+                n = _ku.seed()
+                m = collect_kr()
+                st.sidebar.success(f"한국 {n}종목 로드 · 스냅샷 {m}")
+            else:
+                n = load_universe()
+                st.sidebar.success(f"{n}종목 로드")
         except Exception as e:
             st.sidebar.error(f"실패: {e}")
 
-if st.sidebar.button("📨 텔레그램 발송", key="tg_send",
-                     help="현재 데이터로 즉시 텔레그램 요약 발송"):
+_tg_help = ("한국 15:30 푸시 즉시 발송" if COUNTRY == "KOR"
+            else "현재 데이터로 즉시 텔레그램 요약 발송")
+if st.sidebar.button("📨 텔레그램 발송", key="tg_send", help=_tg_help):
     _close_modal()
     with st.spinner("텔레그램 발송 중..."):
         try:
-            from telegram_report import send, compose_report
-            send(compose_report())
+            if COUNTRY == "KOR":
+                from telegram_report import daily_run_kr
+                daily_run_kr()
+            else:
+                from telegram_report import send, compose_report
+                send(compose_report())
             st.sidebar.success("발송됨")
         except Exception as e:
             st.sidebar.error(f"실패: {e}")
@@ -597,8 +626,34 @@ _NOISE_PAT = __import__("re").compile(
 @st.cache_data(ttl=600, show_spinner=False)
 def _cached_recent_articles(ticker: str, name: str, days: int):
     """Finviz quote + Yahoo per-ticker + Google News (회사명) — fundamental 필터링.
-    Asia 종목(.T/.HK/.SZ/.SS)은 Finviz 빈 응답이라 회사명으로 영문 매체
-    (FiercePharma, Endpoints, BioSpace, STAT 등) 검색해서 보강."""
+    KR(6자리)은 kr_news 한국 전문매체 + 한국어 Google News로 대체(영문 필터 미적용)."""
+    _t = str(ticker).strip()
+    if _t.isdigit() and len(_t) == 6:
+        out = []
+        try:
+            import kr_news
+            for it in kr_news.for_query(name, limit=20, days=max(days, 14)):
+                out.append({"title": it["title"], "link": it["link"],
+                            "source": it["source"],
+                            "published": it["published"].strftime("%Y-%m-%d")
+                                         if it.get("published") else ""})
+        except Exception:
+            pass
+        try:
+            from news import fetch_google_news
+            for it in fetch_google_news(name, days=days, limit=20):
+                out.append({"title": it.get("title", ""), "link": it.get("link", ""),
+                            "source": it.get("source", "Google News"),
+                            "published": (it.get("published") or "")[:10]})
+        except Exception:
+            pass
+        seen, ded = set(), []
+        for it in out:
+            k = (it.get("title") or "")[:60]
+            if k and k not in seen:
+                seen.add(k)
+                ded.append(it)
+        return ded
     from news import fetch_finviz_news, fetch_yahoo_news, fetch_google_news
     items = list(fetch_finviz_news(ticker, days=days))
     items += list(fetch_yahoo_news(ticker))
@@ -702,7 +757,31 @@ def _render_ai_report_section(ticker: str, name: str):
 
 
 def _render_catalyst_section(ticker: str):
-    """종목별 다가오는 카탈리스트 + IR 자료에서 추출된 회사 공개 마일스톤."""
+    """종목별 다가오는 카탈리스트 + IR 자료에서 추출된 회사 공개 마일스톤.
+    KR(6자리)은 DART 전자공시(유증·기술이전·식약처 허가·실적·임상 주요사항)를 카탈리스트 1차 소스로."""
+    _t = str(ticker).strip()
+    if _t.isdigit() and len(_t) == 6:
+        with st.expander("📅 카탈리스트 / 공시 (DART)", expanded=True):
+            try:
+                from bot_tools import get_dart_disclosures
+                r = get_dart_disclosures(_t, days=120)
+                ds = r.get("disclosures", []) if isinstance(r, dict) else []
+                if isinstance(r, dict) and r.get("error"):
+                    st.caption(f"DART: {r['error']}")
+                elif not ds:
+                    st.caption("최근 120일 공시 없음.")
+                else:
+                    st.caption("DART 전자공시 — 유증·기술이전·식약처 허가·실적·임상 주요사항 "
+                               "(한국 카탈리스트 1차 소스)")
+                    for d in ds[:15]:
+                        st.markdown(
+                            f"- {d['date']} · **[{d['title']}]({d['url']})** "
+                            f"<span style='opacity:0.6;font-size:0.85em'>{d.get('filer','')}</span>",
+                            unsafe_allow_html=True,
+                        )
+            except Exception as e:
+                st.caption(f"DART 조회 실패: {e}")
+        return
     import catalysts as cat
     import ir_milestones as irm
     df = cat.get_catalysts(ticker=ticker, days=365)
@@ -946,6 +1025,22 @@ def _render_pipeline_section(ticker: str):
 
 
 def _render_news_section(ticker: str, name: str):
+    _t = str(ticker).strip()
+    if _t.isdigit() and len(_t) == 6:
+        with st.expander("📰 한국 바이오 매체 뉴스 (최근)", expanded=False):
+            arts = _cached_recent_articles(ticker, name, 30)
+            if not arts:
+                st.caption("최근 한국 매체 기사 없음.")
+                return
+            st.caption("히트뉴스·팜뉴스·청년의사·더바이오 + 한국어 Google News")
+            for it in arts[:8]:
+                st.markdown(
+                    f"- **[{it['title']}]({it['link']})**  "
+                    f"<span style='opacity:0.6;font-size:0.85em'>· {it['source']} "
+                    f"{it.get('published','')}</span>",
+                    unsafe_allow_html=True,
+                )
+        return
     with st.expander("📰 뉴스 멘션 — 최근 6개월 가장 많이 언급된 파이프라인 TOP 3", expanded=False):
         st.caption(f"검색: '{name}' · Yahoo + Finviz + Google News (6개월)")
         with st.spinner("뉴스 분석..."):
@@ -1175,19 +1270,28 @@ def _render_table(df: pd.DataFrame):
                 st.session_state["detail_name"] = row["name"]
                 st.session_state["detail_open"] = True
                 st.rerun()
+            import kr_universe as _ku
+            _tk = row["ticker"]
+            _kr = _ku.is_kr_ticker(_tk)
+            mcap = row["market_cap"]
+            _price_s = (_ku.fmt_price(row["close"], _tk) if _kr
+                        else f"${row['close']:,.2f}") if pd.notna(row["close"]) else "—"
             if mobile:
-                cells[2].write(f"${row['close']:,.2f}" if pd.notna(row["close"]) else "—")
+                cells[2].write(_price_s)
                 cells[3].markdown(color_pct(row["perf_1d"]), unsafe_allow_html=True)
-                mcap = row["market_cap"]
-                cells[4].write(f"{mcap/1000:,.1f}b" if pd.notna(mcap) and mcap >= 1000
-                               else (f"{mcap:,.0f}m" if pd.notna(mcap) else "—"))
+                if _kr:
+                    cells[4].write(_ku.fmt_mcap(mcap, _tk))
+                else:
+                    cells[4].write(f"{mcap/1000:,.1f}b" if pd.notna(mcap) and mcap >= 1000
+                                   else (f"{mcap:,.0f}m" if pd.notna(mcap) else "—"))
             else:
-                cells[2].write(f"${row['close']:,.2f}" if pd.notna(row["close"]) else "—")
-                mcap = row["market_cap"]
-                cells[3].write(f"{mcap:,.0f}" if pd.notna(mcap) else "—")
+                cells[2].write(_price_s)
+                cells[3].write(_ku.fmt_mcap(mcap, _tk) if _kr
+                               else (f"{mcap:,.0f}" if pd.notna(mcap) else "—"))
                 for j, k in enumerate(["perf_1d", "perf_7d", "perf_1m", "perf_3m", "perf_6m", "perf_1y"]):
                     cells[4 + j].markdown(color_pct(row[k]), unsafe_allow_html=True)
-                cells[10].write(f"${row['high_52w']:,.2f}" if pd.notna(row["high_52w"]) else "—")
+                cells[10].write((_ku.fmt_price(row['high_52w'], _tk) if _kr
+                                 else f"${row['high_52w']:,.2f}") if pd.notna(row["high_52w"]) else "—")
 
 
 @st.fragment
@@ -1236,11 +1340,12 @@ def _section_high():
                 except Exception as e:
                     st.error(f"실패: {e}")
 
+    _c, _floor = _board_scope()
     if view == "new":
-        df = fetch_new_today_highs(limit=300)
+        df = fetch_new_today_highs(limit=300, country=_c, min_mcap=_floor)
         empty_msg = "오늘 신규로 52주 신고가를 찍은 종목 없음."
     else:
-        df = fetch_new_highs("high", limit=500)
+        df = fetch_new_highs("high", limit=500, country=_c, min_mcap=_floor)
         empty_msg = "오늘 52주 신고가 종목 없음."
 
     if df.empty:
@@ -1334,6 +1439,16 @@ def render_main_page():
         </div>
         """,
         unsafe_allow_html=True,
+    )
+
+    # 시장 분리 탭 — 🌏 해외 / 🇰🇷 한국 (st.session_state["country"]에 바인딩)
+    if "country" not in st.session_state:
+        st.session_state["country"] = "USA"
+    st.radio(
+        "시장", ["USA", "KOR"],
+        format_func=lambda k: {"USA": "🌏 해외 바이오텍", "KOR": "🇰🇷 한국 바이오텍"}[k],
+        horizontal=True, key="country", label_visibility="collapsed",
+        on_change=_close_modal,
     )
 
     # 탭 — 컴팩트 라디오 (사이드바 버튼이 외부에서 변경 가능)
@@ -1751,6 +1866,38 @@ def _cached_daily_news(days: int):
     return fetch_global_healthcare_news(days=days, max_items=200)
 
 
+@st.cache_data(ttl=900, show_spinner=False)
+def _cached_kr_news(days: int, query: str):
+    import kr_news
+    if query.strip():
+        return kr_news.for_query(query, limit=60, days=max(days, 14))
+    return kr_news.latest(limit=60, days=days)
+
+
+def _section_daily_news_kr():
+    """한국 바이오 전문매체 데일리 뉴스 — 히트뉴스·팜뉴스·청년의사·더바이오 RSS."""
+    cc = st.columns([1, 2, 5])
+    with cc[0]:
+        days = st.selectbox("기간", [1, 3, 7], index=1, key="kr_news_days",
+                            format_func=lambda d: f"{d}일")
+    with cc[1]:
+        q = st.text_input("검색(종목·키워드)", key="kr_news_q",
+                          placeholder="예: 알테오젠 / ADC / 비만")
+    with st.spinner("한국 바이오 매체 RSS 통합..."):
+        items = _cached_kr_news(days, q or "")
+    if not items:
+        st.info("해당 기간 기사 없음.")
+        return
+    st.caption(f"📰 {len(items)}건 · 히트뉴스·팜뉴스·청년의사·더바이오")
+    for it in items:
+        d = it["published"].strftime("%m-%d %H:%M") if it.get("published") else ""
+        st.markdown(
+            f"- **[{it['title']}]({it['link']})**  "
+            f"<span style='color:#888;font-size:0.85em;'>· {it['source']} {d}</span>",
+            unsafe_allow_html=True,
+        )
+
+
 def _chat_to_markdown(msgs: list[dict]) -> str:
     """챗 히스토리 → PDF용 마크다운."""
     from datetime import datetime as _dt
@@ -1935,7 +2082,10 @@ def _section_top_movers():
     with cc2[2]:
         limit = st.selectbox("개수", [50, 100, 200], index=1)
 
-    df = fetch_top_movers(limit=limit, min_mcap=min_mcap, min_perf=min_perf)
+    _c, _floor = _board_scope()
+    if _c == "KOR":
+        min_mcap = _floor   # 한국은 5천억 하한 적용
+    df = fetch_top_movers(limit=limit, min_mcap=min_mcap, min_perf=min_perf, country=_c)
     if df.empty:
         st.info("조건에 맞는 종목 없음. '🔄 신고가 갱신' (52주 신고가 탭) 먼저 실행하세요.")
         return

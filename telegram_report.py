@@ -109,14 +109,16 @@ def _esc_pre(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _fmt_mcap_b(mcap_m) -> str:
-    """million USD → 'X.XB' 표기."""
+def _fmt_mcap_b(mcap_m, ticker=None) -> str:
+    """시총 표기 — KR(6자리)은 KRW(억/조), 그 외 $B. (kr_universe.fmt_mcap 위임)"""
     if mcap_m is None or pd.isna(mcap_m):
         return "—"
-    b = mcap_m / 1000.0
-    if b >= 100:
-        return f"${b:,.0f}B"
-    return f"${b:,.1f}B"
+    try:
+        import kr_universe as _ku
+        return _ku.fmt_mcap(mcap_m, ticker)
+    except Exception:
+        b = mcap_m / 1000.0
+        return f"${b:,.0f}B" if b >= 100 else f"${b:,.1f}B"
 
 
 def _table_render(df, max_rows: int = 25) -> str:
@@ -134,9 +136,13 @@ def _table_render(df, max_rows: int = 25) -> str:
         close = r.get("close") if "close" in r else r.get("today_close")
         perf_1d = r.get("perf_1d")
         mcap = r.get("market_cap")
-        price = f"${close:,.2f}" if pd.notna(close) else "—"
+        try:
+            import kr_universe as _ku
+            price = _ku.fmt_price(close, ticker) if pd.notna(close) else "—"
+        except Exception:
+            price = f"${close:,.2f}" if pd.notna(close) else "—"
         pct = f"{perf_1d:+.1f}%" if pd.notna(perf_1d) else "—"
-        mcap_s = _fmt_mcap_b(mcap)
+        mcap_s = _fmt_mcap_b(mcap, ticker)
         lines.append(f"{ticker:<6} {name:<22} {price:>10} {pct:>7} {mcap_s:>8}")
     body = "\n".join(lines)
     out = f"<pre>{_esc_pre(body)}</pre>"
@@ -676,11 +682,11 @@ def send_ticker_cards(df, memo_tickers=None, max_n: int = 15):
         if not tk:
             continue
         name = str(r.get("name") or tk)
-        mcap_b = (r.get("market_cap") or 0) / 1000.0
+        import kr_universe as _ku
         close = r.get("close") if "close" in r else r.get("today_close")
-        cap = f"<b>{_esc_html(name)} ({tk})</b>\n💰 ${mcap_b:,.1f}B"
+        cap = f"<b>{_esc_html(name)} ({tk})</b>\n💰 {_ku.fmt_mcap(r.get('market_cap'), tk)}"
         if pd.notna(close):
-            cap += f" · ${close:,.2f}"
+            cap += f" · {_ku.fmt_price(close, tk)}"
         for col, lab in [("perf_1d", "1D"), ("perf_1m", "1M"), ("perf_1y", "1Y")]:
             v = r.get(col)
             if pd.notna(v):
@@ -914,6 +920,71 @@ def daily_run() -> dict:
     return main_result
 
 
+def daily_run_kr() -> dict:
+    """한국 바이오 15:30(KST) 푸시 — 미장 daily_run과 동일 구조
+    (신고가 '투자 포인트 & 상승 동인' AI 분석 → 최대 상승폭 → 종목별 카드 + 투자메모).
+    유니버스=FDR+네이버 / 스냅샷=토스 / 시총 하한 5천억(KOR 스코프)."""
+    import kr_universe as ku
+    from collectors.high_low import (collect_kr, fetch_new_highs, fetch_top_movers,
+                                     latest_run_date)
+
+    floor = ku.kr_min_mcap_usd_m()
+    # 1) KR 유니버스 갱신 (실패해도 기존 유니버스로 진행)
+    try:
+        n_uni = ku.seed()
+    except Exception as e:
+        n_uni = -1
+        print(f"daily_run_kr: universe 갱신 실패(무시) — {e}")
+    # 2) KR 52w 스냅샷 (토스 기반)
+    n_hl = collect_kr()
+    # 3) 신고가 + 상승폭 (KR 스코프)
+    highs = fetch_new_highs("high", limit=40, country="KOR", min_mcap=floor)
+    movers = fetch_top_movers(limit=40, min_mcap=floor, min_perf=5.0, country="KOR")
+    header = (
+        f"🇰🇷 <b>K-Bio Radar — {datetime.now().strftime('%Y-%m-%d')} 15:30</b>\n"
+        f"<i>auto-run: universe={n_uni}, snapshot={n_hl} · 기준일 "
+        f"{latest_run_date() or '—'} · 시총≥5천억</i>"
+    )
+    # 신고가 있으면 신고가 종목, 없으면 상승폭 종목을 동일하게 'AI 상승 동인' 분석
+    # (= 미장의 52주 신고가 카드처럼, 신고가 없는 날엔 상승폭 종목에 '왜 올랐나'를 적용)
+    focus = highs if not highs.empty else movers
+    focus_label = ("52주 신고가" if not highs.empty
+                   else "오늘 최대 상승폭 (52주 신고가 없음)")
+    analysis = _highs_analysis(focus, max_n=20)
+    if analysis:
+        main_result = send(
+            f"{header}\n\n📊 <b>{focus_label} — 투자 포인트 &amp; 상승 동인</b> "
+            f"({len(focus)}종목)\n\n" + _markdown_to_html(analysis)
+        )
+    else:
+        main_result = send(
+            f"{header}\n\n📈 <b>52주 신고가</b> ({len(highs)}종목)\n"
+            f"{_table_render(highs, max_rows=30)}"
+        )
+    # 두 목록(신고가 + 상승폭)은 항상 함께 발송
+    send(f"🚀 <b>최대 상승폭 (1D)</b> ({len(movers)}종목)\n"
+         f"{_table_render(movers, max_rows=30)}")
+
+    # 종목별 카드(차트 + 오른 이유 뉴스) + 투자메모 — focus(신고가 or 상승폭) 시총 상위 기준.
+    # 투자메모: 시총 상위 5개 중 최근 7일 내 미발송 종목만.
+    import investment_report as _ir
+    card_df = focus.drop_duplicates("ticker").sort_values(
+        "market_cap", ascending=False, na_position="last")
+    try:
+        recent = _ir.recently_sent_tickers(7)
+    except Exception:
+        recent = set()
+    memo_tickers = [t for t in card_df["ticker"].tolist()
+                    if t and str(t).upper() not in recent][:5]
+    try:
+        cards, memos = send_ticker_cards(card_df, memo_tickers=memo_tickers, max_n=12)
+        main_result["ticker_cards"] = cards
+        main_result["investment_reports"] = memos
+    except Exception as e:
+        main_result["cards_error"] = str(e)
+    return main_result
+
+
 if __name__ == "__main__":
     import logging as _logging
     _logging.basicConfig(
@@ -921,9 +992,17 @@ if __name__ == "__main__":
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     import sys
+    try:                                  # cp949 콘솔에서 이모지(🇰🇷 등) print 크래시 방지
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     if len(sys.argv) > 1 and sys.argv[1] == "test":
         # test: 데이터 수집 없이 현재 캐시로 발송
         print(send(compose_report()))
+    elif len(sys.argv) > 1 and sys.argv[1] == "kr":
+        # 한국 15:30 푸시: KR 수집 + 발송
+        print(daily_run_kr())
     else:
         # 스케줄러 모드: 수집 + 발송
         print(daily_run())

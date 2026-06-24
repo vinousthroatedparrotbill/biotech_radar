@@ -65,3 +65,54 @@ def compute_snapshot(tickers: list[str], lookback_days: int = 380) -> pd.DataFra
             "perf_1y": _pct(last_close, back(252)),
         })
     return pd.DataFrame(rows)
+
+
+def _snapshot_from_ohlcv(tk: str, sub: pd.DataFrame, today: str) -> dict | None:
+    """단일 종목 OHLCV DataFrame → 스냅샷 row (compute_snapshot과 동일 스키마)."""
+    if sub is None or sub.empty or "Close" not in sub.columns:
+        return None
+    closes = sub["Close"].dropna()
+    highs = sub["High"].dropna() if "High" in sub.columns else pd.Series(dtype=float)
+    lows = sub["Low"].dropna() if "Low" in sub.columns else pd.Series(dtype=float)
+    if closes.empty:
+        return None
+    last_close = float(closes.iloc[-1])
+    last_high = float(highs.iloc[-1]) if not highs.empty else None
+    last_low = float(lows.iloc[-1]) if not lows.empty else None
+    high_52w = float(highs.tail(252).max()) if not highs.empty else None
+    low_52w = float(lows.tail(252).min()) if not lows.empty else None
+
+    def back(n: int) -> float | None:
+        if len(closes) <= n:
+            return None
+        return float(closes.iloc[-1 - n])
+
+    return {
+        "ticker": tk, "date": today,
+        "today_close": last_close, "today_high": last_high, "today_low": last_low,
+        "high_52w": high_52w, "low_52w": low_52w,
+        "perf_1d": _pct(last_close, back(1)),
+        "perf_7d": _pct(last_close, back(5)),
+        "perf_1m": _pct(last_close, back(21)),
+        "perf_3m": _pct(last_close, back(63)),
+        "perf_6m": _pct(last_close, back(126)),
+        "perf_1y": _pct(last_close, back(252)),
+    }
+
+
+def compute_snapshot_kr(tickers: list[str]) -> pd.DataFrame:
+    """한국(6자리) 종목 52w high/low + 수익률 — 토스 일봉 기반(yfinance 우회, 클라우드 안전).
+    종목별 toss_market.daily 호출 (KR 바이오 유니버스는 소규모라 부담 없음)."""
+    import toss_market as tm
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    rows = []
+    for tk in tickers:
+        try:
+            sub = tm.daily(tk, bars=320)          # ~320 거래일 (52w + 수익률 lookback 충분)
+        except Exception:
+            sub = None
+        row = _snapshot_from_ohlcv(tk, sub, today) if sub is not None else None
+        if row:
+            rows.append(row)
+    return pd.DataFrame(rows)

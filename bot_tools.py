@@ -1222,7 +1222,11 @@ def render_candle_png(ticker: str, period: str = "2y"):
         matplotlib.use("Agg")
         import mplfinance as mpf
         mc = mpf.make_marketcolors(up="#26a69a", down="#ef5350", inherit=True)
-        style = mpf.make_mpf_style(base_mpf_style="yahoo", marketcolors=mc)
+        # 한글 폰트(일봉/주봉·한글 종목명) 렌더 — Malgun Gothic(Windows). 영문 포함이라 미장도 안전.
+        style = mpf.make_mpf_style(
+            base_mpf_style="yahoo", marketcolors=mc,
+            rc={"font.family": "Malgun Gothic", "axes.unicode_minus": False},
+        )
         mav = (10, 30) if interval == "1wk" else (20, 60)
         path = os.path.join(tempfile.gettempdir(), f"chart_{tk}_{period}.png")
         mpf.plot(df, type="candle", style=style, mav=mav, volume=True, figsize=(11, 6),
@@ -1694,6 +1698,23 @@ TOOL_DEFS = [
         },
     },
     {
+        "name": "get_dart_disclosures",
+        "description": "한국 종목(KR, 6자리 코드) DART 전자공시 최근 목록 — 유상증자/CB·BW, "
+                       "기술이전·단일판매공급계약(수주), 식약처 품목허가, 임상 관련 주요사항보고, "
+                       "잠정실적, 임원·주요주주 소유보고 등 한국 카탈리스트·재무의 1차 출처. "
+                       "types: 'B'(주요사항보고)·'I'(거래소)·'A'(정기)·'D'(지분) 단일문자, 생략 시 전체. "
+                       "미국·비상장은 빈 결과(corp_code 없음).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string", "description": "6자리 한국 종목코드 (예: 196170)"},
+                "days": {"type": "integer", "default": 30},
+                "types": {"type": "string"},
+            },
+            "required": ["ticker"],
+        },
+    },
+    {
         "name": "get_upcoming_pdufa",
         "description": "Upcoming FDA PDUFA decisions within next N days.",
         "input_schema": {
@@ -1962,6 +1983,22 @@ TOOL_DEFS = [
 ]
 
 
+def get_dart_disclosures(ticker: str, days: int = 30, types: str = None):
+    """DART 전자공시 — 한국 종목 최근 공시(유증·기술이전·식약처 허가·수주·실적·임상 주요사항).
+    한국 카탈리스트/재무의 1차 출처. 미국·비상장은 corp_code 없어 빈 결과."""
+    try:
+        import dart
+        if not dart.available():
+            return {"error": "DART_API_KEY 미설정 — .env에 추가 필요"}
+        items = dart.recent_disclosures(ticker, days=days, types=types, limit=30)
+        if not items:
+            return {"ticker": ticker, "disclosures": [],
+                    "note": "공시 없음 또는 비상장/미국(corp_code 없음)"}
+        return {"ticker": ticker, "disclosures": items}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
 def run_tool(name: str, args: dict):
     """Tool name으로 디스패치."""
     funcs = {
@@ -1982,6 +2019,7 @@ def run_tool(name: str, args: dict):
         "get_realtime_quote": get_realtime_quote,
         "get_premarket_movers": get_premarket_movers,
         "get_market_movers": get_market_movers,
+        "get_dart_disclosures": get_dart_disclosures,
         # write
         "watchlist_add": watchlist_add,
         "watchlist_remove": watchlist_remove,

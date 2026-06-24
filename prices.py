@@ -44,17 +44,26 @@ def fetch_ohlcv(ticker: str, period: PeriodKey, interval: Interval = "1d") -> pd
         pass
 
     # 3) yfinance fallback (로컬 전용 — 클라우드는 IP 차단)
+    #    KR(6자리)은 .KS(KOSPI)/.KQ(KOSDAQ) 접미사 필요 — bare 6자리는 404.
     end = datetime.now()
-    if period == "1d":
-        df = yf.download(ticker, period="1d", interval="5m",
-                         auto_adjust=True, progress=False)
-    else:
-        days = PERIOD_DAYS[period]
-        # 이평선 계산 위해 추가 buffer 120 거래일
-        start = end - timedelta(days=days + 250)
-        df = yf.download(ticker, start=start.strftime("%Y-%m-%d"),
-                         end=end.strftime("%Y-%m-%d"),
-                         interval=interval, auto_adjust=True, progress=False)
+    _t = (ticker or "").strip()
+    yf_syms = [f"{_t}.KS", f"{_t}.KQ"] if (_t.isdigit() and len(_t) == 6) else [_t]
+    df = None
+    for _sym in yf_syms:
+        try:
+            if period == "1d":
+                df = yf.download(_sym, period="1d", interval="5m",
+                                 auto_adjust=True, progress=False)
+            else:
+                days = PERIOD_DAYS[period]
+                start = end - timedelta(days=days + 250)   # 이평선 buffer
+                df = yf.download(_sym, start=start.strftime("%Y-%m-%d"),
+                                 end=end.strftime("%Y-%m-%d"),
+                                 interval=interval, auto_adjust=True, progress=False)
+        except Exception:
+            df = None
+        if df is not None and not df.empty:
+            break
     if df is None or df.empty:
         return pd.DataFrame()
     if isinstance(df.columns, pd.MultiIndex):

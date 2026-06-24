@@ -64,16 +64,31 @@ def load_universe(min_mcap_m: float = MIN_MCAP_M) -> int:
     ]
 
     with connect() as conn:
-        # USA 종목만 wipe — 수동 추가된 일본/홍콩/중국 종목은 보존
-        conn.execute("DELETE FROM ticker_master WHERE country = 'USA'")
-        conn.executemany(
-            """
-            INSERT INTO ticker_master
-              (ticker, name, sector, industry, country, market_cap, price, pe_ratio, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?)
-            """,
-            rows,
+        # USA / NULL country 종목 wipe — 수동 추가한 비-USA (JPN/CHN) 종목은 보존
+        conn.execute(
+            "DELETE FROM ticker_master "
+            "WHERE country = 'USA' OR country IS NULL "
+            "OR country NOT IN ('JPN','CHN','KOR','HKG','TWN','GBR','DEU','FRA','CHE','JAP')"
         )
+        # UPSERT — 행 중복 시 update (혹시 남은 row와 충돌해도 안전)
+        for r in rows:
+            conn.execute(
+                """
+                INSERT INTO ticker_master
+                  (ticker, name, sector, industry, country, market_cap, price, pe_ratio, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?)
+                ON CONFLICT (ticker) DO UPDATE SET
+                  name = EXCLUDED.name,
+                  sector = EXCLUDED.sector,
+                  industry = EXCLUDED.industry,
+                  country = EXCLUDED.country,
+                  market_cap = EXCLUDED.market_cap,
+                  price = EXCLUDED.price,
+                  pe_ratio = EXCLUDED.pe_ratio,
+                  updated_at = EXCLUDED.updated_at
+                """,
+                r,
+            )
         conn.commit()
     return len(rows)
 
