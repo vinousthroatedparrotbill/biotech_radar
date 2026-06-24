@@ -437,6 +437,33 @@ def _ensure_urls_discovered(ticker: str) -> None:
             st.session_state[f"pl_in_{ticker}"] = new_pl
 
 
+@st.fragment
+def _watch_excl_fragment(ticker: str):
+    """관심/제외 토글 — fragment로 격리해 등록/해제 시 모달 전체 rerun 방지(이 버튼만 갱신)."""
+    import watchlist as wl
+    import excluded as excl
+    c = st.columns(2)
+    with c[0]:
+        if wl.is_watched(ticker):
+            if st.button("★ 관심 해제", key=f"wl_off_{ticker}", use_container_width=True):
+                wl.remove(ticker)
+                st.rerun(scope="fragment")
+        else:
+            if st.button("☆ 관심종목", key=f"wl_on_{ticker}", use_container_width=True):
+                wl.add(ticker)
+                st.rerun(scope="fragment")
+    with c[1]:
+        if excl.is_excluded(ticker):
+            if st.button("✓ 제외 해제", key=f"ex_off_{ticker}", use_container_width=True):
+                excl.remove(ticker)
+                st.rerun(scope="fragment")
+        else:
+            if st.button("🚫 제외", key=f"ex_on_{ticker}", use_container_width=True,
+                         help="신고가/상승폭 리스트에서 영구 숨김 (비-biotech 종목용)"):
+                excl.add(ticker, note="user excluded")
+                st.rerun(scope="fragment")
+
+
 def render_stock_detail(ticker: str, name: str):
     import plotly.graph_objects as go
     import watchlist as wl
@@ -445,29 +472,12 @@ def render_stock_detail(ticker: str, name: str):
 
     _ensure_urls_discovered(ticker)
 
-    # 헤더 + 관심/제외 토글
-    top = st.columns([6, 1.5, 1.5])
+    # 헤더 + 관심/제외 토글 (토글은 fragment — 등록/해제 시 모달 전체 rerun 방지)
+    top = st.columns([6, 3])
     with top[0]:
         st.markdown(f"### {name} ({ticker})")
     with top[1]:
-        if wl.is_watched(ticker):
-            if st.button("★ 관심 해제", key=f"wl_off_{ticker}", use_container_width=True):
-                wl.remove(ticker)
-                st.rerun()
-        else:
-            if st.button("☆ 관심종목", key=f"wl_on_{ticker}", use_container_width=True):
-                wl.add(ticker)
-                st.rerun()
-    with top[2]:
-        if excl.is_excluded(ticker):
-            if st.button("✓ 제외 해제", key=f"ex_off_{ticker}", use_container_width=True):
-                excl.remove(ticker)
-                st.rerun()
-        else:
-            if st.button("🚫 제외", key=f"ex_on_{ticker}", use_container_width=True,
-                         help="신고가/상승폭 리스트에서 영구 숨김 (비-biotech 종목용)"):
-                excl.add(ticker, note="user excluded")
-                st.rerun()
+        _watch_excl_fragment(ticker)
 
     cc = st.columns([2, 2])
     with cc[0]:
