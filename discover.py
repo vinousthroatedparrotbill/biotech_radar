@@ -85,13 +85,13 @@ PIPELINE_PATTERNS: list[tuple[re.Pattern, int]] = [
     (re.compile(r"\bclinical\s*(?:program|pipeline|trials?)\b", re.I), 6),
 ]
 
-# 한국 홈페이지 IR 앵커 (한국어 + 영문)
+# 한국 홈페이지 IR/보도자료 앵커 (한국어 + 영문) — investor relations · IR자료 · 보도자료
 _KR_IR_PATTERNS: list[tuple[re.Pattern, int]] = [
-    (re.compile(r"IR\s*센터|투자\s*정보|투자자\s*정보|투자자관계", re.I), 10),
-    (re.compile(r"투자자", re.I), 8),
-    (re.compile(r"\bIR\b", re.I), 8),
+    (re.compile(r"IR\s*자료|IR\s*DATA|투자\s*정보|투자자\s*정보|IR\s*센터|investor\s*relations", re.I), 11),
+    (re.compile(r"보도\s*자료|press\s*release|뉴스\s*룸|news\s*room|미디어", re.I), 9),
+    (re.compile(r"투자자\s*관계|투자자|\bIR\b", re.I), 8),
     (re.compile(r"investor", re.I), 7),
-    (re.compile(r"공시\s*정보|공시", re.I), 5),
+    (re.compile(r"공시\s*자료|전자\s*공시|공시\s*정보|공시", re.I), 6),
     (re.compile(r"주주", re.I), 4),
 ]
 
