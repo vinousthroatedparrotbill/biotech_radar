@@ -194,6 +194,16 @@ CREATE TABLE IF NOT EXISTS portfolio_transactions (
 );
 CREATE INDEX IF NOT EXISTS idx_ptx_portfolio
     ON portfolio_transactions(portfolio_id, ticker, trade_date, id);
+
+-- AI 챗 공유 대화 로그 — 텔레그램 봇 ↔ 웹앱 챗이 같은 대화를 공유(단일 사용자)
+CREATE TABLE IF NOT EXISTS chat_log (
+    id          BIGSERIAL PRIMARY KEY,
+    role        TEXT NOT NULL,            -- 'user' | 'assistant'
+    content     TEXT NOT NULL,
+    source      TEXT,                     -- 'telegram' | 'web' (출처 표시용)
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_log_id ON chat_log(id DESC);
 """
 
 

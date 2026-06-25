@@ -1925,7 +1925,8 @@ def _section_chat():
         unsafe_allow_html=True,
     )
 
-    msgs0 = st.session_state.get("chat_history", [])
+    import chat_store
+    msgs0 = chat_store.recent_display(60)   # 텔레그램↔웹 공유 대화
     top = st.columns([5, 1.4, 0.9])
     with top[0]:
         st.caption(
@@ -1953,11 +1954,12 @@ def _section_chat():
             except Exception as e:
                 st.toast(f"⚠️ {type(e).__name__}: {e}")
     with top[2]:
-        if st.button("🗑️", key="chat_reset", use_container_width=True, help="대화 초기화"):
-            st.session_state.pop("chat_history", None)
+        if st.button("🗑️", key="chat_reset", use_container_width=True,
+                     help="대화 초기화 (텔레그램과 공유 — 양쪽 초기화)"):
+            chat_store.clear()
             st.rerun(scope="fragment")
 
-    msgs = st.session_state.setdefault("chat_history", [])
+    msgs = msgs0
 
     # 대화 로그 — 고정 높이 스크롤 박스(일반 챗봇 형태). 입력창은 박스 아래 고정.
     box = st.container(height=460, border=True)
@@ -1966,6 +1968,8 @@ def _section_chat():
             st.caption("아직 대화가 없습니다. 아래에 질문을 입력하세요.")
         for i, m in enumerate(msgs):
             with st.chat_message(m["role"]):
+                if m.get("source") == "telegram":
+                    st.caption("📱 텔레그램")
                 st.markdown(m["content"])
                 if m["role"] == "assistant" and not str(m["content"]).startswith("⚠️"):
                     if st.button("📤 텔레그램", key=f"tg_msg_{i}",
@@ -2005,19 +2009,20 @@ def _section_chat():
             except Exception:
                 pass
         _disp = prompt + (f"  \n_📎 {len(attachments)}개 파일 첨부됨_" if attachments else "")
-        msgs.append({"role": "user", "content": _disp})
+        history = chat_store.recent(40)   # 공유 대화 직전까지
         with box:
             with st.chat_message("user"):
                 st.markdown(_disp)
             with st.chat_message("assistant"):
                 with st.spinner("조사 중… (도구 호출/파일 분석, 최대 1-2분)"):
                     try:
-                        text, _ = bot_agent.run_agent(prompt, msgs[:-1],
+                        text, _ = bot_agent.run_agent(prompt, history,
                                                       attachments=attachments)
                     except Exception as e:
                         text = f"⚠️ 오류: {type(e).__name__}: {e}"
                 st.markdown(text)
-        msgs.append({"role": "assistant", "content": text})
+        chat_store.append("user", _disp, "web")
+        chat_store.append("assistant", text, "web")
         st.rerun(scope="fragment")
 
 

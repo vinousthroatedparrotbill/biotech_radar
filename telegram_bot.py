@@ -31,6 +31,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 
 from bot_agent import CLAUDE_MODEL, SYSTEM_PROMPT, run_agent
+import chat_store
 
 
 def _allowed_user_ids() -> set[str]:
@@ -234,16 +235,16 @@ _pending_file: dict[int, list] = {}
 
 
 async def _ask_claude(user_msg: str, chat_id: int, attachments=None) -> str:
-    """공용 run_agent에 위임 — chat_id별 히스토리만 telegram 측에서 관리.
-    SYSTEM_PROMPT·도구·멀티스텝 루프는 bot_agent 단일 소스(웹 채팅과 100% 동일)."""
-    history = _chat_history.get(chat_id, [])
-    text, new_history = run_agent(user_msg, history, attachments=attachments)
-    _chat_history[chat_id] = new_history[-MAX_HISTORY_TURNS * 2:]
+    """공용 run_agent — 대화는 chat_store(웹앱 챗과 공유)에 적재. 텔레↔웹 완전 공유."""
+    history = chat_store.recent(MAX_HISTORY_TURNS * 2)
+    text, _ = run_agent(user_msg, history, attachments=attachments)
+    chat_store.append("user", user_msg, "telegram")
+    chat_store.append("assistant", text, "telegram")
     return text
 
 
 def _reset_history(chat_id: int) -> None:
-    _chat_history.pop(chat_id, None)
+    chat_store.clear()        # 공유 대화 — 텔레/웹 양쪽 초기화
 
 
 # ───────────────────────── 메시지 핸들러 ─────────────────────────
@@ -350,9 +351,10 @@ async def handle_file(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await msg.chat.send_action(ChatAction.TYPING)
     chat_id = msg.chat.id
     try:
-        history = _chat_history.get(chat_id, [])
-        text, new_history = run_agent(caption, history, attachments=att)
-        _chat_history[chat_id] = new_history[-MAX_HISTORY_TURNS * 2:]
+        history = chat_store.recent(MAX_HISTORY_TURNS * 2)
+        text, _ = run_agent(caption, history, attachments=att)
+        chat_store.append("user", f"{caption} [파일: {name}]", "telegram")
+        chat_store.append("assistant", text, "telegram")
         _pending_file[chat_id] = att   # 다음 텍스트 후속질문에 재첨부 (그 pdf 분석해줘)
     except Exception as e:
         log.exception("file analysis error")
