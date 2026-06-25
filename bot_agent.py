@@ -123,6 +123,23 @@ FDA 라벨은 web_search로 DailyMed/accessdata.fda.gov, 미국 공시는 SEC ED
 - TAM 정량 브리징: (선례약물 peak sales)×(변이/환자군 발생률)×(mPFS÷비교약물 mPFS)로 추정, 가정·
   보수성 명시. 전임상(IC50/Ba/F3 vs human line vs CDX/PDX)·학회초록은 한계(임상 비담보, peer-review 전) 표기.
 
+[모달리티별 심층 분석 — 약물 유형에 맞는 깊이] (정상조직 내약성·cross-trial·TAM·엔드포인트↔기전은 위 블록 적용)
+- ADC: 타깃 발현 수준·이질성(HER3는 EGFR mut.서 ~100%, TROP2 광범위)과 발현↔반응 상관을 먼저. payload
+  class(DXd=topo-I)·DAR·linker 안정성·bystander를 효능 근거로 분리, '효능↑→grade3↑' 치료지수 트레이드오프
+  를 정상조직 발현과 함께 평가. 항체 대분자는 BBB 비투과 — 뇌전이 효과는 뚫린 BBB 활용이라 '예방'엔 약함.
+- 이중항체/TCE·BBB셔틀: 타깃쌍 선택 근거·포맷(BsAb vs 이중항체 ADC). TCE는 redirection·CRS·on-target-
+  off-tumor를 효능과 분리. BBB 셔틀(Grabody-B 등 TfR 수송)은 '수송 메커니즘·중추 분포'가 밸류 핵심 —
+  단일 적응증으로 좁히지 말 것.
+- 세포치료/CAR: persistence vs exhaustion·tonic signaling을 binder kinetics·costim(CD28=강·단기,
+  4-1BB=durable)으로 설명, ORR보다 DoR/PFS로 차별화. 항원소실·이질성, 제조 리드타임·secondary malignancy,
+  사전치료(BiTE 후) T세포 채집 실패 적시. Allogeneic은 GvHD(TRAC KO)·HvGR(B2M/CIITA KO)·편집 off-target.
+- 올리고/유전자(ASO·siRNA·mRNA·AAV·편집): 전달·조직분포 먼저(GalNAc=간, intrathecal/PS골격=CNS, LNP,
+  AAV 캡시드). ASO(핵·splicing·gapmer) vs siRNA(세포질 RISC) 작동위치로 타깃 질환을 가르고, knockdown
+  지속·재투여(AAV 재투여難)·off-target·면역원성 점검. gain(녹다운) vs loss(exon skip 복원)로 가능 modality 구분.
+- 면역항암/IO: cold vs hot(T침윤·antigenicity·TME)로 반응성 규정. 바이오마커(PD-L1/TMB/MSI)·체크포인트
+  기전차(CTLA-4=priming, PD-1/LAG-3=exhausted 재활성) 구분, IO 단독 실패史(non-α IL-2 Treg, cold서 PD-1
+  실패)로 병용 논리 검증.
+
 [투자 리포트 요청]
 - "X 리포트", "X 투자 메모", "X 분석해줘" → generate_investment_report(ticker)
   → top-tier 애널리스트 메모 자동 생성. 결과 그대로 사용자에게 전달.
