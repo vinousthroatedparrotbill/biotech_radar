@@ -169,25 +169,47 @@ def _blog_id(s: str) -> str:
 
 
 def naver_blog_posts(blog_id_or_url: str, limit: int = 10) -> list[dict]:
-    """네이버 블로그 RSS → 최근 글 목록 [{title, log_no, link, preview}]."""
+    """네이버 블로그 글 목록 [{title, log_no, link, preview}].
+    PostTitleListAsync로 **전체 글 페이지네이션**(RSS 50개 한계 넘어 모든 글 접근); 실패 시 RSS 폴백."""
+    import urllib.parse as _up
     bid = _blog_id(blog_id_or_url)
+    out: list[dict] = []
     try:
-        r = requests.get(f"https://rss.blog.naver.com/{bid}.xml",
-                         headers=_HDR, timeout=15)
-        root = ET.fromstring(r.content)
+        hdr = {**_HDR, "Referer": f"https://blog.naver.com/{bid}"}
+        for pg in range(1, (limit // 30) + 2):
+            url = (f"https://blog.naver.com/PostTitleListAsync.naver?blogId={bid}"
+                   f"&viewdate=&currentPage={pg}&categoryNo=0&parentCategoryNo=0&countPerPage=30")
+            txt = requests.get(url, headers=hdr, timeout=15).text
+            logs = re.findall(r'"logNo"\s*:\s*"?(\d+)"?', txt)
+            titles = re.findall(r'"title"\s*:\s*"([^"]*)"', txt)
+            if not logs:
+                break
+            for i, ln in enumerate(logs):
+                title = _up.unquote_plus(titles[i]) if i < len(titles) else ""
+                out.append({"title": _clean(title), "log_no": ln,
+                            "link": f"https://blog.naver.com/{bid}/{ln}", "preview": ""})
+                if len(out) >= limit:
+                    return out
+            if len(logs) < 30:
+                break
+        if out:
+            return out
     except Exception as e:
-        log.warning("네이버 블로그 RSS 실패 %s: %s", bid, e)
-        return []
-    out = []
-    for it in root.iter("item"):
-        title = (it.findtext("title") or "").strip()
-        link = (it.findtext("link") or "").strip()
-        m = re.search(r"/(\d{6,})", link)
-        out.append({"title": title, "log_no": m.group(1) if m else "",
-                    "link": link.split("?")[0],
-                    "preview": _clean(it.findtext("description") or "")[:300]})
-        if len(out) >= limit:
-            break
+        log.warning("네이버 블로그 목록(PostTitleList) 실패 %s: %s — RSS 폴백", bid, e)
+    # RSS 폴백 (최근 ~50개)
+    try:
+        root = ET.fromstring(requests.get(
+            f"https://rss.blog.naver.com/{bid}.xml", headers=_HDR, timeout=15).content)
+        for it in root.iter("item"):
+            link = (it.findtext("link") or "").strip()
+            m = re.search(r"/(\d{6,})", link)
+            out.append({"title": (it.findtext("title") or "").strip(),
+                        "log_no": m.group(1) if m else "", "link": link.split("?")[0],
+                        "preview": _clean(it.findtext("description") or "")[:300]})
+            if len(out) >= limit:
+                break
+    except Exception as e:
+        log.warning("네이버 블로그 RSS 폴백도 실패 %s: %s", bid, e)
     return out
 
 
