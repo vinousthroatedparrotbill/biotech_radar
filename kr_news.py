@@ -161,6 +161,58 @@ def naver_disclosures(code: str, limit: int = 20) -> list[dict]:
         f"https://finance.naver.com/item/news_notice.naver?code={code}&page=1", limit)
 
 
+def _blog_id(s: str) -> str:
+    """URL 또는 ID에서 네이버 블로그 ID 추출 (blog.naver.com/xxx → xxx)."""
+    s = (s or "").strip()
+    m = re.search(r"blog\.naver\.com/([A-Za-z0-9_-]+)", s)
+    return m.group(1) if m else s.split("/")[0]
+
+
+def naver_blog_posts(blog_id_or_url: str, limit: int = 10) -> list[dict]:
+    """네이버 블로그 RSS → 최근 글 목록 [{title, log_no, link, preview}]."""
+    bid = _blog_id(blog_id_or_url)
+    try:
+        r = requests.get(f"https://rss.blog.naver.com/{bid}.xml",
+                         headers=_HDR, timeout=15)
+        root = ET.fromstring(r.content)
+    except Exception as e:
+        log.warning("네이버 블로그 RSS 실패 %s: %s", bid, e)
+        return []
+    out = []
+    for it in root.iter("item"):
+        title = (it.findtext("title") or "").strip()
+        link = (it.findtext("link") or "").strip()
+        m = re.search(r"/(\d{6,})", link)
+        out.append({"title": title, "log_no": m.group(1) if m else "",
+                    "link": link.split("?")[0],
+                    "preview": _clean(it.findtext("description") or "")[:300]})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def naver_blog_body(blog_id_or_url: str, log_no: str, max_chars: int = 8000) -> str:
+    """네이버 블로그 글 전체 본문(모바일 se-main-container 추출)."""
+    bid = _blog_id(blog_id_or_url)
+    try:
+        r = requests.get(f"https://m.blog.naver.com/{bid}/{log_no}",
+                         headers={**_HDR, "User-Agent": "Mozilla/5.0 (iPhone)"}, timeout=15)
+        html = r.text
+    except Exception as e:
+        log.warning("네이버 블로그 본문 실패 %s/%s: %s", bid, log_no, e)
+        return ""
+    i = html.find("se-main-container")
+    seg = html[i:i + 120000] if i >= 0 else html
+    seg = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", seg, flags=re.S)
+    text = _clean(seg)
+    for marker in ("이 블로그", "공감한 사람", "댓글 ", "이웃추가", "맨 위로", "구독하기"):
+        p = text.find(marker)
+        if p > 500:
+            text = text[:p]
+            break
+    return text[:max_chars]
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     import sys

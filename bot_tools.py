@@ -1732,6 +1732,22 @@ TOOL_DEFS = [
         },
     },
     {
+        "name": "read_naver_blog",
+        "description": "네이버 블로그 글 읽기 — RSS로 글 목록 + 전체 본문(모바일) 회수. "
+                       "사용자가 블로그 URL/ID를 주거나 '이 블로그 읽어줘/분석해줘' 할 때 사용 "
+                       "(애널리스트 바이오 블로그 등). blog=URL 또는 ID, query=제목 키워드 필터(선택), "
+                       "limit=본문 가져올 글 수(기본 4, 최대 8).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "blog": {"type": "string", "description": "네이버 블로그 URL 또는 ID (예: mljys10)"},
+                "query": {"type": "string", "description": "제목 필터 키워드(선택)"},
+                "limit": {"type": "integer", "default": 4},
+            },
+            "required": ["blog"],
+        },
+    },
+    {
         "name": "get_upcoming_pdufa",
         "description": "Upcoming FDA PDUFA decisions within next N days.",
         "input_schema": {
@@ -2068,6 +2084,28 @@ def get_kr_news(ticker: str = "", query: str = "", limit: int = 15):
         return {"error": f"{type(e).__name__}: {e}"}
 
 
+def read_naver_blog(blog: str, query: str = "", limit: int = 4):
+    """네이버 블로그 글 읽기 — RSS 목록 + 전체 본문(모바일). 바이오 애널리스트 블로그 등.
+    blog: 블로그 URL 또는 ID. query: 제목 필터(선택). limit: 본문 가져올 글 수."""
+    try:
+        import kr_news
+        posts = kr_news.naver_blog_posts(blog, limit=30)
+        if not posts:
+            return {"note": "블로그 글 없음 또는 RSS 접근 실패"}
+        if query and query.strip():
+            toks = [t for t in query.lower().split() if len(t) >= 2]
+            filt = [p for p in posts if any(t in p["title"].lower() for t in toks)]
+            posts = filt or posts
+        out = []
+        for p in posts[:max(1, min(limit, 8))]:
+            body = kr_news.naver_blog_body(blog, p["log_no"]) if p.get("log_no") else ""
+            out.append({"title": p["title"], "link": p["link"],
+                        "body": body or p.get("preview", "")})
+        return {"posts": out, "total_listed": len(posts)}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
 def run_tool(name: str, args: dict):
     """Tool name으로 디스패치."""
     funcs = {
@@ -2090,6 +2128,7 @@ def run_tool(name: str, args: dict):
         "get_market_movers": get_market_movers,
         "get_dart_disclosures": get_dart_disclosures,
         "get_kr_news": get_kr_news,
+        "read_naver_blog": read_naver_blog,
         # write
         "watchlist_add": watchlist_add,
         "watchlist_remove": watchlist_remove,
