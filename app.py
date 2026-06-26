@@ -2592,10 +2592,11 @@ def _floating_chat_widget():
           function fitBox(p){
             const box = p.querySelector('.st-key-chatbox'); if(!box) return;
             const btop = box.getBoundingClientRect().top - p.getBoundingClientRect().top;
-            const avail = p.clientHeight - btop - 130;   // 업로더+입력+여백 예약
-            if(avail < 140) return;
-            SP(box,'height',avail+'px');
-            box.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"]').forEach(function(el){
+            const avail = p.clientHeight - btop - 150;   // 업로더+입력+여백 예약(입력란 하단 고정)
+            if(avail < 130) return;
+            SP(box,'height',avail+'px'); SP(box,'max-height',avail+'px');
+            // 실제 스크롤 컨테이너(인라인 overflow+height 가진 안쪽 div)까지 높이 적용
+            box.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"], div[style*="overflow"]').forEach(function(el){
               SP(el,'height',avail+'px'); SP(el,'max-height',avail+'px');
             });
           }
