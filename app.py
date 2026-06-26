@@ -1700,13 +1700,23 @@ def _render_watched_catalyst_banner():
                 f"&nbsp;&nbsp;📍 D-{days_left} · {dh} · {tk_s}"
                 f"{(r.get('title') or '')[:120]}"
             )
-    st.markdown(
-        f"<div style='background:#fff3cd; border:1px solid #ffd966; "
-        f"border-left:4px solid #f9a825; padding:0.8rem 1.2rem; "
-        f"border-radius:8px; margin-bottom:1rem; line-height:1.5; "
-        f"font-size:0.92em;'>{'<br/>'.join(parts)}</div>",
-        unsafe_allow_html=True,
-    )
+    shown_ids = [int(r.get("id")) for _, r in (week_items + month_items)
+                 if r.get("id") is not None]
+    cbar = st.columns([22, 1], vertical_alignment="center")
+    with cbar[0]:
+        st.markdown(
+            f"<div style='background:#fff3cd; border:1px solid #ffd966; "
+            f"border-left:4px solid #f9a825; padding:0.8rem 1.2rem; "
+            f"border-radius:8px; margin-bottom:1rem; line-height:1.5; "
+            f"font-size:0.92em;'>{'<br/>'.join(parts)}</div>",
+            unsafe_allow_html=True,
+        )
+    with cbar[1]:
+        if st.button("✔", key="ack_all_banner",
+                     help="확인 — 표시된 카탈리스트 모두 확인하고 노란 알람 닫기"):
+            for cid in shown_ids:
+                cat.set_acknowledged(cid, True)
+            st.rerun()
 
 
 def render_main_page():
