@@ -2644,16 +2644,14 @@ def _floating_chat_widget():
               }
             }, true);
             D.addEventListener('mouseup', function(){ W.__chatDrag=null; W.__chatRs=null; }, true);
-            // 모달 focus-trap이 챗 입력 포커스를 메모 입력란으로 끌어가지 못하게 차단(캡처 단계 선점)
-            ['focusin','focus'].forEach(function(ev){
-              D.addEventListener(ev, function(e){
-                const p = panel();
-                if(p && e.target && p.contains(e.target)) e.stopImmediatePropagation();
-              }, true);
-            });
           }
           function tick(){
             const p = panel(); if(!p) return;
+            // 챗이 열려 있는 동안 모달 focus-lock 비활성화 → 챗 입력에 타이핑 가능
+            D.querySelectorAll('[data-focus-lock-disabled]').forEach(function(el){
+              if(el.getAttribute('data-focus-lock-disabled')!=='disabled')
+                el.setAttribute('data-focus-lock-disabled','disabled');
+            });
             const g = W.__chatGeom;
             if(g){ if(g.left)SP(p,'left',g.left); if(g.top)SP(p,'top',g.top);
                    if(g.width)SP(p,'width',g.width); if(g.height)SP(p,'height',g.height);
