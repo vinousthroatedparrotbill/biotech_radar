@@ -587,33 +587,34 @@ def _section_memos():
             with top[0]:
                 ts = m["created_at"].replace("T", " ")[:16]
                 st.markdown(
-                    f"<div style='color:#888; font-size:0.85em;'>{ts}</div>"
-                    f"<div style='font-weight:700; font-size:1.05em; color:#0a3d3a;'>"
-                    f"{m['ticker']}</div>"
-                    f"<div style='color:#5b6f6e; font-size:0.85em;'>{m.get('name') or ''}</div>",
+                    f"<div style='color:#888; font-size:0.85em;'>{ts}</div>",
                     unsafe_allow_html=True,
                 )
-                btn_cols = st.columns(2)
-                if btn_cols[0].button("종목", key=f"open_{m['id']}",
-                                       use_container_width=True):
+                # 티커 자체를 클릭 → 종목 상세 모달
+                if st.button(m["ticker"], key=f"open_{m['id']}",
+                             use_container_width=True, help="종목 상세 모달 열기"):
                     st.session_state["detail_ticker"] = m["ticker"]
                     st.session_state["detail_name"] = m.get("name") or m["ticker"]
                     st.session_state["detail_open"] = True
                     st.rerun()
+                if m.get("name"):
+                    st.markdown(
+                        f"<div style='color:#5b6f6e; font-size:0.85em; margin-top:-0.35rem;'>"
+                        f"{m['name']}</div>", unsafe_allow_html=True)
                 # 삭제 — 두 번 클릭 보호 (한 번 누르면 confirm 모드)
                 confirm_key = f"del_confirm_{m['id']}"
                 if st.session_state.get(confirm_key):
-                    if btn_cols[1].button("✓ 확정", key=f"del_yes_{m['id']}",
-                                           use_container_width=True, type="primary"):
+                    if st.button("✓ 삭제 확정", key=f"del_yes_{m['id']}",
+                                 use_container_width=True, type="primary"):
                         from memo import delete as memo_delete
                         memo_delete(m["id"])
                         st.session_state.pop(confirm_key, None)
                         _cached_timeline.clear()
                         st.rerun()
                 else:
-                    if btn_cols[1].button("🗑", key=f"del_{m['id']}",
-                                           use_container_width=True,
-                                           help="메모 삭제 (한번 더 누르면 확정)"):
+                    if st.button("삭제", key=f"del_{m['id']}",
+                                 use_container_width=True,
+                                 help="메모 삭제 (한번 더 누르면 확정)"):
                         st.session_state[confirm_key] = True
                         st.rerun()
 
@@ -2450,7 +2451,7 @@ def _render_chat_core(box_height: int = 330):
     msgs = msgs0
 
     # 대화 로그 — 고정 높이 스크롤 박스(일반 챗봇 형태). 입력창은 박스 아래 고정.
-    box = st.container(height=box_height, border=True, key="chatbox")
+    box = st.container(border=True, key="chatbox")   # 고정높이 X — 패널 플렉스로 자동 채움/스크롤
     with box:
         if not msgs:
             st.caption("아직 대화가 없습니다. 아래에 질문을 입력하세요.")
@@ -2540,10 +2541,16 @@ def _floating_chat_widget():
             width: 600px !important; height: 600px !important;
             min-width: 320px !important; min-height: 300px !important;
             max-width: 95vw !important; max-height: 88vh !important;
-            resize: none !important; overflow: hidden !important;   /* 네이티브 resize 끔(코너 스크롤바 충돌 방지) — JS 핸들 사용 */
+            resize: none !important; overflow: hidden !important;   /* JS 핸들로만 리사이즈 */
+            display: flex !important; flex-direction: column !important;
             background: #f3f5f8; border: 1px solid #cfd3da; border-radius: 14px;
             box-shadow: 0 10px 34px rgba(0,0,0,0.32); padding: 0.6rem 0.8rem 0.3rem; }
-        .st-key-chatpanel [data-testid="stVerticalBlock"] { gap: 0.45rem; }
+        /* 패널 내부 세로 블록이 패널 높이를 꽉 채우는 플렉스 컬럼 */
+        .st-key-chatpanel > [data-testid="stVerticalBlock"]{
+            display: flex !important; flex-direction: column !important;
+            height: 100% !important; min-height: 0 !important; gap: 0.4rem !important; }
+        /* 대화창(메시지 스크롤 박스)이 남는 세로 공간 전부 차지 → 패널 세로로 늘리면 같이 커짐 */
+        .st-key-chatbox{ flex: 1 1 auto !important; min-height: 0 !important; overflow-y: auto !important; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -2600,19 +2607,6 @@ def _floating_chat_widget():
         (function(){
           const W = window.parent, D = W.document;
           function SP(p,k,v){ p.style.setProperty(k, v, 'important'); }
-          function fitBox(p){
-            const box = p.querySelector('.st-key-chatbox'); if(!box) return;
-            const btop = box.getBoundingClientRect().top - p.getBoundingClientRect().top;
-            const avail = Math.max(140, p.clientHeight - btop - 150);   // 업로더+입력 예약(입력란 하단 고정)
-            SP(box,'height',avail+'px'); SP(box,'max-height',avail+'px');
-            // Streamlit이 인라인 height:NNNpx 로 박아둔 스크롤 컨테이너를 모두 찾아 덮어씀
-            box.querySelectorAll('*').forEach(function(el){
-              const s = el.getAttribute('style') || '';
-              if(/height:\\s*\\d+px/.test(s)){
-                SP(el,'height',avail+'px'); SP(el,'max-height',avail+'px'); SP(el,'overflow','auto');
-              }
-            });
-          }
           function bindDoc(){
             if(W.__chatDocBound) return; W.__chatDocBound = true;
             D.addEventListener('mousemove', function(e){
@@ -2628,7 +2622,6 @@ def _floating_chat_widget():
                 const nh = Math.max(280, r.h + (e.clientY - r.y));
                 SP(p,'width',nw+'px'); SP(p,'height',nh+'px'); SP(p,'max-width','98vw'); SP(p,'max-height','96vh');
                 W.__chatGeom = Object.assign(W.__chatGeom||{}, {width:nw+'px', height:nh+'px'});
-                fitBox(p);
               }
             });
             D.addEventListener('mouseup', function(){ W.__chatDrag=null; W.__chatRs=null; });
@@ -2640,7 +2633,6 @@ def _floating_chat_widget():
             if(g){ if(g.left)SP(p,'left',g.left); if(g.top)SP(p,'top',g.top);
                    if(g.width)SP(p,'width',g.width); if(g.height)SP(p,'height',g.height);
                    SP(p,'right','auto'); SP(p,'bottom','auto'); SP(p,'max-width','98vw'); SP(p,'max-height','96vh'); }
-            fitBox(p);
             if(p.dataset.dragInit==='1') return;
             p.dataset.dragInit='1';
             SP(p,'resize','none');
