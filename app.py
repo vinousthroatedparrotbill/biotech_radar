@@ -1520,12 +1520,21 @@ def _cached_reason_analysis(sig: str, rows: tuple, kind: str) -> str:
     """신고가/급등 '이유 추정' 분석 — 텔레그램 _highs_analysis 재사용. sig로 1시간 캐시."""
     import pandas as _pd
     import telegram_report as _tr
-    df = _pd.DataFrame(list(rows), columns=["ticker", "name", "close", "perf_1d", "market_cap"])
+    import re as _re
+    full = _pd.DataFrame(list(rows), columns=["ticker", "name", "close", "perf_1d", "market_cap"])
     label = "오늘 크게 상승(급등)한" if kind == "movers" else "오늘 52주 신고가를 찍은"
-    try:
-        return _tr._highs_analysis(df, max_n=20, context_label=label)
-    except TypeError:
-        return _tr._highs_analysis(df, max_n=20)
+    parts, CH = [], 22
+    for i in range(0, len(full), CH):
+        chunk = full.iloc[i:i + CH]
+        try:
+            md = _tr._highs_analysis(chunk, max_n=len(chunk), context_label=label)
+        except TypeError:
+            md = _tr._highs_analysis(chunk, max_n=len(chunk))
+        if not md:
+            continue
+        md = _re.split(r"\n-{3,}\s*\n?\s*\*\*\s*요약", md)[0].strip()   # 청크별 '요약 테마' 제거
+        parts.append(md)
+    return "\n\n".join(parts)
 
 
 def _render_reason_section(df, kind: str):
@@ -1533,8 +1542,9 @@ def _render_reason_section(df, kind: str):
     import re as _re
     if df is None or df.empty:
         return
+    _MAX = 100   # 홈페이지: 시총 무관 전 종목(과다 방지 상한). 텔레 봇은 별도(top 20)
     _sort_by = "perf_1d" if (kind == "movers" and "perf_1d" in df.columns) else "market_cap"
-    sub = df.sort_values(_sort_by, ascending=False, na_position="last").head(20)
+    sub = df.sort_values(_sort_by, ascending=False, na_position="last").head(_MAX)
     rows = tuple(
         (str(r.get("ticker") or ""), str(r.get("name") or ""),
          float(r["close"]) if pd.notna(r.get("close")) else None,
@@ -1545,14 +1555,15 @@ def _render_reason_section(df, kind: str):
     sig = f"{kind}:{latest_run_date()}:" + ",".join(sorted(t[0] for t in rows))
     st.divider()
     st.subheader("신고가 이유 분석" if kind == "high" else "급등 이유 분석")
-    st.caption("상승 동인 · 핵심 자산/기전 · 짧은 평가 (투자 추천 아님)")
+    st.caption("상승 동인 · 핵심 자산/기전 · 짧은 평가 (투자 추천 아님)"
+               + (f" · 상위 {_MAX}개" if len(df) > _MAX else f" · 전 {len(rows)}종목"))
     gen_key = f"reason_gen_{kind}"
     if st.session_state.get(gen_key) != sig:
         if st.button("이유 분석 생성 (~30초)", key=f"reason_btn_{kind}"):
             st.session_state[gen_key] = sig
             st.rerun()
         return
-    with st.spinner("이유 분석 생성 중…"):
+    with st.spinner(f"이유 분석 생성 중… ({len(rows)}종목, 종목 수에 따라 1~3분)"):
         md = _cached_reason_analysis(sig, rows, kind)
     if not md:
         st.info("분석 생성 실패 (API 키/크레딧 확인).")
@@ -2448,13 +2459,12 @@ def _floating_chat_widget():
             box-shadow: 0 10px 26px -6px rgba(10,61,58,0.55) !important; }
         div[data-testid="stMainBlockContainer"] .st-key-chatbtn button:hover {
             background: #0f5a52 !important; color: #ffffff !important; }
-        .st-key-chatpanel { position: fixed; bottom: 1.1rem; right: 1.1rem;
-            z-index: 2147483000; width: 470px; height: 600px;
-            min-width: 330px; min-height: 340px; max-width: 96vw; max-height: 90vh;
-            resize: both; overflow: auto; direction: rtl;   /* 좌하단 손잡이로 크기 조절 */
+        .st-key-chatpanel { position: fixed; top: 15vh; left: 53vw;
+            z-index: 2147483000; width: 44vw; height: 74vh;
+            min-width: 330px; min-height: 320px; max-width: 94vw; max-height: 90vh;
+            resize: both; overflow: auto;   /* 우하단 손잡이로 가로·세로 자유 조절 */
             background: #f3f5f8; border: 1px solid #cfd3da; border-radius: 14px;
             box-shadow: 0 10px 34px rgba(0,0,0,0.32); padding: 0.6rem 0.8rem 0.3rem; }
-        .st-key-chatpanel > * { direction: ltr; }
         .st-key-chatpanel [data-testid="stVerticalBlock"] { gap: 0.45rem; }
         </style>
         """,
