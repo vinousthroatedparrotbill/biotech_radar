@@ -599,8 +599,8 @@ def _section_memos():
                     st.rerun()
                 if m.get("name"):
                     st.markdown(
-                        f"<div style='color:#5b6f6e; font-size:0.85em; margin-top:-0.35rem;'>"
-                        f"{m['name']}</div>", unsafe_allow_html=True)
+                        f"<div style='color:#5b6f6e; font-size:0.85em; margin-top:-0.35rem;"
+                        f" text-align:center;'>{m['name']}</div>", unsafe_allow_html=True)
                 # 삭제 — 두 번 클릭 보호 (한 번 누르면 confirm 모드)
                 confirm_key = f"del_confirm_{m['id']}"
                 if st.session_state.get(confirm_key):
@@ -2549,8 +2549,10 @@ def _floating_chat_widget():
         .st-key-chatpanel > [data-testid="stVerticalBlock"]{
             display: flex !important; flex-direction: column !important;
             height: 100% !important; min-height: 0 !important; gap: 0.4rem !important; }
-        /* 대화창(메시지 스크롤 박스)이 남는 세로 공간 전부 차지 → 패널 세로로 늘리면 같이 커짐 */
-        .st-key-chatbox{ flex: 1 1 auto !important; min-height: 0 !important; overflow-y: auto !important; }
+        /* 헤더·업로더·입력란은 줄어들지 않게(입력란 항상 하단에 보임) */
+        .st-key-chatpanel > [data-testid="stVerticalBlock"] > *{ flex-shrink: 0 !important; }
+        /* 대화창(메시지 스크롤 박스)만 남는 세로 공간 전부 차지 → 패널 늘리면 같이 커짐 */
+        .st-key-chatbox{ flex: 1 1 auto !important; min-height: 60px !important; overflow-y: auto !important; }
         </style>
         """,
         unsafe_allow_html=True,
