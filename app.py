@@ -2681,7 +2681,12 @@ def _floating_chat_widget():
             D.addEventListener('mouseup', function(){ W.__chatDrag=null; W.__chatRs=null; }, true);
           }
           function tick(){
-            const p = panel(); if(!p) return;
+            const p = panel();
+            // 챗 열려 있으면 모달을 inert(비활성)로 → focus-trap이 챗 입력 포커스를 못 뺏음.
+            // 챗 닫히면 inert 해제(모달 다시 조작 가능). 모달은 계속 보임(읽기 가능).
+            var dlg = D.querySelector('[data-testid="stDialog"]') || D.querySelector('div[role="dialog"]');
+            if(dlg){ if(p){ dlg.setAttribute('inert',''); } else { dlg.removeAttribute('inert'); } }
+            if(!p) return;
             const g = W.__chatGeom;
             if(g){ if(g.left)SP(p,'left',g.left); if(g.top)SP(p,'top',g.top);
                    if(g.width)SP(p,'width',g.width); if(g.height)SP(p,'height',g.height);
