@@ -1857,11 +1857,14 @@ def _section_catalysts():
         df["_disp_date"] = df.apply(_date_label, axis=1)
         view = df[["id", "watched", "_disp_date", "event_date", "ticker",
                    "event_type", "title", "therapy_area", "source"]].copy()
+        view["_ack"] = (df["acknowledged"].fillna(False).astype(bool)
+                        if "acknowledged" in df.columns else False)
         view.columns = ["id", "👁️", "일자", "정렬일", "티커",
-                        "타입", "제목", "분야", "소스"]
+                        "타입", "제목", "분야", "소스", "✔"]
         view["티커"] = view["티커"].fillna("—")
         view["분야"] = view["분야"].fillna("—")
         view["👁️"] = view["👁️"].fillna(False).astype(bool)
+        view["✔"] = view["✔"].fillna(False).astype(bool)
 
         edited = st.data_editor(
             view.drop(columns=["정렬일"]),
@@ -1871,12 +1874,16 @@ def _section_catalysts():
                 "👁️": st.column_config.CheckboxColumn(
                     "👁️", help="워치 (1개월·1주 전 알림)", width="small",
                 ),
+                "✔": st.column_config.CheckboxColumn(
+                    "✔", help="확인 — 체크하면 상단 노란 알람에서 제외", width="small",
+                ),
             },
             disabled=["일자", "티커", "타입", "제목", "분야", "소스"],
             key="cat_editor",
         )
-        # 변경된 watched 토글 detection
+        # 변경된 watched / 확인(acknowledged) 토글 detection
         if edited is not None:
+            _ack_changed = False
             for _, before, after in zip(view.index, view.to_dict("records"),
                                          edited.to_dict("records")):
                 if before["👁️"] != after["👁️"]:
@@ -1886,6 +1893,15 @@ def _section_catalysts():
                         f": {after['제목'][:40]}",
                         icon="👁️",
                     )
+                if before["✔"] != after["✔"]:
+                    cat.set_acknowledged(int(before["id"]), bool(after["✔"]))
+                    st.toast(
+                        f"{'✅ 확인 (알람 제외)' if after['✔'] else '↩️ 확인 해제'}"
+                        f": {after['제목'][:40]}", icon="✔",
+                    )
+                    _ack_changed = True
+            if _ack_changed:
+                st.rerun()   # 상단 노란 알람 즉시 갱신
 
     # IR 마일스톤 추출 — watchlist 종목별
     st.divider()
@@ -2095,10 +2111,20 @@ def _portfolio_dialog(portfolio_id: int):
         perf = None
         st.caption(f"차트 생성 실패: {type(e).__name__}: {e}")
     if perf is not None and not perf.empty:
-        _colors = (["#0a3d3a", "#9aa7a5", "#c9b072", "#7e9cc4", "#b48ead", "#88b04b"])[:len(perf.columns)]
-        st.line_chart(perf, height=300, color=_colors)
-        _final = perf.iloc[-1]
-        st.caption(" · ".join(f"{c} {_final[c]:+.1f}%" for c in perf.columns))
+        import pandas as _pd
+        _RANGES = {"1D": 1, "1W": 7, "1M": 31, "3M": 95, "6M": 190,
+                   "1Y": 380, "3Y": 1100, "최대": 10**6}
+        rsel = st.radio("기간", list(_RANGES.keys()), index=7, horizontal=True,
+                        key=f"pf_range_{portfolio_id}", label_visibility="collapsed")
+        _cut = perf.index.max() - _pd.Timedelta(days=_RANGES[rsel])
+        w = perf[perf.index >= _cut].copy()
+        if len(w) >= 2:
+            _base = (1 + w.iloc[0] / 100.0)          # 창 시작 = 0% 재정규화 (TradingView식)
+            w = ((1 + w / 100.0).div(_base) - 1.0) * 100.0
+        _colors = (["#0a3d3a", "#9aa7a5", "#c9b072", "#7e9cc4", "#b48ead", "#88b04b"])[:len(w.columns)]
+        st.line_chart(w, height=300, color=_colors)
+        _final = w.iloc[-1]
+        st.caption(f"[{rsel}] " + " · ".join(f"{c} {_final[c]:+.1f}%" for c in w.columns))
     else:
         st.caption("거래내역·가격 데이터가 충분치 않아 차트를 표시할 수 없습니다 "
                    "(보유종목 OHLCV 캐시 필요 — ⚙ 운영 '신고가 갱신').")

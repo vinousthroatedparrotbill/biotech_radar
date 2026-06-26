@@ -535,9 +535,20 @@ def get_watched(days_ahead: int = 90) -> pd.DataFrame:
     horizon = (dt.date.today() + dt.timedelta(days=days_ahead)).isoformat()
     return db.pd_read_sql(
         "SELECT * FROM catalysts WHERE watched = TRUE "
+        "AND (acknowledged IS NULL OR acknowledged = FALSE) "
         "AND notify_date <= ? ORDER BY notify_date ASC",
         params=(horizon,),
     )
+
+
+def set_acknowledged(catalyst_id: int, acknowledged: bool) -> None:
+    """확인(체크) 토글 — 켜지면 노란 알람 배너(get_watched)에서 제외."""
+    with db.connect() as conn:
+        conn.execute(
+            "UPDATE catalysts SET acknowledged = ? WHERE id = ?",
+            (bool(acknowledged), catalyst_id),
+        )
+        conn.commit()
 
 
 def get_due_alerts() -> dict:
