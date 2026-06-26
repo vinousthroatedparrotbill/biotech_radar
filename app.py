@@ -225,16 +225,16 @@ st.markdown("""
     background:#eaf1ef; border-radius:11px;
   }
   .st-key-country div[role="radiogroup"] > label{
-    margin:0 !important; padding:0.36rem 0.95rem !important; min-height:0 !important;
+    margin:0 !important; padding:0.36rem 1.05rem !important; min-height:0 !important;
     background:transparent !important; border:0 !important; border-radius:8px !important;
-    display:flex !important; align-items:center; justify-content:center;
-    min-width:3.1rem; text-align:center; transition:background .15s; cursor:pointer;
+    display:flex !important; align-items:center !important; justify-content:center !important;
+    text-align:center !important; transition:background .15s; cursor:pointer;
   }
-  /* 라디오 컨트롤(동그라미=첫 자식, 태그 무관)만 숨김 — 텍스트 div는 유지 → 중앙 정렬 */
+  /* 라디오 컨트롤(동그라미=첫 자식)만 숨김. min-width 제거 → 알약=텍스트+대칭패딩이라 중앙 */
   .st-key-country div[role="radiogroup"] label > :first-child{ display:none !important; }
-  .st-key-country div[role="radiogroup"] label [data-testid="stMarkdownContainer"]{
-    width:100% !important; display:flex !important; justify-content:center !important;
-    text-align:center !important;
+  .st-key-country div[role="radiogroup"] label > div:last-child{
+    flex:0 0 auto !important; width:auto !important; margin:0 auto !important;
+    display:flex !important; justify-content:center !important; text-align:center !important;
   }
   .st-key-country div[role="radiogroup"] label *{
     font-size:0.9rem !important; font-weight:600 !important; color:#5b6f6e !important;
@@ -1770,17 +1770,6 @@ def render_main_page():
     if st.session_state.get("main_tab_radio") not in tab_options:
         st.session_state["main_tab_radio"] = "high"   # 구버전 'chat' 등 잔존값 방어
 
-    # 우하단 플로팅 위젯(CHAT/운영) — position:fixed라 위치 동일. 맨 위에서 먼저 렌더해
-    # 아래 섹션이 예외나도 항상 뜨게 함.
-    try:
-        _floating_chat_widget()
-    except Exception:
-        pass
-    try:
-        _floating_ops_widget()
-    except Exception:
-        pass
-
     # ── 상단 네비게이션 바 (로고 · 메뉴 · 시장 토글) — 홈페이지형 ──
     with st.container(key="topbar"):
         bar = st.columns([3.0, 6.4, 1.6], vertical_alignment="center")
@@ -1846,7 +1835,9 @@ def render_main_page():
     except Exception as e:
         st.error(f"섹션 렌더 오류: {type(e).__name__}: {e}")
 
-    # (플로팅 위젯은 render_main_page 상단에서 먼저 렌더함)
+    # 우하단 플로팅 위젯 — 섹션 예외는 위에서 격리돼 여기 항상 도달. st.rerun 삼킴 방지로 try 없음.
+    _floating_chat_widget()
+    _floating_ops_widget()
 
 
 # ───────────────────────── 카탈리스트 캘린더 ─────────────────────────
