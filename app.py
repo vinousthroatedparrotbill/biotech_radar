@@ -2541,10 +2541,18 @@ def _floating_chat_widget():
             width: 600px !important; height: 600px !important;
             min-width: 320px !important; min-height: 300px !important;
             max-width: 95vw !important; max-height: 88vh !important;
-            resize: none !important; overflow: auto !important;   /* JS 핸들로만 리사이즈 */
+            resize: none !important; overflow: hidden !important;   /* JS 핸들로만 리사이즈 */
+            display: flex !important; flex-direction: column !important; gap: 0.4rem !important;
             background: #f3f5f8; border: 1px solid #cfd3da; border-radius: 14px;
             box-shadow: 0 10px 34px rgba(0,0,0,0.32); padding: 0.6rem 0.8rem 0.3rem; }
-        .st-key-chatpanel [data-testid="stVerticalBlock"] { gap: 0.45rem; }
+        /* 헤더·업로더·입력란(요소 컨테이너/래퍼)은 자연 높이 고정 */
+        .st-key-chatpanel > [data-testid="stElementContainer"],
+        .st-key-chatpanel > [data-testid="stLayoutWrapper"]{ flex: 0 0 auto !important; }
+        /* 대화창 래퍼(emotion 320px)만 남는 세로 공간 전부 차지 → 패널 늘리면 같이 커짐 */
+        .st-key-chatpanel > [data-testid="stLayoutWrapper"]:has(.st-key-chatbox){
+            flex: 1 1 auto !important; min-height: 0 !important; height: auto !important; }
+        .st-key-chatpanel .st-key-chatbox{
+            height: 100% !important; max-height: 100% !important; overflow-y: auto !important; }
         </style>
         """,
         unsafe_allow_html=True,
