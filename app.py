@@ -364,6 +364,10 @@ st.markdown("""
     border-radius:8px; padding:0.5rem 1.1rem; margin-bottom:1rem;
   }
   .st-key-catalert [data-testid="stMarkdownContainer"]{ margin:0 !important; }
+
+  /* 투자 메모 티커 버튼 — 상단바보다 크게 + 볼드 */
+  [class*="st-key-memo_tk_"] button{ color:#0a3d3a !important; padding:0.1rem 0.4rem !important; }
+  [class*="st-key-memo_tk_"] button p{ font-size:2rem !important; font-weight:800 !important; letter-spacing:-0.3px; }
   .st-key-topbar .st-key-country div[role="radiogroup"]{ flex-wrap:nowrap !important; }
 
   /* ───── Streamlit 기본 상단 헤더/툴바 숨김 (share·별표·수정·rerun 바 제거) ───── */
@@ -591,7 +595,7 @@ def _section_memos():
                     unsafe_allow_html=True,
                 )
                 # 티커 자체를 클릭 → 종목 상세 모달
-                if st.button(m["ticker"], key=f"open_{m['id']}",
+                if st.button(m["ticker"], key=f"memo_tk_{m['id']}",
                              use_container_width=True, help="종목 상세 모달 열기"):
                     st.session_state["detail_ticker"] = m["ticker"]
                     st.session_state["detail_name"] = m.get("name") or m["ticker"]
