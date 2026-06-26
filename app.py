@@ -1611,14 +1611,16 @@ def _render_reason_section(df, kind: str):
     if not blocks:
         st.markdown(md_s)
         return
-    cols = st.columns(2)
-    for i, blk in enumerate(blocks):
-        with cols[i % 2]:
+    _scroll = st.container(height=480, border=False)
+    with _scroll:
+        cols = st.columns(2)
+        for i, blk in enumerate(blocks):
+            with cols[i % 2]:
+                with st.container(border=True):
+                    st.markdown(blk)
+        if summ:
             with st.container(border=True):
-                st.markdown(blk)
-    if summ:
-        with st.container(border=True):
-            st.markdown(summ)
+                st.markdown(summ)
 
 
 @st.fragment
@@ -1772,26 +1774,39 @@ def render_main_page():
             )
     st.session_state["main_tab"] = chosen
 
-    _render_watched_catalyst_banner()
+    try:
+        _render_watched_catalyst_banner()
+    except Exception as e:
+        st.warning(f"배너 오류: {type(e).__name__}: {e}")
 
-    if chosen == "high":
-        _section_high()
-    elif chosen == "top_movers":
-        _section_top_movers()
-    elif chosen == "daily_news":
-        _section_daily_news()
-    elif chosen == "memos":
-        _section_memos()
-    elif chosen == "portfolios":
-        _section_portfolios()
-    elif chosen == "catalysts":
-        _section_catalysts()
-    elif chosen == "watchlist":
-        render_watchlist_page()
+    # 섹션에서 예외가 나도 아래 플로팅 위젯(챗/운영)은 항상 뜨도록 격리
+    try:
+        if chosen == "high":
+            _section_high()
+        elif chosen == "top_movers":
+            _section_top_movers()
+        elif chosen == "daily_news":
+            _section_daily_news()
+        elif chosen == "memos":
+            _section_memos()
+        elif chosen == "portfolios":
+            _section_portfolios()
+        elif chosen == "catalysts":
+            _section_catalysts()
+        elif chosen == "watchlist":
+            render_watchlist_page()
+    except Exception as e:
+        st.error(f"섹션 렌더 오류: {type(e).__name__}: {e}")
 
     # 우하단 플로팅 위젯 — AI 챗(💬) + 운영(⚙). 탭이 아니라 항상 떠 있음.
-    _floating_chat_widget()
-    _floating_ops_widget()
+    try:
+        _floating_chat_widget()
+    except Exception:
+        pass
+    try:
+        _floating_ops_widget()
+    except Exception:
+        pass
 
 
 # ───────────────────────── 카탈리스트 캘린더 ─────────────────────────
@@ -2020,7 +2035,15 @@ def _pf_perf_series(portfolio_id: int, bench_tickers: tuple, sig: str):
         s.index = _pd.to_datetime(s.index).normalize()
         return s[~s.index.duplicated(keep="last")].sort_index()
 
-    closes = {tk: s for tk in sorted({t["ticker"] for t in txs}) if (s := _close(tk)) is not None}
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+    _held = sorted({t["ticker"] for t in txs})
+    _want = list(dict.fromkeys(_held + list(bench_tickers)))
+    _fetched = {}
+    with _TPE(max_workers=min(8, max(1, len(_want)))) as _ex:
+        for _tk, _s in zip(_want, _ex.map(_close, _want)):
+            if _s is not None and not _s.empty:
+                _fetched[_tk] = _s
+    closes = {tk: _fetched[tk] for tk in _held if tk in _fetched}
     if not closes:
         return _pd.DataFrame()
     idx = None
@@ -2059,7 +2082,7 @@ def _pf_perf_series(portfolio_id: int, bench_tickers: tuple, sig: str):
     out = _pd.DataFrame({"포트폴리오": (nav_s / initial - 1.0) * 100.0})
 
     for b in bench_tickers:
-        bs = _close(b)
+        bs = _fetched.get(b)
         if bs is None:
             continue
         bs = bs[bs.index >= start_ts].reindex(out.index, method="ffill")
