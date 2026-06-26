@@ -80,9 +80,7 @@ st.markdown("""
     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Segoe UI', sans-serif;
   }
   .stApp {
-    background:
-      radial-gradient(1100px 520px at 100% -8%, rgba(19,78,74,0.07), transparent 60%),
-      linear-gradient(180deg, #f7faf9 0%, #edf2f0 100%);
+    background: #ffffff;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     color: #14302e;
@@ -274,7 +272,8 @@ st.markdown("""
 
   /* ───── 콘텐츠 프레임 / 여백 (헤지펀드 홈 느낌) ───── */
   div[data-testid="stMainBlockContainer"]{
-    max-width: 1360px; padding-top: 2.6rem; padding-bottom: 4rem;
+    max-width: 100% !important; padding-top: 0; padding-bottom: 4rem;
+    padding-left: 3rem; padding-right: 3rem;
   }
 
   /* ───── 섹션 헤더 — 자간 + 하단 헤어라인 ───── */
@@ -319,20 +318,21 @@ st.markdown("""
   /* ───── 상단 네비게이션 바 (홈페이지형, sticky) ───── */
   .st-key-topbar{
     position: sticky; top: 0; z-index: 999;
-    margin-top: -1.4rem; margin-bottom: 1.6rem; padding: 0.4rem 0.6rem;
-    background: rgba(247,250,249,0.96);
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-    border-bottom: 1px solid #e0e9e6;
-    box-shadow: 0 4px 18px -14px rgba(16,48,46,0.45);
+    width: 100vw; margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);
+    margin-top: 0; margin-bottom: 1.7rem; padding: 0.55rem 3rem;
+    background: #ffffff;
+    border-bottom: 1px solid #e6ece9;
+    box-shadow: 0 4px 18px -16px rgba(16,48,46,0.4);
   }
   /* 컬럼이 좁은 폭에서 2×2로 접히지 않게 한 줄 고정 */
   .st-key-topbar [data-testid="stHorizontalBlock"]{ flex-wrap: nowrap !important; }
-  .topbar-brand{ display:flex; flex-direction:column; line-height:1.05; white-space:nowrap; }
+  .topbar-brand{ display:flex; flex-direction:column; line-height:1.08; }
   .topbar-brand .hero-wordmark{
-    font-size:1.45rem; font-weight:600; color:#0a3d3a; letter-spacing:-0.4px;
+    font-size:1.7rem; font-weight:600; color:#0a3d3a; letter-spacing:-0.5px; white-space:nowrap;
   }
   .topbar-brand .topbar-tag{
-    font-size:0.58rem; letter-spacing:0.2em; color:#5b6f6e; opacity:0.85; margin-top:3px;
+    font-size:0.7rem; letter-spacing:0.06em; color:#5b6f6e; opacity:0.9; margin-top:2px;
+    white-space:nowrap;
   }
   /* 바 안의 탭 = 사이트 메뉴 (하단 라인 제거, 한 줄, 왼쪽 정렬) */
   .st-key-topbar .st-key-main_tab_radio div[role="radiogroup"]{
@@ -344,13 +344,22 @@ st.markdown("""
   }
   .st-key-topbar .st-key-country{ display:flex; justify-content:flex-end; }
   .st-key-topbar .st-key-country div[role="radiogroup"]{ flex-wrap:nowrap !important; }
+
+  /* ───── Streamlit 기본 상단 헤더/툴바 숨김 (share·별표·수정·rerun 바 제거) ───── */
+  header[data-testid="stHeader"]{ display:none !important; }
+  [data-testid="stToolbar"]{ display:none !important; }
+  [data-testid="stToolbarActions"]{ display:none !important; }
+  [data-testid="stDecoration"]{ display:none !important; }
+  [data-testid="stStatusWidget"]{ display:none !important; }
+  #MainMenu{ display:none !important; }
+  /* ───── 사이드바 완전 제거 ───── */
+  section[data-testid="stSidebar"]{ display:none !important; }
+  [data-testid="stSidebarCollapsedControl"]{ display:none !important; }
+  [data-testid="collapsedControl"]{ display:none !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ───────────────────────── sidebar ─────────────────────────
-st.sidebar.title("Biotech Radar")
-st.sidebar.caption("글로벌 Healthcare ≥ $1.5B")
-
+# ───────────────────────── 공통 함수 ─────────────────────────
 def _close_modal():
     """비-행 클릭(사이드바·정렬 헤더·라디오 변경) 시 모달 자동 재팝업 방지."""
     st.session_state["detail_open"] = False
@@ -380,11 +389,9 @@ def _board_scope():
     return c, 1500.0
 
 
-st.sidebar.divider()
+# ── 운영용 상태 값 (우하단 ⚙ 위젯 + 본문에서 사용) ──
 universe_count = len(get_universe())
-st.sidebar.caption(f"현재 universe: {universe_count}종목")
 last = latest_run_date()
-st.sidebar.caption(f"마지막 신고가 갱신: {last or '—'}")
 
 
 def _stats_counts():
@@ -396,54 +403,100 @@ def _stats_counts():
     return m, w
 
 
-try:
-    _memo_n, _watch_n = _stats_counts()
-    st.sidebar.caption(f"메모: {_memo_n}건  ·  관심종목: {_watch_n}종목")
-except Exception:
-    pass
+@st.fragment
+def _floating_ops_widget():
+    """우하단 ⚙ 운영 위젯 — Universe 갱신·텔레그램 발송·모바일 보기 + 상태(사이드바 대체).
+    데이터/보기 변경 액션은 전체 rerun."""
+    country = st.session_state.get("country", "USA")
+    open_ = st.session_state.get("ops_widget_open", False)
+    st.markdown(
+        """
+        <style>
+        .st-key-opsbtn { position: fixed; bottom: 6.4rem; right: 2.4rem;
+            z-index: 2147483000; width: auto !important; }
+        .st-key-opsbtn button { border-radius: 50% !important; width: 52px; height: 52px;
+            font-size: 1.4rem; padding: 0 !important; line-height: 1 !important;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.26);
+            background: #ffffff !important; color: #0a3d3a !important;
+            border: 1px solid #cfdad7 !important; }
+        .st-key-opsbtn button:hover { background: #eef3f2 !important; }
+        .st-key-opspanel { position: fixed; bottom: 6.4rem; right: 1.1rem;
+            z-index: 2147483000; width: 300px; max-width: 90vw;
+            background: #ffffff; border: 1px solid #d3dbd9; border-radius: 14px;
+            box-shadow: 0 10px 34px rgba(0,0,0,0.30); padding: 0.7rem 0.9rem; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    if not open_:
+        with st.container(key="opsbtn"):
+            if st.button("⚙", key="ops_launch", help="운영 — Universe 갱신·텔레그램·보기·상태"):
+                st.session_state["ops_widget_open"] = True
+                st.rerun(scope="fragment")
+        return
 
-# ── 사이드바 좌하단: Universe 갱신 + 텔레그램 + 모바일 모드 ──
-st.sidebar.markdown("<div style='height:1.5rem;'></div>", unsafe_allow_html=True)
-_uni_help = ("네이버 업종+FDR로 한국 제약·바이오 다시 로드 + 52주 스냅샷"
-             if COUNTRY == "KOR" else "Finviz에서 Healthcare 전 종목 다시 로드")
-if st.sidebar.button("🔄 Universe 갱신", key="uni_refresh", help=_uni_help):
-    _close_modal()
-    with st.spinner("갱신 중..."):
+    with st.container(key="opspanel"):
+        hdr = st.columns([5, 1])
+        with hdr[0]:
+            st.markdown("**⚙ 운영**")
+        with hdr[1]:
+            if st.button("➖", key="ops_min", use_container_width=True, help="최소화"):
+                st.session_state["ops_widget_open"] = False
+                st.rerun(scope="fragment")
+
         try:
-            if COUNTRY == "KOR":
-                import kr_universe as _ku
-                from collectors.high_low import collect_kr
-                n = _ku.seed()
-                m = collect_kr()
-                st.sidebar.success(f"한국 {n}종목 로드 · 스냅샷 {m}")
-            else:
-                n = load_universe()
-                st.sidebar.success(f"{n}종목 로드")
-        except Exception as e:
-            st.sidebar.error(f"실패: {e}")
-
-_tg_help = ("한국 15:30 푸시 즉시 발송" if COUNTRY == "KOR"
-            else "현재 데이터로 즉시 텔레그램 요약 발송")
-if st.sidebar.button("📨 텔레그램 발송", key="tg_send", help=_tg_help):
-    _close_modal()
-    with st.spinner("텔레그램 발송 중..."):
+            _uc = len(get_universe())
+        except Exception:
+            _uc = "—"
         try:
-            if COUNTRY == "KOR":
-                from telegram_report import daily_run_kr
-                daily_run_kr()
-            else:
-                from telegram_report import send, compose_report
-                send(compose_report())
-            st.sidebar.success("발송됨")
-        except Exception as e:
-            st.sidebar.error(f"실패: {e}")
+            _mn, _wn = _stats_counts()
+            _statline = f"메모 {_mn} · 관심 {_wn}"
+        except Exception:
+            _statline = ""
+        st.caption(f"universe {_uc}종목 · 갱신 {latest_run_date() or '—'}")
+        if _statline:
+            st.caption(_statline)
 
-_is_mobile = st.session_state.get("mobile_mode", False)
-_mobile_label = "🖥 데스크톱 보기" if _is_mobile else "📱 모바일 보기"
-if st.sidebar.button(_mobile_label, key="toggle_mobile",
+        _uni_help = ("네이버 업종+FDR로 한국 제약·바이오 다시 로드 + 52주 스냅샷"
+                     if country == "KOR" else "Finviz에서 Healthcare 전 종목 다시 로드")
+        if st.button("🔄 Universe 갱신", key="uni_refresh", use_container_width=True, help=_uni_help):
+            _close_modal()
+            with st.spinner("갱신 중..."):
+                try:
+                    if country == "KOR":
+                        import kr_universe as _ku
+                        from collectors.high_low import collect_kr
+                        n = _ku.seed(); m = collect_kr()
+                        st.toast(f"한국 {n}종목 로드 · 스냅샷 {m}")
+                    else:
+                        n = load_universe()
+                        st.toast(f"{n}종목 로드")
+                except Exception as e:
+                    st.toast(f"⚠️ {type(e).__name__}: {e}")
+            st.rerun()
+
+        _tg_help = ("한국 15:30 푸시 즉시 발송" if country == "KOR"
+                    else "현재 데이터로 즉시 텔레그램 요약 발송")
+        if st.button("📨 텔레그램 발송", key="tg_send", use_container_width=True, help=_tg_help):
+            _close_modal()
+            with st.spinner("텔레그램 발송 중..."):
+                try:
+                    if country == "KOR":
+                        from telegram_report import daily_run_kr
+                        daily_run_kr()
+                    else:
+                        from telegram_report import send, compose_report
+                        send(compose_report())
+                    st.toast("발송됨")
+                except Exception as e:
+                    st.toast(f"⚠️ {type(e).__name__}: {e}")
+
+        _is_mobile = st.session_state.get("mobile_mode", False)
+        if st.button("🖥 데스크톱 보기" if _is_mobile else "📱 모바일 보기",
+                     key="toggle_mobile", use_container_width=True,
                      help="컬럼 축소 + 큰 글자 + 작은 패딩"):
-    st.session_state["mobile_mode"] = not _is_mobile
-    st.rerun()
+            st.session_state["mobile_mode"] = not _is_mobile
+            st.rerun()
 
 
 # ───────────────────────── 메모 타임라인 페이지 ─────────────────────────
@@ -1579,12 +1632,12 @@ def render_main_page():
 
     # ── 상단 네비게이션 바 (로고 · 메뉴 · 시장 토글) — 홈페이지형 ──
     with st.container(key="topbar"):
-        bar = st.columns([2.2, 7.4, 1.6], vertical_alignment="center")
+        bar = st.columns([3.0, 6.4, 1.6], vertical_alignment="center")
         with bar[0]:
             st.markdown(
                 "<div class='topbar-brand'>"
-                "<span class='hero-wordmark'>Biotech&nbsp;Radar</span>"
-                "<span class='topbar-tag'>HEALTHCARE INTELLIGENCE</span>"
+                "<span class='hero-wordmark'>BioTech&nbsp;Radar</span>"
+                "<span class='topbar-tag'>Biotech Trading · Analysis Intelligence</span>"
                 "</div>",
                 unsafe_allow_html=True,
             )
@@ -1620,8 +1673,9 @@ def render_main_page():
     elif chosen == "watchlist":
         render_watchlist_page()
 
-    # 우하단 플로팅 AI 챗 — 탭이 아니라 항상 떠 있는 오버레이 위젯(최소화 가능)
+    # 우하단 플로팅 위젯 — AI 챗(💬) + 운영(⚙). 탭이 아니라 항상 떠 있음.
     _floating_chat_widget()
+    _floating_ops_widget()
 
 
 # ───────────────────────── 카탈리스트 캘린더 ─────────────────────────
