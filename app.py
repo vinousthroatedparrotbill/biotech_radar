@@ -26,7 +26,8 @@ from collectors.high_low import (
     fetch_new_today_highs, fetch_top_movers,
 )
 
-st.set_page_config(page_title="Biotech Radar", layout="wide", page_icon="🧬")
+st.set_page_config(page_title="Biotech Radar", layout="wide", page_icon="🧬",
+                   initial_sidebar_state="collapsed")
 
 
 # ───────────────────────── 로그인 게이트 ─────────────────────────
@@ -270,6 +271,77 @@ st.markdown("""
     font-family:'Newsreader', Georgia, serif !important; font-weight:600 !important;
     letter-spacing:-0.3px; font-size:1.5rem !important;
   }
+
+  /* ───── 콘텐츠 프레임 / 여백 (헤지펀드 홈 느낌) ───── */
+  div[data-testid="stMainBlockContainer"]{
+    max-width: 1360px; padding-top: 2.6rem; padding-bottom: 4rem;
+  }
+
+  /* ───── 섹션 헤더 — 자간 + 하단 헤어라인 ───── */
+  div[data-testid="stMainBlockContainer"] h3{
+    font-weight:700 !important; letter-spacing:0.01em; font-size:1.18rem !important;
+    padding-bottom:0.5rem; margin-bottom:0.5rem; border-bottom:1px solid #e2eae8;
+  }
+
+  /* ───── 액션 버튼 — 절제된 텍스트 링크 톤 ───── */
+  div[data-testid="stMainBlockContainer"] [data-testid^="stBaseButton-"]:not([data-testid="stBaseButton-primary"]){
+    letter-spacing:0.02em !important; font-size:0.9rem !important;
+  }
+
+  /* '오늘 신규 / 전체' 토글 → 세그먼트 컨트롤 */
+  .st-key-hl_view div[role="radiogroup"]{
+    display:inline-flex; gap:0; padding:3px; border:1px solid #d6e0de;
+    background:#eaf1ef; border-radius:11px;
+  }
+  .st-key-hl_view div[role="radiogroup"] > label{
+    margin:0 !important; padding:0.36rem 0.95rem !important; min-height:0 !important;
+    background:transparent !important; border:0 !important; border-radius:8px !important;
+    transition:background .15s; cursor:pointer;
+  }
+  .st-key-hl_view div[role="radiogroup"] > label > div:first-child{ display:none !important; }
+  .st-key-hl_view div[role="radiogroup"] label *{
+    font-size:0.9rem !important; font-weight:600 !important; color:#5b6f6e !important;
+  }
+  .st-key-hl_view div[role="radiogroup"] label:has(input:checked){
+    background:#134e4a !important; box-shadow:0 1px 4px rgba(10,61,58,0.28);
+  }
+  .st-key-hl_view div[role="radiogroup"] label:has(input:checked) *{ color:#ffffff !important; }
+
+  /* ───── 사이드바 내비 — 펀드 사이트 메뉴 톤 ───── */
+  section[data-testid="stSidebar"] [data-testid^="stBaseButton-"]{
+    letter-spacing:0.04em !important; font-size:0.92rem !important;
+    border-left:2px solid transparent !important;
+  }
+  section[data-testid="stSidebar"] [data-testid^="stBaseButton-"]:hover{
+    border-left:2px solid #3fae9b !important;
+  }
+
+  /* ───── 상단 네비게이션 바 (홈페이지형, sticky 풀블리드) ───── */
+  .st-key-topbar{
+    position: sticky; top: 0; z-index: 999;
+    margin-left: calc(-50vw + 50%); margin-right: calc(-50vw + 50%);
+    margin-top: -2.6rem; margin-bottom: 1.7rem;
+    padding: 0.5rem calc(50vw - 50% + 1.5rem);
+    background: rgba(247,250,249,0.94);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid #e0e9e6;
+    box-shadow: 0 4px 18px -14px rgba(16,48,46,0.45);
+  }
+  .topbar-brand{ display:flex; flex-direction:column; line-height:1.06; }
+  .topbar-brand .hero-wordmark{
+    font-size:1.5rem; font-weight:600; color:#0a3d3a; letter-spacing:-0.4px;
+  }
+  .topbar-brand .topbar-tag{
+    font-size:0.6rem; letter-spacing:0.24em; color:#5b6f6e; opacity:0.85; margin-top:3px;
+  }
+  /* 바 안의 탭 = 사이트 메뉴 (하단 라인 제거, 왼쪽 정렬) */
+  .st-key-topbar .st-key-main_tab_radio div[role="radiogroup"]{
+    border-bottom:0 !important; justify-content:flex-start; margin:0 !important;
+  }
+  .st-key-topbar .st-key-main_tab_radio div[role="radiogroup"] > label{
+    padding:0.45rem 0.9rem !important;
+  }
+  .st-key-topbar .st-key-country{ display:flex; justify-content:flex-end; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -311,28 +383,10 @@ if st.sidebar.button("🏠 메인"):
     st.session_state["page"] = "main"
     st.rerun()
 
-if st.sidebar.button("📈 52주 신고가"):
-    _go_main_tab("high")
-
-if st.sidebar.button("🚀 상승폭 최대"):
-    _go_main_tab("top_movers")
-
-if st.sidebar.button("📰 데일리 뉴스"):
-    _go_main_tab("daily_news")
-
-if st.sidebar.button("📝 메모 타임라인"):
-    _go_main_tab("memos")
-
 if st.sidebar.button("⭐ 관심종목"):
     _close_modal()
     st.session_state["page"] = "watchlist"
     st.rerun()
-
-if st.sidebar.button("💼 Model Portfolio"):
-    _go_main_tab("portfolios")
-
-if st.sidebar.button("📅 카탈리스트"):
-    _go_main_tab("catalysts")
 
 st.sidebar.divider()
 universe_count = len(get_universe())
@@ -1511,52 +1565,18 @@ def _render_watched_catalyst_banner():
 
 def render_main_page():
     """메인 대시보드 — 4개 섹션 탭으로 전환."""
-    _render_watched_catalyst_banner()
-    st.markdown(
-        f"""
-        <div class="hero-banner" style="
-          background: linear-gradient(120deg, #0c4541 0%, #0a3d3a 55%, #07302d 100%);
-          color: #fff; padding: 1.7rem 2.1rem 1.5rem; border-radius: 16px;
-          margin-bottom: 1.4rem; position: relative; overflow: hidden;
-          box-shadow: 0 14px 32px -16px rgba(10,61,58,0.6);
-        ">
-          <div style="position:absolute; top:0; left:0; right:0; height:3px;
-               background:linear-gradient(90deg,#3fae9b,#0a3d3a);"></div>
-          <div style="display:flex; align-items:baseline; gap:0.75rem; flex-wrap:wrap;">
-            <span class="hero-wordmark" style="font-size:1.95rem; font-weight:600;
-                  letter-spacing:-0.5px; color:#fff;">Biotech Radar</span>
-            <span style="opacity:0.55; font-size:0.78rem; letter-spacing:0.22em;
-                  text-transform:uppercase;">Healthcare Intelligence</span>
-          </div>
-          <div style="opacity:0.72; font-size:0.9rem; margin-top:0.5rem; letter-spacing:0.01em;">
-            글로벌 Healthcare 신고가 · 카탈리스트 레이더 &nbsp;·&nbsp; {datetime.now():%Y-%m-%d %H:%M}
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # 시장 분리 탭 — 🌏 해외 / 🇰🇷 한국 (st.session_state["country"]에 바인딩)
-    if "country" not in st.session_state:
-        st.session_state["country"] = "USA"
-    st.radio(
-        "시장", ["USA", "KOR"],
-        format_func=lambda k: {"USA": "🌏 해외 바이오텍", "KOR": "🇰🇷 한국 바이오텍"}[k],
-        horizontal=True, key="country", label_visibility="collapsed",
-        on_change=_close_modal,
-    )
-
-    # 탭 — 컴팩트 라디오 (사이드바 버튼이 외부에서 변경 가능)
+    # 탭/시장 상태 준비 (위젯 생성 전에 기본값·강제동기화 처리)
     tab_options = ["high", "top_movers", "daily_news", "memos", "portfolios", "catalysts"]
     tab_labels = {
-        "high": "📈 52주 신고가",
-        "top_movers": "🚀 상승폭 최대",
-        "daily_news": "📰 데일리 뉴스",
-        "memos": "📝 메모 타임라인",
-        "portfolios": "💼 MP 현황",
-        "catalysts": "📅 카탈리스트",
+        "high": "52주 신고가",
+        "top_movers": "상승폭",
+        "daily_news": "데일리 뉴스",
+        "memos": "투자 메모",
+        "portfolios": "포트폴리오",
+        "catalysts": "카탈리스트",
     }
-    # 사이드바에서 _force_tab을 set했으면 위젯 상태 강제 동기화
+    if "country" not in st.session_state:
+        st.session_state["country"] = "USA"
     if "_force_tab" in st.session_state:
         st.session_state["main_tab_radio"] = st.session_state.pop("_force_tab")
     elif "main_tab_radio" not in st.session_state:
@@ -1564,14 +1584,33 @@ def render_main_page():
     if st.session_state.get("main_tab_radio") not in tab_options:
         st.session_state["main_tab_radio"] = "high"   # 구버전 'chat' 등 잔존값 방어
 
-    chosen = st.radio(
-        "탭", options=tab_options,
-        format_func=lambda k: tab_labels[k], horizontal=True,
-        key="main_tab_radio", label_visibility="collapsed",
-        on_change=_close_modal,
-    )
+    # ── 상단 네비게이션 바 (로고 · 메뉴 · 시장 토글) — 홈페이지형 ──
+    with st.container(key="topbar"):
+        bar = st.columns([2.6, 6.4, 2.0], vertical_alignment="center")
+        with bar[0]:
+            st.markdown(
+                "<div class='topbar-brand'>"
+                "<span class='hero-wordmark'>Biotech&nbsp;Radar</span>"
+                "<span class='topbar-tag'>HEALTHCARE INTELLIGENCE</span>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+        with bar[1]:
+            chosen = st.radio(
+                "탭", options=tab_options, format_func=lambda k: tab_labels[k],
+                horizontal=True, key="main_tab_radio", label_visibility="collapsed",
+                on_change=_close_modal,
+            )
+        with bar[2]:
+            st.radio(
+                "시장", ["USA", "KOR"],
+                format_func=lambda k: {"USA": "해외", "KOR": "한국"}[k],
+                horizontal=True, key="country", label_visibility="collapsed",
+                on_change=_close_modal,
+            )
     st.session_state["main_tab"] = chosen
-    st.divider()
+
+    _render_watched_catalyst_banner()
 
     if chosen == "high":
         _section_high()
@@ -2103,7 +2142,7 @@ def _floating_chat_widget():
         """
         <style>
         .st-key-chatbtn { position: fixed; bottom: 1.7rem; right: 1.7rem;
-            z-index: 99990; width: auto !important; }
+            z-index: 2147483000; width: auto !important; }
         .st-key-chatbtn button { position: relative; overflow: visible;
             border-radius: 28px !important; min-height: 64px; height: 64px;
             padding: 0 1.8rem !important; font-size: 1.32rem; font-weight: 800;
@@ -2116,7 +2155,7 @@ def _floating_chat_widget():
             border-width: 10px 10px 0 10px; border-style: solid;
             border-color: #134e4a transparent transparent transparent; }
         .st-key-chatpanel { position: fixed; bottom: 1.1rem; right: 1.1rem;
-            z-index: 99990; width: 470px; max-width: 93vw;
+            z-index: 2147483000; width: 470px; max-width: 93vw;
             background: #f3f5f8; border: 1px solid #cfd3da; border-radius: 14px;
             box-shadow: 0 10px 34px rgba(0,0,0,0.32); padding: 0.6rem 0.8rem 0.3rem; }
         .st-key-chatpanel [data-testid="stVerticalBlock"] { gap: 0.45rem; }
