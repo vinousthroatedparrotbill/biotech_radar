@@ -344,6 +344,13 @@ st.markdown("""
     padding:0.4rem 0.75rem !important; white-space:nowrap;
   }
   .st-key-topbar .st-key-country{ display:flex; justify-content:flex-end; }
+
+  /* 상단 노란 카탈리스트 알람 — 컨테이너 배경(체크 버튼이 바 안에 들어오도록) */
+  .st-key-catalert{
+    background:#fff3cd; border:1px solid #ffd966; border-left:4px solid #f9a825;
+    border-radius:8px; padding:0.5rem 1.1rem; margin-bottom:1rem;
+  }
+  .st-key-catalert [data-testid="stMarkdownContainer"]{ margin:0 !important; }
   .st-key-topbar .st-key-country div[role="radiogroup"]{ flex-wrap:nowrap !important; }
 
   /* ───── Streamlit 기본 상단 헤더/툴바 숨김 (share·별표·수정·rerun 바 제거) ───── */
@@ -1702,21 +1709,19 @@ def _render_watched_catalyst_banner():
             )
     shown_ids = [int(r.get("id")) for _, r in (week_items + month_items)
                  if r.get("id") is not None]
-    cbar = st.columns([22, 1], vertical_alignment="center")
-    with cbar[0]:
-        st.markdown(
-            f"<div style='background:#fff3cd; border:1px solid #ffd966; "
-            f"border-left:4px solid #f9a825; padding:0.8rem 1.2rem; "
-            f"border-radius:8px; margin-bottom:1rem; line-height:1.5; "
-            f"font-size:0.92em;'>{'<br/>'.join(parts)}</div>",
-            unsafe_allow_html=True,
-        )
-    with cbar[1]:
-        if st.button("✔", key="ack_all_banner",
-                     help="확인 — 표시된 카탈리스트 모두 확인하고 노란 알람 닫기"):
-            for cid in shown_ids:
-                cat.set_acknowledged(cid, True)
-            st.rerun()
+    with st.container(key="catalert"):
+        cbar = st.columns([22, 1], vertical_alignment="center")
+        with cbar[0]:
+            st.markdown(
+                f"<div style='line-height:1.5; font-size:0.92em;'>{'<br/>'.join(parts)}</div>",
+                unsafe_allow_html=True,
+            )
+        with cbar[1]:
+            if st.button("✔", key="ack_all_banner",
+                         help="확인 — 표시된 카탈리스트 모두 확인하고 노란 알람 닫기"):
+                for cid in shown_ids:
+                    cat.set_acknowledged(cid, True)
+                st.rerun()
 
 
 def render_main_page():
@@ -2469,10 +2474,12 @@ def _floating_chat_widget():
             box-shadow: 0 10px 26px -6px rgba(10,61,58,0.55) !important; }
         div[data-testid="stMainBlockContainer"] .st-key-chatbtn button:hover {
             background: #0f5a52 !important; color: #ffffff !important; }
-        .st-key-chatpanel { position: fixed; top: 15vh; left: 53vw;
-            z-index: 2147483000; width: 44vw; height: 74vh;
-            min-width: 330px; min-height: 320px; max-width: 94vw; max-height: 90vh;
-            resize: both; overflow: auto;   /* 우하단 손잡이로 가로·세로 자유 조절 */
+        .st-key-chatpanel { position: fixed !important; top: 11vh; left: 49vw;
+            z-index: 2147483000;
+            width: 600px !important; height: 600px !important;
+            min-width: 320px !important; min-height: 300px !important;
+            max-width: 95vw !important; max-height: 88vh !important;
+            resize: both !important; overflow: auto !important;   /* 우하단 손잡이 — 가로·세로 자유 */
             background: #f3f5f8; border: 1px solid #cfd3da; border-radius: 14px;
             box-shadow: 0 10px 34px rgba(0,0,0,0.32); padding: 0.6rem 0.8rem 0.3rem; }
         .st-key-chatpanel [data-testid="stVerticalBlock"] { gap: 0.45rem; }
