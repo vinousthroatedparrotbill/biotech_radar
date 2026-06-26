@@ -717,7 +717,7 @@ def send_ticker_cards(df, memo_tickers=None, max_n: int = 15):
     return sent, memos
 
 
-def _highs_analysis(df, max_n: int = 20) -> str:
+def _highs_analysis(df, max_n: int = 20, context_label: str = "오늘 52주 신고가를 찍은") -> str:
     """신고가 종목들의 '투자 포인트 & 상승 동인' AI 요약(마크다운). 종목당 헤더 + 불릿 3개
     + 마지막 '요약 테마'. 각 종목 최근 fundamental 뉴스를 컨텍스트로 Opus 1콜. 실패 시 ''."""
     import os
@@ -743,7 +743,7 @@ def _highs_analysis(df, max_n: int = 20) -> str:
         lines.append(f"- {name} ({tk}) {pstr} ({dstr}) · 뉴스: {nt}")
     ctx = "\n".join(lines)
     prompt = (
-        "다음은 오늘 52주 신고가를 찍은 바이오텍 종목들과 각 종목의 최근 fundamental 뉴스 제목이다.\n\n"
+        f"다음은 {context_label} 바이오텍 종목들과 각 종목의 최근 fundamental 뉴스 제목이다.\n\n"
         f"{ctx}\n\n"
         "각 종목에 대해 아래 형식으로 '투자 포인트 & 상승 동인'을 작성하라:\n"
         "**종목명 · TICKER $가격 (+1D%)**\n"

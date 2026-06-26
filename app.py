@@ -1514,6 +1514,59 @@ def _render_table(df: pd.DataFrame):
                                  else f"${row['high_52w']:,.2f}") if pd.notna(row["high_52w"]) else "—")
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _cached_reason_analysis(sig: str, rows: tuple, kind: str) -> str:
+    """신고가/급등 '이유 추정' 분석 — 텔레그램 _highs_analysis 재사용. sig로 1시간 캐시."""
+    import pandas as _pd
+    import telegram_report as _tr
+    df = _pd.DataFrame(list(rows), columns=["ticker", "name", "close", "perf_1d", "market_cap"])
+    label = "오늘 크게 상승(급등)한" if kind == "movers" else "오늘 52주 신고가를 찍은"
+    try:
+        return _tr._highs_analysis(df, max_n=20, context_label=label)
+    except TypeError:
+        return _tr._highs_analysis(df, max_n=20)
+
+
+def _render_reason_section(df, kind: str):
+    """티커 리스트 아래 — AI '이유 추정' 카드(텔레 봇과 동일 로직). 버튼 생성 + 캐시로 비용 관리."""
+    import re as _re
+    if df is None or df.empty:
+        return
+    sub = df.sort_values("market_cap", ascending=False, na_position="last").head(20)
+    rows = tuple(
+        (str(r.get("ticker") or ""), str(r.get("name") or ""),
+         float(r["close"]) if pd.notna(r.get("close")) else None,
+         float(r["perf_1d"]) if pd.notna(r.get("perf_1d")) else None,
+         float(r["market_cap"]) if pd.notna(r.get("market_cap")) else None)
+        for _, r in sub.iterrows()
+    )
+    sig = f"{kind}:{latest_run_date()}:" + ",".join(sorted(t[0] for t in rows))
+    st.divider()
+    st.subheader("🧠 신고가 이유 분석" if kind == "high" else "🧠 급등 이유 분석")
+    st.caption("AI 추정 — 상승 동인·핵심 자산/기전·짧은 평가 (텔레그램 데일리와 동일 로직, 투자 추천 아님).")
+    gen_key = f"reason_gen_{kind}"
+    if st.session_state.get(gen_key) != sig:
+        if st.button("🧠 이유 분석 생성 (AI · ~30초)", key=f"reason_btn_{kind}"):
+            st.session_state[gen_key] = sig
+            st.rerun()
+        return
+    with st.spinner("AI 이유 분석 생성 중…"):
+        md = _cached_reason_analysis(sig, rows, kind)
+    if not md:
+        st.info("분석 생성 실패 (API 키/크레딧 확인).")
+        if st.button("🔄 다시 시도", key=f"reason_retry_{kind}"):
+            _cached_reason_analysis.clear()
+            st.session_state.pop(gen_key, None)
+            st.rerun()
+        return
+    blocks = [b.strip() for b in _re.split(r"\n(?=\*\*)", md.strip()) if b.strip()]
+    cols = st.columns(2)
+    for i, blk in enumerate(blocks):
+        with cols[i % 2]:
+            with st.container(border=True):
+                st.markdown(blk)
+
+
 @st.fragment
 def _section_high():
     """탭 컨텐츠 — 52주 신고가."""
@@ -1541,6 +1594,7 @@ def _section_high():
 
     st.caption(f"{len(df)}종목 · 기준일 {last} · 📊 회사명을 클릭하면 모달로 차트+MA가 떠요.")
     _render_table(df)
+    _render_reason_section(df, "high")
 
 
 def _render_watched_catalyst_banner():
@@ -2352,6 +2406,7 @@ def _section_top_movers():
 
     st.caption(f"{len(df)}종목 · 기준일 {latest_run_date() or '—'} · 회사명 클릭 → 상세")
     _render_table(df)
+    _render_reason_section(df, "movers")
 
 
 # ───────────────────────── 관심종목 페이지 ─────────────────────────
