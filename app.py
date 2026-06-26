@@ -316,32 +316,34 @@ st.markdown("""
     border-left:2px solid #3fae9b !important;
   }
 
-  /* ───── 상단 네비게이션 바 (홈페이지형, sticky 풀블리드) ───── */
+  /* ───── 상단 네비게이션 바 (홈페이지형, sticky) ───── */
   .st-key-topbar{
     position: sticky; top: 0; z-index: 999;
-    margin-left: calc(-50vw + 50%); margin-right: calc(-50vw + 50%);
-    margin-top: -2.6rem; margin-bottom: 1.7rem;
-    padding: 0.5rem calc(50vw - 50% + 1.5rem);
-    background: rgba(247,250,249,0.94);
+    margin-top: -1.4rem; margin-bottom: 1.6rem; padding: 0.4rem 0.6rem;
+    background: rgba(247,250,249,0.96);
     backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     border-bottom: 1px solid #e0e9e6;
     box-shadow: 0 4px 18px -14px rgba(16,48,46,0.45);
   }
-  .topbar-brand{ display:flex; flex-direction:column; line-height:1.06; }
+  /* 컬럼이 좁은 폭에서 2×2로 접히지 않게 한 줄 고정 */
+  .st-key-topbar [data-testid="stHorizontalBlock"]{ flex-wrap: nowrap !important; }
+  .topbar-brand{ display:flex; flex-direction:column; line-height:1.05; white-space:nowrap; }
   .topbar-brand .hero-wordmark{
-    font-size:1.5rem; font-weight:600; color:#0a3d3a; letter-spacing:-0.4px;
+    font-size:1.45rem; font-weight:600; color:#0a3d3a; letter-spacing:-0.4px;
   }
   .topbar-brand .topbar-tag{
-    font-size:0.6rem; letter-spacing:0.24em; color:#5b6f6e; opacity:0.85; margin-top:3px;
+    font-size:0.58rem; letter-spacing:0.2em; color:#5b6f6e; opacity:0.85; margin-top:3px;
   }
-  /* 바 안의 탭 = 사이트 메뉴 (하단 라인 제거, 왼쪽 정렬) */
+  /* 바 안의 탭 = 사이트 메뉴 (하단 라인 제거, 한 줄, 왼쪽 정렬) */
   .st-key-topbar .st-key-main_tab_radio div[role="radiogroup"]{
     border-bottom:0 !important; justify-content:flex-start; margin:0 !important;
+    flex-wrap:nowrap !important; overflow-x:auto;
   }
   .st-key-topbar .st-key-main_tab_radio div[role="radiogroup"] > label{
-    padding:0.45rem 0.9rem !important;
+    padding:0.4rem 0.75rem !important; white-space:nowrap;
   }
   .st-key-topbar .st-key-country{ display:flex; justify-content:flex-end; }
+  .st-key-topbar .st-key-country div[role="radiogroup"]{ flex-wrap:nowrap !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -377,16 +379,6 @@ def _board_scope():
             return c, 324.0
     return c, 1500.0
 
-
-if st.sidebar.button("🏠 메인"):
-    _close_modal()
-    st.session_state["page"] = "main"
-    st.rerun()
-
-if st.sidebar.button("⭐ 관심종목"):
-    _close_modal()
-    st.session_state["page"] = "watchlist"
-    st.rerun()
 
 st.sidebar.divider()
 universe_count = len(get_universe())
@@ -1566,7 +1558,7 @@ def _render_watched_catalyst_banner():
 def render_main_page():
     """메인 대시보드 — 4개 섹션 탭으로 전환."""
     # 탭/시장 상태 준비 (위젯 생성 전에 기본값·강제동기화 처리)
-    tab_options = ["high", "top_movers", "daily_news", "memos", "portfolios", "catalysts"]
+    tab_options = ["high", "top_movers", "daily_news", "memos", "portfolios", "catalysts", "watchlist"]
     tab_labels = {
         "high": "52주 신고가",
         "top_movers": "상승폭",
@@ -1574,6 +1566,7 @@ def render_main_page():
         "memos": "투자 메모",
         "portfolios": "포트폴리오",
         "catalysts": "카탈리스트",
+        "watchlist": "관심종목",
     }
     if "country" not in st.session_state:
         st.session_state["country"] = "USA"
@@ -1586,7 +1579,7 @@ def render_main_page():
 
     # ── 상단 네비게이션 바 (로고 · 메뉴 · 시장 토글) — 홈페이지형 ──
     with st.container(key="topbar"):
-        bar = st.columns([2.6, 6.4, 2.0], vertical_alignment="center")
+        bar = st.columns([2.2, 7.4, 1.6], vertical_alignment="center")
         with bar[0]:
             st.markdown(
                 "<div class='topbar-brand'>"
@@ -1624,6 +1617,8 @@ def render_main_page():
         _section_portfolios()
     elif chosen == "catalysts":
         _section_catalysts()
+    elif chosen == "watchlist":
+        render_watchlist_page()
 
     # 우하단 플로팅 AI 챗 — 탭이 아니라 항상 떠 있는 오버레이 위젯(최소화 가능)
     _floating_chat_widget()
@@ -2342,27 +2337,8 @@ def _add_stock_dialog():
 def render_watchlist_page():
     import watchlist as wl
 
-    cc = st.columns([1, 8])
-    with cc[0]:
-        if st.button("← 메인", key="back_main_wl"):
-            st.session_state["page"] = "main"
-            st.rerun()
-
-    st.markdown(
-        """
-        <div class="hero-banner" style="
-          background: linear-gradient(135deg, #134e4a 0%, #0a3d3a 100%);
-          color: #fff; padding: 1.2rem 1.8rem; border-radius: 12px;
-          margin-bottom: 1.2rem;
-        ">
-          <h1 style="margin:0; font-size:1.6rem;">⭐ 관심종목</h1>
-          <div style="opacity:0.85; font-size:0.9rem; margin-top:0.25rem;">
-            신고가 여부 무관
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.subheader("⭐ 관심종목")
+    st.caption("신고가 여부 무관")
 
     # 종목 추가 버튼
     if st.button("＋ 종목 추가", key="open_add_dialog"):
@@ -2389,9 +2365,4 @@ if st.session_state.get("detail_open"):
     if detail_ticker:
         _detail_dialog(detail_ticker, st.session_state.get("detail_name") or detail_ticker)
 
-page = st.session_state.get("page", "main")
-if page == "watchlist":
-    render_watchlist_page()
-    _floating_chat_widget()
-else:
-    render_main_page()
+render_main_page()
