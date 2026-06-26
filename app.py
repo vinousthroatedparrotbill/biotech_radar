@@ -227,9 +227,14 @@ st.markdown("""
     display:flex !important; align-items:center; justify-content:center;
     min-width:3.1rem; text-align:center; transition:background .15s; cursor:pointer;
   }
-  .st-key-country div[role="radiogroup"] > label > div:first-child{ display:none !important; }
+  .st-key-country div[role="radiogroup"] > label > div:first-child,
+  .st-key-country div[role="radiogroup"] label input{ display:none !important; }
+  .st-key-country div[role="radiogroup"] label [data-testid="stMarkdownContainer"]{
+    width:100% !important; display:flex !important; justify-content:center !important;
+  }
   .st-key-country div[role="radiogroup"] label *{
     font-size:0.9rem !important; font-weight:600 !important; color:#5b6f6e !important;
+    text-align:center !important;
   }
   .st-key-country div[role="radiogroup"] label:has(input:checked){
     background:#134e4a !important; box-shadow:0 1px 4px rgba(10,61,58,0.28);
@@ -428,7 +433,7 @@ def _floating_ops_widget():
             z-index: 2147483000; width: auto !important; }
         div[data-testid="stMainBlockContainer"] .st-key-opsbtn button {
             border-radius: 16px !important; min-height: 54px !important; height: 54px !important;
-            padding: 0 1.7rem !important; font-size: 1.2rem !important; font-weight: 800 !important;
+            padding: 0 1.7rem !important; font-size: 1.2rem !important; font-weight: 900 !important;
             letter-spacing: .06em !important; line-height: 1 !important;
             justify-content: center !important; text-align: center !important;
             background: #0a3d3a !important; color: #ffffff !important; border: none !important;
@@ -445,7 +450,7 @@ def _floating_ops_widget():
     )
     if not open_:
         with st.container(key="opsbtn"):
-            if st.button("⚙ 운영", key="ops_launch", help="Universe·신고가 갱신·URL 탐색·텔레그램·보기·상태"):
+            if st.button("운영", key="ops_launch", help="Universe·신고가 갱신·URL 탐색·텔레그램·보기·상태"):
                 st.session_state["ops_widget_open"] = True
                 st.rerun(scope="fragment")
         return
@@ -1645,7 +1650,7 @@ def _section_high():
 
     view = st.radio(
         "구분", options=["new", "all"], horizontal=True,
-        format_func=lambda v: "🆕 오늘 신규" if v == "new" else "📈 전체",
+        format_func=lambda v: "오늘 신규" if v == "new" else "전체",
         on_change=_close_modal, key="hl_view",
     )
 
@@ -1842,7 +1847,7 @@ def render_main_page():
 def _section_catalysts():
     import catalysts as cat
     import ir_milestones as irm
-    st.subheader("📅 카탈리스트 캘린더")
+    st.subheader("카탈리스트 캘린더")
 
     col_a, col_b, col_c, col_d = st.columns([1.2, 1, 1.2, 1])
     with col_a:
@@ -1875,7 +1880,7 @@ def _section_catalysts():
     with col_d:
         st.markdown("<div style='height:1.7rem;'></div>", unsafe_allow_html=True)
         refresh_scope = "watchlist" if scope == "관심종목만" else "biotech_1b"
-        btn_label = "🔄 갱신 (관심종목)" if refresh_scope == "watchlist" else "🔄 갱신 (전체, 30분+)"
+        btn_label = "갱신 (관심종목)" if refresh_scope == "watchlist" else "갱신 (전체, 30분+)"
         if st.button(btn_label, use_container_width=True, key="cat_refresh"):
             with st.spinner(
                 f"카탈리스트 fetching ({refresh_scope})... "
@@ -1909,9 +1914,9 @@ def _section_catalysts():
         df = df[df["ticker"].isin(biotech_set) | _is_sectorwide(df["ticker"])]
 
     if df.empty:
-        st.info("해당 조건의 카탈리스트 없음. 🔄 갱신 눌러 캐시 채우기.")
+        st.info("해당 조건의 카탈리스트 없음. 갱신 눌러 캐시 채우기.")
     else:
-        st.caption(f"총 {len(df)}건 · 가까운 순 · 👁️ 컬럼 체크하면 워치 (1m·1w 전 텔레그램 알림)")
+        st.caption(f"총 {len(df)}건 · 가까운 순 · 워치 컬럼 체크하면 워치 (1m·1w 전 텔레그램 알림)")
         # 일자 표시 — description에 date_hint 있으면 우선 사용
         import re as _re
         def _date_label(row):
@@ -1928,11 +1933,11 @@ def _section_catalysts():
                    "event_type", "title", "therapy_area", "source"]].copy()
         view["_ack"] = (df["acknowledged"].fillna(False).astype(bool)
                         if "acknowledged" in df.columns else False)
-        view.columns = ["id", "👁️", "일자", "정렬일", "티커",
+        view.columns = ["id", "워치", "일자", "정렬일", "티커",
                         "타입", "제목", "분야", "소스", "✔"]
         view["티커"] = view["티커"].fillna("—")
         view["분야"] = view["분야"].fillna("—")
-        view["👁️"] = view["👁️"].fillna(False).astype(bool)
+        view["워치"] = view["워치"].fillna(False).astype(bool)
         view["✔"] = view["✔"].fillna(False).astype(bool)
 
         edited = st.data_editor(
@@ -1940,8 +1945,8 @@ def _section_catalysts():
             use_container_width=True, hide_index=True, height=520,
             column_config={
                 "id": None,   # 숨김
-                "👁️": st.column_config.CheckboxColumn(
-                    "👁️", help="워치 (1개월·1주 전 알림)", width="small",
+                "워치": st.column_config.CheckboxColumn(
+                    "워치", help="워치 (1개월·1주 전 알림)", width="small",
                 ),
                 "✔": st.column_config.CheckboxColumn(
                     "✔", help="확인 — 체크하면 상단 노란 알람에서 제외", width="small",
@@ -1955,12 +1960,11 @@ def _section_catalysts():
             _ack_changed = False
             for _, before, after in zip(view.index, view.to_dict("records"),
                                          edited.to_dict("records")):
-                if before["👁️"] != after["👁️"]:
-                    cat.set_watched(int(before["id"]), bool(after["👁️"]))
+                if before["워치"] != after["워치"]:
+                    cat.set_watched(int(before["id"]), bool(after["워치"]))
                     st.toast(
-                        f"{'✅ 워치 추가' if after['👁️'] else '❌ 워치 해제'}"
-                        f": {after['제목'][:40]}",
-                        icon="👁️",
+                        f"{'워치 추가' if after['워치'] else '워치 해제'}"
+                        f": {after['제목'][:40]}"
                     )
                 if before["✔"] != after["✔"]:
                     cat.set_acknowledged(int(before["id"]), bool(after["✔"]))
@@ -1974,7 +1978,7 @@ def _section_catalysts():
 
     # IR 마일스톤 추출 — watchlist 종목별
     st.divider()
-    st.subheader("📑 IR 자료 카탈리스트 추출 (회사 자체 공개)")
+    st.subheader("IR 자료 카탈리스트 추출 (회사 자체 공개)")
     st.caption("watchlist 종목의 최근 투자자 프레젠테이션 PDF에서 'Anticipated Catalysts' 섹션 자동 추출")
     import watchlist as wl
     wl_df = wl.list_all()
@@ -1988,7 +1992,7 @@ def _section_catalysts():
             )
         with col2:
             st.markdown("<div style='height:1.7rem;'></div>", unsafe_allow_html=True)
-            if st.button("🔍 IR PDF 재추출", use_container_width=True, key="irm_refresh"):
+            if st.button("IR PDF 재추출", use_container_width=True, key="irm_refresh"):
                 with st.spinner(f"{picked} IR PDF 분석 중..."):
                     result = irm.extract_for_ticker(picked, save=True)
                 if result.get("error"):
@@ -2002,7 +2006,7 @@ def _section_catalysts():
                         st.caption(f"📄 {result['deck_url']}")
         ev_df = irm.get_company_events(picked)
         if ev_df.empty:
-            st.info(f"{picked}의 추출된 마일스톤 없음. 🔍 IR PDF 재추출 시도.")
+            st.info(f"{picked}의 추출된 마일스톤 없음. IR PDF 재추출 시도.")
         else:
             for _, r in ev_df.iterrows():
                 d = r.get("description")
@@ -2517,7 +2521,7 @@ def _floating_chat_widget():
         /* 전역 메인-버튼(투명) 규칙을 이기도록 특이도 ↑ — 솔리드 초록 박스 */
         div[data-testid="stMainBlockContainer"] .st-key-chatbtn button {
             border-radius: 16px !important; min-height: 64px !important; height: 64px !important;
-            padding: 0 2.0rem !important; font-size: 1.45rem !important; font-weight: 800 !important;
+            padding: 0 2.0rem !important; font-size: 1.45rem !important; font-weight: 900 !important;
             letter-spacing: .08em !important; line-height: 1 !important;
             justify-content: center !important; text-align: center !important;
             background: #0a3d3a !important; color: #ffffff !important; border: none !important;
@@ -2539,7 +2543,7 @@ def _floating_chat_widget():
     )
     if not open_:
         with st.container(key="chatbtn"):
-            if st.button("💬 CHAT", key="chat_launch", help="챗 열기 (텔레그램 봇과 공유 대화)"):
+            if st.button("CHAT", key="chat_launch", help="챗 열기 (텔레그램 봇과 공유 대화)"):
                 st.session_state["chat_widget_open"] = True
                 st.rerun(scope="fragment")
         return
@@ -2794,7 +2798,7 @@ def _add_stock_dialog():
 def render_watchlist_page():
     import watchlist as wl
 
-    st.subheader("⭐ 관심종목")
+    st.subheader("관심종목")
     st.caption("신고가 여부 무관")
 
     # 종목 추가 버튼
