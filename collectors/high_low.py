@@ -99,6 +99,9 @@ def collect(industry_filter: str | None = "Biotechnology") -> int:
     universe = get_universe(industry_filter=industry_filter)
     if universe.empty:
         raise RuntimeError("ticker_master 비어있음. 먼저 universe 갱신.")
+    # KR(6자리)은 yfinance로 못 읽음 → 미국/해외 collect에서 제외 (KR은 collect_kr가 토스로 처리)
+    if "country" in universe.columns:
+        universe = universe[universe["country"].fillna("USA") != "KOR"].reset_index(drop=True)
 
     # watchlist 등록된 ticker 합치기 (mcap 조건 무시하고 강제 포함)
     watch_tickers: set[str] = set()

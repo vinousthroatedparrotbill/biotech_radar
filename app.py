@@ -1449,7 +1449,7 @@ def render_main_page():
     )
 
     # 탭 — 컴팩트 라디오 (사이드바 버튼이 외부에서 변경 가능)
-    tab_options = ["high", "top_movers", "daily_news", "memos", "portfolios", "catalysts", "chat"]
+    tab_options = ["high", "top_movers", "daily_news", "memos", "portfolios", "catalysts"]
     tab_labels = {
         "high": "📈 52주 신고가",
         "top_movers": "🚀 상승폭 최대",
@@ -1457,13 +1457,14 @@ def render_main_page():
         "memos": "📝 메모 타임라인",
         "portfolios": "💼 MP 현황",
         "catalysts": "📅 카탈리스트",
-        "chat": "💬 AI 챗",
     }
     # 사이드바에서 _force_tab을 set했으면 위젯 상태 강제 동기화
     if "_force_tab" in st.session_state:
         st.session_state["main_tab_radio"] = st.session_state.pop("_force_tab")
     elif "main_tab_radio" not in st.session_state:
         st.session_state["main_tab_radio"] = st.session_state.get("main_tab", "high")
+    if st.session_state.get("main_tab_radio") not in tab_options:
+        st.session_state["main_tab_radio"] = "high"   # 구버전 'chat' 등 잔존값 방어
 
     chosen = st.radio(
         "탭", options=tab_options,
@@ -1486,8 +1487,9 @@ def render_main_page():
         _section_portfolios()
     elif chosen == "catalysts":
         _section_catalysts()
-    elif chosen == "chat":
-        _section_chat()
+
+    # 우하단 플로팅 AI 챗 — 탭이 아니라 항상 떠 있는 오버레이 위젯(최소화 가능)
+    _floating_chat_widget()
 
 
 # ───────────────────────── 카탈리스트 캘린더 ─────────────────────────
@@ -1908,10 +1910,9 @@ def _chat_to_markdown(msgs: list[dict]) -> str:
     return "\n".join(out)
 
 
-@st.fragment
-def _section_chat():
-    """탭 — 텔레그램 봇과 동일한 AI 리서치 애널리스트 채팅창 (bot_agent 공용).
-    @st.fragment — 질문/응답 시 대시보드 전체가 아니라 이 채팅 영역만 rerun."""
+def _render_chat_core(box_height: int = 330):
+    """플로팅 챗 위젯 본체 — 텔레그램↔웹 공유 AI 애널리스트 (bot_agent 공용).
+    위젯 fragment 안에서 호출되어 질문/응답 시 보드가 아니라 위젯만 rerun."""
     import bot_agent
     # 입력창을 흰 배경 + 테두리로 구분
     st.markdown(
@@ -1927,42 +1928,10 @@ def _section_chat():
 
     import chat_store
     msgs0 = chat_store.recent_display(60)   # 텔레그램↔웹 공유 대화
-    top = st.columns([5, 1.4, 0.9])
-    with top[0]:
-        st.caption(
-            "💬 텔레그램 봇과 **동일한** AI 애널리스트 — 약물·기전·모달리티·적응증·임상·논문·"
-            "프리프린트·학회(ASCO/AACR)·종목까지 자유 질문 (상장 여부 무관)."
-        )
-    with top[1]:
-        if st.button("📄 PDF→텔레", key="chat_pdf_tg", use_container_width=True,
-                     disabled=not msgs0, help="전체 대화를 PDF로 만들어 텔레그램 발송"):
-            try:
-                import os as _os
-                from pdf_gen import render_pdf_to_file
-                from telegram_report import send_document
-                with st.spinner("PDF 생성·전송 중…"):
-                    path = render_pdf_to_file(_chat_to_markdown(msgs0), ticker="chat",
-                                              title="AI 챗 대화")
-                    try:
-                        send_document(path, caption="💬 <b>AI 챗 대화</b>")
-                    finally:
-                        try:
-                            _os.unlink(path)
-                        except Exception:
-                            pass
-                st.toast("📄 대화 PDF 텔레그램 전송 완료")
-            except Exception as e:
-                st.toast(f"⚠️ {type(e).__name__}: {e}")
-    with top[2]:
-        if st.button("🗑️", key="chat_reset", use_container_width=True,
-                     help="대화 초기화 (텔레그램과 공유 — 양쪽 초기화)"):
-            chat_store.clear()
-            st.rerun(scope="fragment")
-
     msgs = msgs0
 
     # 대화 로그 — 고정 높이 스크롤 박스(일반 챗봇 형태). 입력창은 박스 아래 고정.
-    box = st.container(height=460, border=True)
+    box = st.container(height=box_height, border=True)
     with box:
         if not msgs:
             st.caption("아직 대화가 없습니다. 아래에 질문을 입력하세요.")
@@ -2024,6 +1993,75 @@ def _section_chat():
         chat_store.append("user", _disp, "web")
         chat_store.append("assistant", text, "web")
         st.rerun(scope="fragment")
+
+
+@st.fragment
+def _floating_chat_widget():
+    """우하단 플로팅 AI 챗 — 어느 탭/모달에서든 떠 있는 런처 버튼 ↔ 펼친 패널(최소화 가능).
+    @st.fragment 라 버튼·질문·응답이 보드를 리런하지 않고 위젯만 갱신한다."""
+    import chat_store
+    open_ = st.session_state.get("chat_widget_open", False)
+    st.markdown(
+        """
+        <style>
+        .st-key-chatbtn { position: fixed; bottom: 1.4rem; right: 1.4rem;
+            z-index: 99990; width: 66px !important; }
+        .st-key-chatbtn button { border-radius: 50% !important; width: 60px; height: 60px;
+            font-size: 1.7rem; padding: 0 !important; line-height: 1 !important;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.30);
+            background: #134e4a !important; color: #fff !important; border: none !important; }
+        .st-key-chatpanel { position: fixed; bottom: 1.1rem; right: 1.1rem;
+            z-index: 99990; width: 470px; max-width: 93vw;
+            background: #f3f5f8; border: 1px solid #cfd3da; border-radius: 14px;
+            box-shadow: 0 10px 34px rgba(0,0,0,0.32); padding: 0.6rem 0.8rem 0.3rem; }
+        .st-key-chatpanel [data-testid="stVerticalBlock"] { gap: 0.45rem; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    if not open_:
+        with st.container(key="chatbtn"):
+            if st.button("💬", key="chat_launch", help="AI 챗 열기 (텔레그램 봇과 공유 대화)"):
+                st.session_state["chat_widget_open"] = True
+                st.rerun(scope="fragment")
+        return
+
+    with st.container(key="chatpanel"):
+        hdr = st.columns([4.2, 1, 1, 1])
+        with hdr[0]:
+            st.markdown(
+                "**💬 AI 챗** <span style='opacity:.55;font-size:.78rem;'>· 텔레 공유</span>",
+                unsafe_allow_html=True)
+        with hdr[1]:
+            if st.button("📄", key="chat_pdf_tg", use_container_width=True,
+                         help="전체 대화를 PDF로 만들어 텔레그램 발송"):
+                try:
+                    import os as _os
+                    from pdf_gen import render_pdf_to_file
+                    from telegram_report import send_document
+                    with st.spinner("PDF 생성·전송 중…"):
+                        path = render_pdf_to_file(_chat_to_markdown(chat_store.recent_display(60)),
+                                                  ticker="chat", title="AI 챗 대화")
+                        try:
+                            send_document(path, caption="💬 <b>AI 챗 대화</b>")
+                        finally:
+                            try:
+                                _os.unlink(path)
+                            except Exception:
+                                pass
+                    st.toast("📄 대화 PDF 텔레그램 전송 완료")
+                except Exception as e:
+                    st.toast(f"⚠️ {type(e).__name__}: {e}")
+        with hdr[2]:
+            if st.button("🗑️", key="chat_reset", use_container_width=True,
+                         help="대화 초기화 (텔레그램과 공유 — 양쪽 초기화)"):
+                chat_store.clear()
+                st.rerun(scope="fragment")
+        with hdr[3]:
+            if st.button("➖", key="chat_min", use_container_width=True, help="최소화"):
+                st.session_state["chat_widget_open"] = False
+                st.rerun(scope="fragment")
+        _render_chat_core(box_height=320)
 
 
 @st.fragment
@@ -2210,5 +2248,6 @@ if st.session_state.get("detail_open"):
 page = st.session_state.get("page", "main")
 if page == "watchlist":
     render_watchlist_page()
+    _floating_chat_widget()
 else:
     render_main_page()
