@@ -40,27 +40,30 @@ def _check_auth() -> bool:
     if not expected:
         return True   # 비밀번호 미설정 = 인증 비활성화
 
-    # 로그인 화면
-    st.markdown(
-        """
-        <div style="max-width: 400px; margin: 8rem auto; text-align: center;">
-          <h1 style="color: #0a3d3a;">🧬 Biotech Radar</h1>
-          <p style="color: #5b6f6e;">접근하려면 비밀번호 입력</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    cc = st.columns([1, 2, 1])
-    with cc[1]:
-        with st.form("login_form"):
-            pw = st.text_input("Password", type="password", label_visibility="collapsed",
-                               placeholder="비밀번호")
-            if st.form_submit_button("Login", type="primary", use_container_width=True):
-                if pw == expected:
-                    st.session_state["authed"] = True
-                    st.rerun()
-                else:
-                    st.error("틀린 비밀번호")
+    # 로그인 화면 — placeholder에 그려서 성공 시 즉시 비움(잔상 방지)
+    ph = st.empty()
+    with ph.container():
+        st.markdown(
+            """
+            <div style="max-width: 400px; margin: 8rem auto 1rem; text-align: center;">
+              <h1 style="color: #0a3d3a;">Biotech Radar</h1>
+              <p style="color: #5b6f6e;">접근하려면 비밀번호 입력</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        cc = st.columns([1, 2, 1])
+        with cc[1]:
+            with st.form("login_form"):
+                pw = st.text_input("Password", type="password", label_visibility="collapsed",
+                                   placeholder="비밀번호")
+                if st.form_submit_button("Login", type="primary", use_container_width=True):
+                    if pw == expected:
+                        st.session_state["authed"] = True
+                        ph.empty()          # 로그인 UI 제거 → 같은 run에서 메인 진입
+                        return True
+                    else:
+                        st.error("틀린 비밀번호")
     return False
 
 
@@ -2115,18 +2118,18 @@ def _pf_perf_series(portfolio_id: int, bench_tickers: tuple, sig: str):
                 mv += q * float(prior.iloc[-1])
         navs.append(cash + mv)
     nav_s = _pd.Series(navs, index=idx)
-    out = _pd.DataFrame({"포트폴리오": (nav_s / initial - 1.0) * 100.0})
-
+    out = _pd.DataFrame({"포트폴리오": nav_s})   # 레벨(NAV $) — 운용 시작일부터
+    # 벤치마크/비교종목: 인셉션으로 자르지 않고 전체 기간(최대 ~5년) 레벨로 outer join
+    _bcut = _pd.Timestamp.now().normalize() - _pd.Timedelta(days=1900)
     for b in bench_tickers:
         bs = _fetched.get(b)
         if bs is None:
             continue
-        bs = bs[bs.index >= start_ts].reindex(out.index, method="ffill")
-        base = bs.dropna()
-        if base.empty:
+        bs = bs[bs.index >= _bcut]
+        if bs.empty:
             continue
-        out[b] = (bs / base.iloc[0] - 1.0) * 100.0
-    return out
+        out = out.join(bs.rename(b), how="outer")
+    return out.sort_index()
 
 
 @st.dialog("💼 포트폴리오 상세", width="large")
@@ -2174,7 +2177,7 @@ def _portfolio_dialog(portfolio_id: int):
     st.divider()
 
     # ── 수익률 추이 차트 (포트폴리오 vs 벤치마크) — 종목 리스트 위 ──
-    st.markdown("##### 📈 수익률 추이 (편입 이후 누적 %)")
+    st.markdown("##### 수익률 추이 (누적 %)")
     _CUR = {"XBI": "XBI (미국 바이오)", "IBB": "IBB (미국 바이오)", "ARKG": "ARKG (게놈)",
             "SPY": "SPY (S&P500)", "463050": "TIMEFOLIO K바이오액티브",
             "305720": "KODEX 바이오", "364970": "TIGER 바이오TOP10"}
@@ -2191,28 +2194,37 @@ def _portfolio_dialog(portfolio_id: int):
     _psig = f"{s['current_size']:.0f}:{len(s['holdings'])}:{s.get('invested',0):.0f}"
     try:
         with st.spinner("수익률 시계열 계산 중…"):
-            perf = _pf_perf_series(portfolio_id, tuple(dict.fromkeys(bench)), _psig)
+            lv = _pf_perf_series(portfolio_id, tuple(dict.fromkeys(bench)), _psig)
     except Exception as e:
-        perf = None
+        lv = None
         st.caption(f"차트 생성 실패: {type(e).__name__}: {e}")
-    if perf is not None and not perf.empty:
+    if lv is not None and not lv.empty:
         import pandas as _pd
-        _RANGES = {"1D": 1, "1W": 7, "1M": 31, "3M": 95, "6M": 190,
-                   "1Y": 380, "3Y": 1100, "최대": 10**6}
-        rsel = st.radio("기간", list(_RANGES.keys()), index=7, horizontal=True,
+        _RANGES = {"1D": 1, "1W": 7, "1M": 31, "3M": 95, "6M": 190, "1Y": 380, "최대": 10**6}
+        rkeys = list(_RANGES.keys())
+        rsel = st.radio("기간", rkeys, index=rkeys.index("1M"), horizontal=True,
                         key=f"pf_range_{portfolio_id}", label_visibility="collapsed")
-        _cut = perf.index.max() - _pd.Timedelta(days=_RANGES[rsel])
-        w = perf[perf.index >= _cut].copy()
-        if len(w) >= 2:
-            _base = (1 + w.iloc[0] / 100.0)          # 창 시작 = 0% 재정규화 (TradingView식)
-            w = ((1 + w / 100.0).div(_base) - 1.0) * 100.0
-        _colors = (["#0a3d3a", "#9aa7a5", "#c9b072", "#7e9cc4", "#b48ead", "#88b04b"])[:len(w.columns)]
-        st.line_chart(w, height=300, color=_colors)
-        _final = w.iloc[-1]
-        st.caption(f"[{rsel}] " + " · ".join(f"{c} {_final[c]:+.1f}%" for c in w.columns))
+        _cut = lv.index.max() - _pd.Timedelta(days=_RANGES[rsel])
+        w = lv[lv.index >= _cut].copy()
+        # 각 시리즈를 '창 내 첫 유효값' 기준 0%로 정규화 — 포트는 운용 시작일(또는 창 시작),
+        # 벤치마크/비교종목은 전체 기간(상장 후)부터 표시
+        pct = _pd.DataFrame(index=w.index)
+        for c in w.columns:
+            col = w[c].dropna()
+            if not col.empty:
+                pct[c] = (w[c] / col.iloc[0] - 1.0) * 100.0
+        pct = pct.dropna(how="all")
+        if pct.empty or "포트폴리오" not in pct.columns:
+            st.caption("해당 기간에 표시할 데이터가 없습니다.")
+        else:
+            _colors = (["#0a3d3a", "#9aa7a5", "#c9b072", "#7e9cc4", "#b48ead", "#88b04b"])[:len(pct.columns)]
+            st.line_chart(pct, height=300, color=_colors)
+            _last = pct.ffill().iloc[-1]
+            st.caption(f"[{rsel}] " + " · ".join(
+                f"{c} {_last[c]:+.1f}%" for c in pct.columns if _pd.notna(_last[c])))
     else:
         st.caption("거래내역·가격 데이터가 충분치 않아 차트를 표시할 수 없습니다 "
-                   "(보유종목 OHLCV 캐시 필요 — ⚙ 운영 '신고가 갱신').")
+                   "(보유종목 OHLCV 캐시 필요 — 운영 '신고가 갱신').")
 
     st.divider()
 
