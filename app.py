@@ -2644,6 +2644,13 @@ def _floating_chat_widget():
               }
             }, true);
             D.addEventListener('mouseup', function(){ W.__chatDrag=null; W.__chatRs=null; }, true);
+            // 모달 focus-trap이 챗 입력 포커스를 메모 입력란으로 끌어가지 못하게 차단(캡처 단계 선점)
+            ['focusin','focus'].forEach(function(ev){
+              D.addEventListener(ev, function(e){
+                const p = panel();
+                if(p && e.target && p.contains(e.target)) e.stopImmediatePropagation();
+              }, true);
+            });
           }
           function tick(){
             const p = panel(); if(!p) return;
