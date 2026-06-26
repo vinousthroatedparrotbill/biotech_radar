@@ -324,8 +324,9 @@ st.markdown("""
     border-bottom: 1px solid #e6ece9;
     box-shadow: 0 4px 18px -16px rgba(16,48,46,0.4);
   }
-  /* 컬럼이 좁은 폭에서 2×2로 접히지 않게 한 줄 고정 */
-  .st-key-topbar [data-testid="stHorizontalBlock"]{ flex-wrap: nowrap !important; }
+  /* 컬럼이 좁은 폭에서 2×2로 접히지 않게 한 줄 고정 + 수직 중앙 정렬 */
+  .st-key-topbar [data-testid="stHorizontalBlock"]{ flex-wrap: nowrap !important; align-items: center !important; }
+  .st-key-topbar [data-testid="stMarkdownContainer"]{ margin: 0 !important; }
   .topbar-brand{ display:flex; flex-direction:column; line-height:1.08; }
   .topbar-brand .hero-wordmark{
     font-size:1.7rem; font-weight:600; color:#0a3d3a; letter-spacing:-0.5px; white-space:nowrap;
@@ -342,7 +343,7 @@ st.markdown("""
   .st-key-topbar .st-key-main_tab_radio div[role="radiogroup"] > label{
     padding:0.4rem 0.75rem !important; white-space:nowrap;
   }
-  .st-key-topbar .st-key-country{ display:flex; justify-content:flex-end; }
+  .st-key-topbar .st-key-country{ display:flex; justify-content:flex-end; margin-right:-1.4rem; }
   .st-key-topbar .st-key-country div[role="radiogroup"]{ flex-wrap:nowrap !important; }
 
   /* ───── Streamlit 기본 상단 헤더/툴바 숨김 (share·별표·수정·rerun 바 제거) ───── */
@@ -412,15 +413,18 @@ def _floating_ops_widget():
     st.markdown(
         """
         <style>
-        .st-key-opsbtn { position: fixed; bottom: 6.4rem; right: 2.4rem;
+        .st-key-opsbtn { position: fixed; bottom: 6.7rem; right: 1.7rem;
             z-index: 2147483000; width: auto !important; }
-        .st-key-opsbtn button { border-radius: 50% !important; width: 52px; height: 52px;
-            font-size: 1.4rem; padding: 0 !important; line-height: 1 !important;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.26);
-            background: #ffffff !important; color: #0a3d3a !important;
-            border: 1px solid #cfdad7 !important; }
-        .st-key-opsbtn button:hover { background: #eef3f2 !important; }
-        .st-key-opspanel { position: fixed; bottom: 6.4rem; right: 1.1rem;
+        div[data-testid="stMainBlockContainer"] .st-key-opsbtn button {
+            border-radius: 16px !important; min-height: 54px !important; height: 54px !important;
+            padding: 0 1.7rem !important; font-size: 1.2rem !important; font-weight: 800 !important;
+            letter-spacing: .06em !important; line-height: 1 !important;
+            justify-content: center !important; text-align: center !important;
+            background: #13635a !important; color: #ffffff !important; border: none !important;
+            box-shadow: 0 10px 26px -6px rgba(10,61,58,0.5) !important; }
+        div[data-testid="stMainBlockContainer"] .st-key-opsbtn button:hover {
+            background: #0f5a52 !important; color: #ffffff !important; }
+        .st-key-opspanel { position: fixed; bottom: 6.7rem; right: 1.1rem;
             z-index: 2147483000; width: 300px; max-width: 90vw;
             background: #ffffff; border: 1px solid #d3dbd9; border-radius: 14px;
             box-shadow: 0 10px 34px rgba(0,0,0,0.30); padding: 0.7rem 0.9rem; }
@@ -430,7 +434,7 @@ def _floating_ops_widget():
     )
     if not open_:
         with st.container(key="opsbtn"):
-            if st.button("⚙", key="ops_launch", help="운영 — Universe 갱신·텔레그램·보기·상태"):
+            if st.button("⚙ 운영", key="ops_launch", help="Universe·신고가 갱신·URL 탐색·텔레그램·보기·상태"):
                 st.session_state["ops_widget_open"] = True
                 st.rerun(scope="fragment")
         return
@@ -474,6 +478,35 @@ def _floating_ops_widget():
                 except Exception as e:
                     st.toast(f"⚠️ {type(e).__name__}: {e}")
             st.rerun()
+
+        if st.button("🔄 신고가 갱신", key="hl_refresh_btn", use_container_width=True,
+                     help="universe 전체 yfinance OHLCV 일괄 다운로드 (~수분)"):
+            _close_modal()
+            with st.spinner("yfinance OHLCV 일괄 다운로드..."):
+                try:
+                    n = hl_collect(industry_filter=None)
+                    st.toast(f"{n}종목 처리")
+                except Exception as e:
+                    st.toast(f"⚠️ {type(e).__name__}: {e}")
+            st.rerun()
+
+        if st.button("🔍 URL 자동 탐색", key="discover_all_btn", use_container_width=True,
+                     help="universe 전체 IR/Pipeline URL 일괄 탐색 (~1~2분)"):
+            _close_modal()
+            import ticker_urls as _tu
+            from discover import discover_batch
+            with st.spinner("홈페이지 분석 중..."):
+                try:
+                    tks = get_universe()["ticker"].tolist()
+                    results = discover_batch(tks, max_workers=10)
+                    saved = 0
+                    for tk, r in results.items():
+                        if r.get("ir_url") or r.get("pipeline_url"):
+                            _tu.set_urls(tk, ir_url=r.get("ir_url"), pipeline_url=r.get("pipeline_url"))
+                            saved += 1
+                    st.toast(f"{saved}/{len(tks)}종목 URL 저장")
+                except Exception as e:
+                    st.toast(f"⚠️ {type(e).__name__}: {e}")
 
         _tg_help = ("한국 15:30 푸시 즉시 발송" if country == "KOR"
                     else "현재 데이터로 즉시 텔레그램 요약 발송")
@@ -1488,44 +1521,11 @@ def _section_high():
         st.warning("아직 신고가 데이터 없음. 우측 '🔄 신고가 갱신' 먼저 실행.")
         return
 
-    cc = st.columns([6, 2, 2])
-    with cc[0]:
-        view = st.radio(
-            "구분", options=["new", "all"], horizontal=True,
-            format_func=lambda v: "🆕 오늘 신규" if v == "new" else "📈 전체",
-            on_change=_close_modal, key="hl_view",
-        )
-    with cc[1]:
-        st.write("")
-        if st.button("🔄 신고가 갱신", key="hl_refresh_btn",
-                     help="universe 전체 yfinance OHLCV 일괄 다운로드 (~수분)"):
-            _close_modal()
-            with st.spinner("yfinance OHLCV 일괄 다운로드..."):
-                try:
-                    n = hl_collect(industry_filter=None)
-                    st.success(f"{n}종목 처리")
-                except Exception as e:
-                    st.error(f"실패: {e}")
-    with cc[2]:
-        st.write("")
-        if st.button("🔍 URL 자동 탐색", key="discover_all_btn",
-                     help="universe 전체 종목의 IR/Pipeline URL 일괄 탐색 (~1~2분)"):
-            _close_modal()
-            import ticker_urls as _tu
-            from discover import discover_batch
-            with st.spinner("홈페이지 분석 중..."):
-                try:
-                    tks = get_universe()["ticker"].tolist()
-                    results = discover_batch(tks, max_workers=10)
-                    saved = 0
-                    for tk, r in results.items():
-                        if r.get("ir_url") or r.get("pipeline_url"):
-                            _tu.set_urls(tk, ir_url=r.get("ir_url"),
-                                         pipeline_url=r.get("pipeline_url"))
-                            saved += 1
-                    st.success(f"{saved}/{len(tks)}종목 URL 저장")
-                except Exception as e:
-                    st.error(f"실패: {e}")
+    view = st.radio(
+        "구분", options=["new", "all"], horizontal=True,
+        format_func=lambda v: "🆕 오늘 신규" if v == "new" else "📈 전체",
+        on_change=_close_modal, key="hl_view",
+    )
 
     _c, _floor = _board_scope()
     if view == "new":
@@ -2190,23 +2190,25 @@ def _floating_chat_widget():
     st.markdown(
         """
         <style>
-        .st-key-chatbtn { position: fixed; bottom: 1.7rem; right: 1.7rem;
+        .st-key-chatbtn { position: fixed; bottom: 1.6rem; right: 1.7rem;
             z-index: 2147483000; width: auto !important; }
-        .st-key-chatbtn button { position: relative; overflow: visible;
-            border-radius: 28px !important; min-height: 64px; height: 64px;
-            padding: 0 1.8rem !important; font-size: 1.32rem; font-weight: 800;
-            letter-spacing: .07em; line-height: 1 !important;
-            box-shadow: 0 6px 22px rgba(0,0,0,0.34);
-            background: #134e4a !important; color: #fff !important; border: none !important; }
-        .st-key-chatbtn button:hover { background: #0f615b !important; color: #fff !important; }
-        .st-key-chatbtn button::after { content: ""; position: absolute;
-            bottom: -9px; right: 26px; width: 0; height: 0;
-            border-width: 10px 10px 0 10px; border-style: solid;
-            border-color: #134e4a transparent transparent transparent; }
+        /* 전역 메인-버튼(투명) 규칙을 이기도록 특이도 ↑ — 솔리드 초록 박스 */
+        div[data-testid="stMainBlockContainer"] .st-key-chatbtn button {
+            border-radius: 16px !important; min-height: 64px !important; height: 64px !important;
+            padding: 0 2.0rem !important; font-size: 1.45rem !important; font-weight: 800 !important;
+            letter-spacing: .08em !important; line-height: 1 !important;
+            justify-content: center !important; text-align: center !important;
+            background: #0a3d3a !important; color: #ffffff !important; border: none !important;
+            box-shadow: 0 10px 26px -6px rgba(10,61,58,0.55) !important; }
+        div[data-testid="stMainBlockContainer"] .st-key-chatbtn button:hover {
+            background: #0f5a52 !important; color: #ffffff !important; }
         .st-key-chatpanel { position: fixed; bottom: 1.1rem; right: 1.1rem;
-            z-index: 2147483000; width: 470px; max-width: 93vw;
+            z-index: 2147483000; width: 470px; height: 600px;
+            min-width: 330px; min-height: 340px; max-width: 96vw; max-height: 90vh;
+            resize: both; overflow: auto; direction: rtl;   /* 좌하단 손잡이로 크기 조절 */
             background: #f3f5f8; border: 1px solid #cfd3da; border-radius: 14px;
             box-shadow: 0 10px 34px rgba(0,0,0,0.32); padding: 0.6rem 0.8rem 0.3rem; }
+        .st-key-chatpanel > * { direction: ltr; }
         .st-key-chatpanel [data-testid="stVerticalBlock"] { gap: 0.45rem; }
         </style>
         """,
