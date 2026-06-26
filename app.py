@@ -1526,6 +1526,12 @@ def _render_table(df: pd.DataFrame):
                                  else f"${row['high_52w']:,.2f}") if pd.notna(row["high_52w"]) else "—")
 
 
+@st.cache_resource
+def _reason_done_store():
+    """생성 완료된 이유분석 sig 집합 — 프로세스 전역(새로고침·세션 무관 유지)."""
+    return set()
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def _cached_reason_analysis(sig: str, rows: tuple, kind: str) -> str:
     """신고가/급등 '이유 추정' 분석 — 텔레그램 _highs_analysis 재사용. sig로 1시간 캐시."""
@@ -1569,11 +1575,14 @@ def _render_reason_section(df, kind: str):
     st.caption("상승 동인 · 핵심 자산/기전 · 짧은 평가"
                + (f" · 상위 {_MAX}개" if len(df) > _MAX else f" · 전 {len(rows)}종목"))
     gen_key = f"reason_gen_{kind}"
-    if st.session_state.get(gen_key) != sig:
+    _done = _reason_done_store()
+    if sig not in _done and st.session_state.get(gen_key) != sig:
         if st.button("이유 분석 생성 (~30초)", key=f"reason_btn_{kind}"):
             st.session_state[gen_key] = sig
+            _done.add(sig)
             st.rerun()
         return
+    _done.add(sig)   # 새로고침·세션 초기화 후에도 캐시에서 바로 표시
     with st.spinner(f"이유 분석 생성 중… ({len(rows)}종목, 종목 수에 따라 1~3분)"):
         md = _cached_reason_analysis(sig, rows, kind)
     if not md:
@@ -2322,16 +2331,13 @@ def _section_portfolios():
     if st.session_state.get("_new_pf_open"):
         _new_portfolio_dialog()
 
-    open_id = st.session_state.get("pf_open_id")
-    if st.session_state.get("pf_open") and open_id:
-        _portfolio_dialog(open_id)
-
     portfolios = pf.list_all()
     if not portfolios:
         st.info("아직 포트폴리오 없음. 위 ＋ 버튼으로 만드세요.")
         return
 
     st.caption(f"{len(portfolios)}개 포트폴리오 · 카드 클릭 → 상세")
+    _open_now = None
     cols_per_row = 3
     for i in range(0, len(portfolios), cols_per_row):
         row_pfs = portfolios[i:i + cols_per_row]
@@ -2354,9 +2360,11 @@ def _section_portfolios():
                     )
                     if st.button("열기", key=f"open_pf_{p['id']}",
                                  use_container_width=True):
-                        st.session_state["pf_open"] = True
-                        st.session_state["pf_open_id"] = p["id"]
-                        st.rerun()
+                        _open_now = p["id"]
+
+    # 카드 클릭 시에만 1회 다이얼로그 호출 — 닫으면 재오픈 안 됨(탭 진입=카드 목록)
+    if _open_now is not None:
+        _portfolio_dialog(_open_now)
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
