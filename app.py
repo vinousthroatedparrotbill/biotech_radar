@@ -230,11 +230,8 @@ st.markdown("""
     display:flex !important; align-items:center; justify-content:center;
     min-width:3.1rem; text-align:center; transition:background .15s; cursor:pointer;
   }
-  /* 라디오 컨트롤(동그라미)은 태그 무관 첫 자식 + input 모두 숨김 → 텍스트만 남겨 중앙 */
-  .st-key-country div[role="radiogroup"] label > *:not([data-testid="stMarkdownContainer"]){
-    display:none !important;
-  }
-  .st-key-country div[role="radiogroup"] label input{ display:none !important; }
+  /* 라디오 컨트롤(동그라미=첫 자식, 태그 무관)만 숨김 — 텍스트 div는 유지 → 중앙 정렬 */
+  .st-key-country div[role="radiogroup"] label > :first-child{ display:none !important; }
   .st-key-country div[role="radiogroup"] label [data-testid="stMarkdownContainer"]{
     width:100% !important; display:flex !important; justify-content:center !important;
     text-align:center !important;
@@ -1544,7 +1541,7 @@ def _reason_done_store():
     return set()
 
 
-@st.cache_data(ttl=86400, show_spinner=False)   # 하루 유지 — sig에 보드 갱신일 포함, 날짜 바뀔 때만 재생성
+@st.cache_data(ttl=604800, show_spinner=False)   # 7일 백스톱 — 실제 재생성은 sig의 보드 갱신일이 바뀔 때만
 def _cached_reason_analysis(sig: str, rows: tuple, kind: str) -> str:
     """신고가/급등 '이유 추정' 분석 — 텔레그램 _highs_analysis 재사용. sig로 1시간 캐시."""
     import pandas as _pd
@@ -1773,6 +1770,17 @@ def render_main_page():
     if st.session_state.get("main_tab_radio") not in tab_options:
         st.session_state["main_tab_radio"] = "high"   # 구버전 'chat' 등 잔존값 방어
 
+    # 우하단 플로팅 위젯(CHAT/운영) — position:fixed라 위치 동일. 맨 위에서 먼저 렌더해
+    # 아래 섹션이 예외나도 항상 뜨게 함.
+    try:
+        _floating_chat_widget()
+    except Exception:
+        pass
+    try:
+        _floating_ops_widget()
+    except Exception:
+        pass
+
     # ── 상단 네비게이션 바 (로고 · 메뉴 · 시장 토글) — 홈페이지형 ──
     with st.container(key="topbar"):
         bar = st.columns([3.0, 6.4, 1.6], vertical_alignment="center")
@@ -1838,15 +1846,7 @@ def render_main_page():
     except Exception as e:
         st.error(f"섹션 렌더 오류: {type(e).__name__}: {e}")
 
-    # 우하단 플로팅 위젯 — AI 챗(💬) + 운영(⚙). 탭이 아니라 항상 떠 있음.
-    try:
-        _floating_chat_widget()
-    except Exception:
-        pass
-    try:
-        _floating_ops_widget()
-    except Exception:
-        pass
+    # (플로팅 위젯은 render_main_page 상단에서 먼저 렌더함)
 
 
 # ───────────────────────── 카탈리스트 캘린더 ─────────────────────────
