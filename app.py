@@ -224,7 +224,8 @@ st.markdown("""
   .st-key-country div[role="radiogroup"] > label{
     margin:0 !important; padding:0.36rem 0.95rem !important; min-height:0 !important;
     background:transparent !important; border:0 !important; border-radius:8px !important;
-    transition:background .15s; cursor:pointer;
+    display:flex !important; align-items:center; justify-content:center;
+    min-width:3.1rem; text-align:center; transition:background .15s; cursor:pointer;
   }
   .st-key-country div[role="radiogroup"] > label > div:first-child{ display:none !important; }
   .st-key-country div[role="radiogroup"] label *{
@@ -327,7 +328,10 @@ st.markdown("""
   /* 컬럼이 좁은 폭에서 2×2로 접히지 않게 한 줄 고정 + 수직 중앙 정렬 */
   .st-key-topbar [data-testid="stHorizontalBlock"]{ flex-wrap: nowrap !important; align-items: center !important; }
   .st-key-topbar [data-testid="stMarkdownContainer"]{ margin: 0 !important; }
-  .topbar-brand{ display:flex; flex-direction:column; line-height:1.08; }
+  .topbar-brand{ display:flex; flex-direction:row; align-items:center; gap:0.6rem; }
+  .topbar-brand .brand-dna{ display:flex; align-items:center; flex:0 0 auto; }
+  .topbar-brand .brand-dna svg{ display:block; }
+  .topbar-brand .brand-text{ display:flex; flex-direction:column; line-height:1.08; }
   .topbar-brand .hero-wordmark{
     font-size:1.7rem; font-weight:600; color:#0a3d3a; letter-spacing:-0.5px; white-space:nowrap;
   }
@@ -343,7 +347,7 @@ st.markdown("""
   .st-key-topbar .st-key-main_tab_radio div[role="radiogroup"] > label{
     padding:0.4rem 0.75rem !important; white-space:nowrap;
   }
-  .st-key-topbar .st-key-country{ display:flex; justify-content:flex-end; }
+  .st-key-topbar .st-key-country{ display:flex; justify-content:flex-end; margin-right:-0.9rem; }
 
   /* 상단 노란 카탈리스트 알람 — 컨테이너 배경(체크 버튼이 바 안에 들어오도록) */
   .st-key-catalert{
@@ -1562,7 +1566,7 @@ def _render_reason_section(df, kind: str):
     sig = f"{kind}:{latest_run_date()}:" + ",".join(sorted(t[0] for t in rows))
     st.divider()
     st.subheader("신고가 이유 분석" if kind == "high" else "급등 이유 분석")
-    st.caption("상승 동인 · 핵심 자산/기전 · 짧은 평가 (투자 추천 아님)"
+    st.caption("상승 동인 · 핵심 자산/기전 · 짧은 평가"
                + (f" · 상위 {_MAX}개" if len(df) > _MAX else f" · 전 {len(rows)}종목"))
     gen_key = f"reason_gen_{kind}"
     if st.session_state.get(gen_key) != sig:
@@ -1754,8 +1758,23 @@ def render_main_page():
         with bar[0]:
             st.markdown(
                 "<div class='topbar-brand'>"
+                "<span class='brand-dna'>"
+                "<svg width='30' height='42' viewBox='0 0 30 42' xmlns='http://www.w3.org/2000/svg'>"
+                "<defs><linearGradient id='dnaG' x1='0' y1='0' x2='0' y2='1'>"
+                "<stop offset='0' stop-color='#3fae9b'/><stop offset='1' stop-color='#0a3d3a'/>"
+                "</linearGradient></defs>"
+                "<g fill='none' stroke='url(#dnaG)' stroke-width='2.4' stroke-linecap='round'>"
+                "<path d='M6 3 Q24 11 6 21 Q24 31 6 39'/>"
+                "<path d='M24 3 Q6 11 24 21 Q6 31 24 39'/></g>"
+                "<g stroke='#0a3d3a' stroke-width='1.5' stroke-linecap='round' opacity='0.45'>"
+                "<line x1='10' y1='6' x2='20' y2='6'/><line x1='21' y1='13.5' x2='9' y2='13.5'/>"
+                "<line x1='10' y1='21' x2='20' y2='21'/><line x1='21' y1='28.5' x2='9' y2='28.5'/>"
+                "<line x1='10' y1='36' x2='20' y2='36'/></g></svg>"
+                "</span>"
+                "<span class='brand-text'>"
                 "<span class='hero-wordmark'>BioTech&nbsp;Radar</span>"
                 "<span class='topbar-tag'>Biotech Trading · Analysis Intelligence</span>"
+                "</span>"
                 "</div>",
                 unsafe_allow_html=True,
             )
@@ -2412,7 +2431,7 @@ def _render_chat_core(box_height: int = 330):
     msgs = msgs0
 
     # 대화 로그 — 고정 높이 스크롤 박스(일반 챗봇 형태). 입력창은 박스 아래 고정.
-    box = st.container(height=box_height, border=True)
+    box = st.container(height=box_height, border=True, key="chatbox")
     with box:
         if not msgs:
             st.caption("아직 대화가 없습니다. 아래에 질문을 입력하세요.")
@@ -2562,6 +2581,16 @@ def _floating_chat_widget():
         (function(){
           const W = window.parent, D = W.document;
           function SP(p,k,v){ p.style.setProperty(k, v, 'important'); }
+          function fitBox(p){
+            const box = p.querySelector('.st-key-chatbox'); if(!box) return;
+            const btop = box.getBoundingClientRect().top - p.getBoundingClientRect().top;
+            const avail = p.clientHeight - btop - 130;   // 업로더+입력+여백 예약
+            if(avail < 140) return;
+            SP(box,'height',avail+'px');
+            box.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"]').forEach(function(el){
+              SP(el,'height',avail+'px'); SP(el,'max-height',avail+'px');
+            });
+          }
           function bindDoc(){
             if(W.__chatDocBound) return; W.__chatDocBound = true;
             D.addEventListener('mousemove', function(e){
@@ -2577,6 +2606,7 @@ def _floating_chat_widget():
                 const nh = Math.max(280, r.h + (e.clientY - r.y));
                 SP(p,'width',nw+'px'); SP(p,'height',nh+'px'); SP(p,'max-width','98vw'); SP(p,'max-height','96vh');
                 W.__chatGeom = Object.assign(W.__chatGeom||{}, {width:nw+'px', height:nh+'px'});
+                fitBox(p);
               }
             });
             D.addEventListener('mouseup', function(){ W.__chatDrag=null; W.__chatRs=null; });
@@ -2588,6 +2618,7 @@ def _floating_chat_widget():
             if(g){ if(g.left)SP(p,'left',g.left); if(g.top)SP(p,'top',g.top);
                    if(g.width)SP(p,'width',g.width); if(g.height)SP(p,'height',g.height);
                    SP(p,'right','auto'); SP(p,'bottom','auto'); SP(p,'max-width','98vw'); SP(p,'max-height','96vh'); }
+            fitBox(p);
             if(p.dataset.dragInit==='1') return;
             p.dataset.dragInit='1';
             SP(p,'resize','none');
