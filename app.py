@@ -2561,6 +2561,30 @@ def _floating_chat_widget():
         """,
         unsafe_allow_html=True,
     )
+    # 포커스 소유권 토글 — 모달보다 먼저 로드돼야 트랩보다 우선. 챗 닫혀 있어도 항상 렌더.
+    import streamlit.components.v1 as _comp0
+    _comp0.html(
+        """
+        <script>
+        (function(){
+          const W = window.parent, D = W.document;
+          function panel(){ return D.querySelector('.st-key-chatpanel'); }
+          if(W.__chatOwnBound) return; W.__chatOwnBound = true;
+          // 클릭한 쪽이 active: 챗 클릭→chatActive, 모달 등 다른 곳 클릭→비활성(모달이 다시 active)
+          D.addEventListener('mousedown', function(e){
+            const p = panel(); W.__chatActive = !!(p && p.contains(e.target));
+          }, true);
+          // chatActive인 동안만, 챗 내부 포커스를 모달 focus-trap이 뺏지 못하게 차단.
+          // bubble 단계라 React(root) 처리 뒤에 실행 → 입력 안 깨짐. 트랩(document)보다 먼저 등록됨.
+          D.addEventListener('focusin', function(e){
+            if(!W.__chatActive) return;
+            const p = panel(); if(p && e.target && p.contains(e.target)) e.stopImmediatePropagation();
+          }, false);
+        })();
+        </script>
+        """,
+        height=0,
+    )
     if not open_:
         with st.container(key="chatbtn"):
             if st.button("CHAT", key="chat_launch", help="챗 열기 (텔레그램 봇과 공유 대화)"):
@@ -2646,12 +2670,7 @@ def _floating_chat_widget():
             D.addEventListener('mouseup', function(){ W.__chatDrag=null; W.__chatRs=null; }, true);
           }
           function tick(){
-            const p = panel();
-            // 챗 열려 있으면 모달을 inert(비활성)로 → focus-trap이 챗 입력 포커스를 못 뺏음.
-            // 챗 닫히면 inert 해제(모달 다시 조작 가능). 모달은 계속 보임(읽기 가능).
-            var dlg = D.querySelector('[data-testid="stDialog"]') || D.querySelector('div[role="dialog"]');
-            if(dlg){ if(p){ dlg.setAttribute('inert',''); } else { dlg.removeAttribute('inert'); } }
-            if(!p) return;
+            const p = panel(); if(!p) return;
             const g = W.__chatGeom;
             if(g){ if(g.left)SP(p,'left',g.left); if(g.top)SP(p,'top',g.top);
                    if(g.width)SP(p,'width',g.width); if(g.height)SP(p,'height',g.height);
