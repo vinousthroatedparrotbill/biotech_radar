@@ -71,9 +71,20 @@ init_db()
 # ───────────────────────── 디자인 (CSS 인젝션) ─────────────────────────
 st.markdown("""
 <style>
-  /* 전체 톤 — 차분한 다크그린 + 투명한 카드 */
+  @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+  @import url('https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap');
+  /* 전체 톤 — 차분한 다크그린, 절제된 헤지펀드 감성 */
+  html, body, .stApp, button, input, textarea, select,
+  [data-testid="stMarkdownContainer"] {
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Segoe UI', sans-serif;
+  }
   .stApp {
-    background: linear-gradient(180deg, #f8fafb 0%, #eef2f4 100%);
+    background:
+      radial-gradient(1100px 520px at 100% -8%, rgba(19,78,74,0.07), transparent 60%),
+      linear-gradient(180deg, #f7faf9 0%, #edf2f0 100%);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    color: #14302e;
   }
   /* 메인 타이틀 영역 — hero */
   h1 {
@@ -177,7 +188,87 @@ st.markdown("""
   }
   /* divider 스타일 */
   hr {
-    border-color: #cbd9d6;
+    border-color: #dbe6e3 !important;
+    opacity: 0.7;
+  }
+
+  /* ───── 타이포 ───── */
+  h2 { color:#0f433f !important; font-weight:700 !important; letter-spacing:-0.3px; }
+  .hero-wordmark { font-family:'Newsreader', Georgia, serif !important; }
+
+  /* ───── 메인 탭: 라디오 동그라미 → 밑줄형 사이트 내비 ───── */
+  .st-key-main_tab_radio div[role="radiogroup"]{
+    display:flex; gap:0.1rem; flex-wrap:wrap; align-items:flex-end;
+    border-bottom:1px solid #dde6e3; margin:0.1rem 0 0.35rem;
+  }
+  .st-key-main_tab_radio div[role="radiogroup"] > label{
+    margin:0 !important; padding:0.6rem 1.05rem !important; min-height:0 !important;
+    background:transparent !important; border:0 !important;
+    border-bottom:2px solid transparent !important; border-radius:0 !important;
+    cursor:pointer; transition:color .15s, border-color .15s;
+  }
+  .st-key-main_tab_radio div[role="radiogroup"] > label > div:first-child{ display:none !important; }
+  .st-key-main_tab_radio div[role="radiogroup"] label *{
+    font-size:0.95rem !important; font-weight:600 !important; color:#6b7d7b !important;
+  }
+  .st-key-main_tab_radio div[role="radiogroup"] label:hover *{ color:#134e4a !important; }
+  .st-key-main_tab_radio div[role="radiogroup"] label:has(input:checked){ border-bottom-color:#134e4a !important; }
+  .st-key-main_tab_radio div[role="radiogroup"] label:has(input:checked) *{
+    color:#0a3d3a !important; font-weight:700 !important;
+  }
+
+  /* ───── 시장 토글(해외/한국): 세그먼트 컨트롤 ───── */
+  .st-key-country div[role="radiogroup"]{
+    display:inline-flex; gap:0; padding:3px; border:1px solid #d6e0de;
+    background:#eaf1ef; border-radius:11px;
+  }
+  .st-key-country div[role="radiogroup"] > label{
+    margin:0 !important; padding:0.36rem 0.95rem !important; min-height:0 !important;
+    background:transparent !important; border:0 !important; border-radius:8px !important;
+    transition:background .15s; cursor:pointer;
+  }
+  .st-key-country div[role="radiogroup"] > label > div:first-child{ display:none !important; }
+  .st-key-country div[role="radiogroup"] label *{
+    font-size:0.9rem !important; font-weight:600 !important; color:#5b6f6e !important;
+  }
+  .st-key-country div[role="radiogroup"] label:has(input:checked){
+    background:#134e4a !important; box-shadow:0 1px 4px rgba(10,61,58,0.28);
+  }
+  .st-key-country div[role="radiogroup"] label:has(input:checked) *{ color:#ffffff !important; }
+
+  /* ───── 카드/컨테이너 ───── */
+  div[data-testid="stVerticalBlockBorderWrapper"]{
+    border-radius:14px !important; border-color:#e4ebe9 !important; background:#ffffff;
+    box-shadow:0 1px 2px rgba(16,48,46,0.04), 0 8px 20px -12px rgba(16,48,46,0.12);
+  }
+  details{ border-radius:12px !important; border-color:#e4ebe9 !important; }
+
+  /* ───── 데이터프레임/표 ───── */
+  [data-testid="stDataFrame"]{ border-radius:12px; overflow:hidden; border:1px solid #e4ebe9; }
+  [data-testid="stDataFrame"] [role="columnheader"]{
+    background:#f1f5f4 !important; color:#0f433f !important; font-weight:700 !important;
+  }
+
+  /* ───── 입력/셀렉트 ───── */
+  div[data-baseweb="select"] > div, .stTextInput input, .stNumberInput input{
+    border-radius:10px !important; border-color:#d6e0de !important;
+  }
+
+  /* ───── 메트릭 ───── */
+  [data-testid="stMetric"]{
+    background:#ffffff; border:1px solid #e7edeb; border-radius:14px;
+    padding:1rem 1.1rem; box-shadow:0 6px 16px -12px rgba(16,48,46,0.2);
+  }
+  [data-testid="stMetricValue"]{ color:#0a3d3a !important; font-weight:700 !important; }
+
+  /* ───── 사이드바 폴리시 ───── */
+  section[data-testid="stSidebar"]{
+    background:linear-gradient(185deg,#0d3b3a 0%,#0a302e 100%) !important;
+    border-right:1px solid rgba(255,255,255,0.05);
+  }
+  section[data-testid="stSidebar"] h1{
+    font-family:'Newsreader', Georgia, serif !important; font-weight:600 !important;
+    letter-spacing:-0.3px; font-size:1.5rem !important;
   }
 </style>
 """, unsafe_allow_html=True)
@@ -1424,14 +1515,21 @@ def render_main_page():
     st.markdown(
         f"""
         <div class="hero-banner" style="
-          background: linear-gradient(135deg, #134e4a 0%, #0a3d3a 100%);
-          color: #fff; padding: 1.5rem 2rem; border-radius: 12px;
-          margin-bottom: 1.2rem;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+          background: linear-gradient(120deg, #0c4541 0%, #0a3d3a 55%, #07302d 100%);
+          color: #fff; padding: 1.7rem 2.1rem 1.5rem; border-radius: 16px;
+          margin-bottom: 1.4rem; position: relative; overflow: hidden;
+          box-shadow: 0 14px 32px -16px rgba(10,61,58,0.6);
         ">
-          <h1 style="margin:0;">🧬 Biotech Radar</h1>
-          <div style="opacity:0.85; font-size:0.95rem; margin-top:0.3rem;">
-            전체 조망 · {datetime.now():%Y-%m-%d %H:%M}
+          <div style="position:absolute; top:0; left:0; right:0; height:3px;
+               background:linear-gradient(90deg,#3fae9b,#0a3d3a);"></div>
+          <div style="display:flex; align-items:baseline; gap:0.75rem; flex-wrap:wrap;">
+            <span class="hero-wordmark" style="font-size:1.95rem; font-weight:600;
+                  letter-spacing:-0.5px; color:#fff;">Biotech Radar</span>
+            <span style="opacity:0.55; font-size:0.78rem; letter-spacing:0.22em;
+                  text-transform:uppercase;">Healthcare Intelligence</span>
+          </div>
+          <div style="opacity:0.72; font-size:0.9rem; margin-top:0.5rem; letter-spacing:0.01em;">
+            글로벌 Healthcare 신고가 · 카탈리스트 레이더 &nbsp;·&nbsp; {datetime.now():%Y-%m-%d %H:%M}
           </div>
         </div>
         """,
