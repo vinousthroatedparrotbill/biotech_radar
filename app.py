@@ -2451,7 +2451,7 @@ def _render_chat_core(box_height: int = 330):
     msgs = msgs0
 
     # 대화 로그 — 고정 높이 스크롤 박스(일반 챗봇 형태). 입력창은 박스 아래 고정.
-    box = st.container(border=True, key="chatbox")   # 고정높이 X — 패널 플렉스로 자동 채움/스크롤
+    box = st.container(height=box_height, border=True, key="chatbox")
     with box:
         if not msgs:
             st.caption("아직 대화가 없습니다. 아래에 질문을 입력하세요.")
@@ -2541,18 +2541,10 @@ def _floating_chat_widget():
             width: 600px !important; height: 600px !important;
             min-width: 320px !important; min-height: 300px !important;
             max-width: 95vw !important; max-height: 88vh !important;
-            resize: none !important; overflow: hidden !important;   /* JS 핸들로만 리사이즈 */
-            display: flex !important; flex-direction: column !important;
+            resize: none !important; overflow: auto !important;   /* JS 핸들로만 리사이즈 */
             background: #f3f5f8; border: 1px solid #cfd3da; border-radius: 14px;
             box-shadow: 0 10px 34px rgba(0,0,0,0.32); padding: 0.6rem 0.8rem 0.3rem; }
-        /* 패널 내부 세로 블록이 패널 높이를 꽉 채우는 플렉스 컬럼 */
-        .st-key-chatpanel > [data-testid="stVerticalBlock"]{
-            display: flex !important; flex-direction: column !important;
-            height: 100% !important; min-height: 0 !important; gap: 0.4rem !important; }
-        /* 헤더·업로더·입력란은 줄어들지 않게(입력란 항상 하단에 보임) */
-        .st-key-chatpanel > [data-testid="stVerticalBlock"] > *{ flex-shrink: 0 !important; }
-        /* 대화창(메시지 스크롤 박스)만 남는 세로 공간 전부 차지 → 패널 늘리면 같이 커짐 */
-        .st-key-chatbox{ flex: 1 1 auto !important; min-height: 60px !important; overflow-y: auto !important; }
+        .st-key-chatpanel [data-testid="stVerticalBlock"] { gap: 0.45rem; }
         </style>
         """,
         unsafe_allow_html=True,
