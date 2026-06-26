@@ -1480,6 +1480,7 @@ def _render_table(df: pd.DataFrame):
                 str(row["name"] or row["ticker"]),
                 key=f"btn_{row['ticker']}_{idx}",
                 use_container_width=True,
+                help=st.session_state.get("ticker_reason_map", {}).get(row["ticker"]),
             ):
                 prev = st.session_state.get("detail_ticker")
                 if prev and prev != row["ticker"]:
@@ -1560,6 +1561,22 @@ def _render_reason_section(df, kind: str):
             st.rerun()
         return
     blocks = [b.strip() for b in _re.split(r"\n(?=\*\*)", md.strip()) if b.strip()]
+    # 종목별 블록 → 티커 매핑 (테이블 티커 hover 툴팁용)
+    known = [t[0] for t in rows if t[0]]
+    rmap = {}
+    for blk in blocks:
+        head = blk.split("\n", 1)[0]
+        for tk in known:
+            if _re.search(rf"(?<![A-Za-z0-9]){_re.escape(tk)}(?![A-Za-z0-9])", head, _re.I):
+                rmap[tk] = blk
+                break
+    built_key = f"reason_map_built_{kind}"
+    if rmap and st.session_state.get(built_key) != sig:
+        shared = dict(st.session_state.get("ticker_reason_map", {}))
+        shared.update(rmap)
+        st.session_state["ticker_reason_map"] = shared
+        st.session_state[built_key] = sig
+        st.rerun()   # 테이블 hover 툴팁 즉시 반영
     cols = st.columns(2)
     for i, blk in enumerate(blocks):
         with cols[i % 2]:
