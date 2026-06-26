@@ -1544,7 +1544,7 @@ def _reason_done_store():
     return set()
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=86400, show_spinner=False)   # 하루 유지 — sig에 보드 갱신일 포함, 날짜 바뀔 때만 재생성
 def _cached_reason_analysis(sig: str, rows: tuple, kind: str) -> str:
     """신고가/급등 '이유 추정' 분석 — 텔레그램 _highs_analysis 재사용. sig로 1시간 캐시."""
     import pandas as _pd
