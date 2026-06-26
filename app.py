@@ -2613,56 +2613,54 @@ def _floating_chat_widget():
         (function(){
           const W = window.parent, D = W.document;
           function SP(p,k,v){ p.style.setProperty(k, v, 'important'); }
-          function bindDoc(){
-            if(W.__chatDocBound) return; W.__chatDocBound = true;
-            D.addEventListener('mousemove', function(e){
-              const p = D.querySelector('.st-key-chatpanel'); if(!p) return;
-              if(W.__chatDrag){
-                const d = W.__chatDrag;
-                const nl = d.left + (e.clientX - d.x), nt = Math.max(0, d.top + (e.clientY - d.y));
-                SP(p,'left',nl+'px'); SP(p,'top',nt+'px'); SP(p,'right','auto'); SP(p,'bottom','auto');
-                W.__chatGeom = Object.assign(W.__chatGeom||{}, {left:nl+'px', top:nt+'px'});
-              } else if(W.__chatRs){
-                const r = W.__chatRs;
-                const nw = Math.max(320, r.w + (e.clientX - r.x));
-                const nh = Math.max(280, r.h + (e.clientY - r.y));
-                SP(p,'width',nw+'px'); SP(p,'height',nh+'px'); SP(p,'max-width','98vw'); SP(p,'max-height','96vh');
-                W.__chatGeom = Object.assign(W.__chatGeom||{}, {width:nw+'px', height:nh+'px'});
+          function panel(){ return D.querySelector('.st-key-chatpanel'); }
+          // 모든 핸들러는 document 레벨에 1회만(노드 재생성/모달과 무관하게 유지), 좌표로 감지
+          if(!W.__chatBound){
+            W.__chatBound = true;
+            D.addEventListener('mousedown', function(e){
+              const p = panel(); if(!p || !p.contains(e.target)) return;
+              const r = p.getBoundingClientRect();
+              if(e.clientX >= r.right-26 && e.clientY >= r.bottom-26){      // 우하단 코너 → 리사이즈
+                W.__chatRs = {x:e.clientX, y:e.clientY, w:r.width, h:r.height};
+                e.preventDefault(); return;
               }
-            });
-            D.addEventListener('mouseup', function(){ W.__chatDrag=null; W.__chatRs=null; });
+              if(e.clientY - r.top <= 46){                                  // 상단 스트립 → 이동
+                const tag=(e.target.tagName||'').toLowerCase();
+                if(['button','input','textarea','a','select','label'].includes(tag)) return;
+                W.__chatDrag = {x:e.clientX, y:e.clientY, left:r.left, top:r.top};
+                e.preventDefault();
+              }
+            }, true);
+            D.addEventListener('mousemove', function(e){
+              const p = panel(); if(!p) return;
+              if(W.__chatDrag){
+                const d=W.__chatDrag, nl=d.left+(e.clientX-d.x), nt=Math.max(0,d.top+(e.clientY-d.y));
+                SP(p,'left',nl+'px'); SP(p,'top',nt+'px'); SP(p,'right','auto'); SP(p,'bottom','auto');
+                W.__chatGeom=Object.assign(W.__chatGeom||{},{left:nl+'px',top:nt+'px'});
+              } else if(W.__chatRs){
+                const r=W.__chatRs, nw=Math.max(320,r.w+(e.clientX-r.x)), nh=Math.max(300,r.h+(e.clientY-r.y));
+                SP(p,'width',nw+'px'); SP(p,'height',nh+'px'); SP(p,'max-width','98vw'); SP(p,'max-height','96vh');
+                W.__chatGeom=Object.assign(W.__chatGeom||{},{width:nw+'px',height:nh+'px'});
+              }
+            }, true);
+            D.addEventListener('mouseup', function(){ W.__chatDrag=null; W.__chatRs=null; }, true);
           }
-          function init(){
-            const p = D.querySelector('.st-key-chatpanel'); if(!p) return;
-            bindDoc();
+          function tick(){
+            const p = panel(); if(!p) return;
             const g = W.__chatGeom;
             if(g){ if(g.left)SP(p,'left',g.left); if(g.top)SP(p,'top',g.top);
                    if(g.width)SP(p,'width',g.width); if(g.height)SP(p,'height',g.height);
                    SP(p,'right','auto'); SP(p,'bottom','auto'); SP(p,'max-width','98vw'); SP(p,'max-height','96vh'); }
-            if(p.dataset.dragInit==='1') return;
-            p.dataset.dragInit='1';
             SP(p,'resize','none');
-            p.addEventListener('mousedown', function(e){
-              const r = p.getBoundingClientRect();
-              if(e.clientY - r.top > 46) return;             // 상단 스트립만 드래그
-              const tag=(e.target.tagName||'').toLowerCase();
-              if(['button','input','textarea','a','select','label'].includes(tag)) return;
-              W.__chatDrag = {x:e.clientX, y:e.clientY, left:r.left, top:r.top};
-              e.preventDefault();
-            });
-            const rh = D.createElement('div');
-            rh.title = '드래그하여 크기 조절';
-            rh.style.cssText = 'position:absolute;right:2px;bottom:2px;width:20px;height:20px;'
-              + 'cursor:nwse-resize;z-index:7;border-radius:0 0 10px 0;'
-              + 'background:linear-gradient(135deg,transparent 45%,#0a3d3a 45%,#0a3d3a 72%,transparent 72%);';
-            rh.addEventListener('mousedown', function(e){
-              const r = p.getBoundingClientRect();
-              W.__chatRs = {x:e.clientX, y:e.clientY, w:r.width, h:r.height};
-              e.preventDefault(); e.stopPropagation();
-            });
-            p.appendChild(rh);
+            if(!p.querySelector('.chat-rh')){                              // 코너 손잡이(커서 힌트) — 지워지면 복구
+              const rh=D.createElement('div'); rh.className='chat-rh'; rh.title='드래그하여 크기 조절';
+              rh.style.cssText='position:absolute;right:2px;bottom:2px;width:22px;height:22px;'
+                +'cursor:nwse-resize;z-index:9;border-radius:0 0 10px 0;'
+                +'background:linear-gradient(135deg,transparent 45%,#0a3d3a 45%,#0a3d3a 72%,transparent 72%);';
+              p.appendChild(rh);
+            }
           }
-          setInterval(init, 500); init();
+          setInterval(tick, 400); tick();
         })();
         </script>
         """,
