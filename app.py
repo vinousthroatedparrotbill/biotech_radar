@@ -773,41 +773,6 @@ def render_stock_detail(ticker: str, name: str):
     st.divider()
     _render_memo_section(ticker)
 
-    # ── 모달 내 AI 질문 (플로팅 챗은 모달 focus-trap 탓에 모달 위에서 타이핑 불가) ──
-    st.divider()
-    _render_modal_chat(ticker, name)
-
-
-@st.fragment
-def _render_modal_chat(ticker: str, name: str):
-    """종목 모달 내 AI 질문 — 플로팅 챗/텔레그램과 chat_store 공유. 모달 안이라 타이핑 정상."""
-    import bot_agent
-    import chat_store
-    st.markdown("##### 💬 이 종목 AI 질문  ·  텔레그램·플로팅 챗과 공유")
-    msgs = chat_store.recent_display(8)
-    box = st.container(height=260, border=True)
-    with box:
-        if not msgs:
-            st.caption("아래에 질문을 입력하세요.")
-        for m in msgs:
-            with st.chat_message(m["role"]):
-                if m.get("source") == "telegram":
-                    st.caption("📱 텔레그램")
-                st.markdown(m["content"])
-    with st.form(f"modal_chat_{ticker}", clear_on_submit=True):
-        q = st.text_area("질문", height=72, label_visibility="collapsed",
-                         placeholder=f"{name}({ticker}) 관련 질문 — 기전·임상·경쟁·밸류 등")
-        if st.form_submit_button("질문 전송", type="primary", use_container_width=True) and q.strip():
-            history = chat_store.recent(40)
-            with st.spinner("조사 중… (도구 호출, 최대 1-2분)"):
-                try:
-                    text, _ = bot_agent.run_agent(q, history)
-                except Exception as e:
-                    text = f"⚠️ 오류: {type(e).__name__}: {e}"
-            chat_store.append("user", q, "web")
-            chat_store.append("assistant", text, "web")
-            st.rerun(scope="fragment")
-
 
 @st.fragment
 def _chart_fragment(ticker: str):
