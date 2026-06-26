@@ -227,10 +227,14 @@ st.markdown("""
     display:flex !important; align-items:center; justify-content:center;
     min-width:3.1rem; text-align:center; transition:background .15s; cursor:pointer;
   }
-  .st-key-country div[role="radiogroup"] > label > div:first-child,
+  /* 라디오 컨트롤(동그라미)은 태그 무관 첫 자식 + input 모두 숨김 → 텍스트만 남겨 중앙 */
+  .st-key-country div[role="radiogroup"] label > *:not([data-testid="stMarkdownContainer"]){
+    display:none !important;
+  }
   .st-key-country div[role="radiogroup"] label input{ display:none !important; }
   .st-key-country div[role="radiogroup"] label [data-testid="stMarkdownContainer"]{
     width:100% !important; display:flex !important; justify-content:center !important;
+    text-align:center !important;
   }
   .st-key-country div[role="radiogroup"] label *{
     font-size:0.9rem !important; font-weight:600 !important; color:#5b6f6e !important;
@@ -2596,12 +2600,14 @@ def _floating_chat_widget():
           function fitBox(p){
             const box = p.querySelector('.st-key-chatbox'); if(!box) return;
             const btop = box.getBoundingClientRect().top - p.getBoundingClientRect().top;
-            const avail = p.clientHeight - btop - 150;   // 업로더+입력+여백 예약(입력란 하단 고정)
-            if(avail < 130) return;
+            const avail = Math.max(140, p.clientHeight - btop - 150);   // 업로더+입력 예약(입력란 하단 고정)
             SP(box,'height',avail+'px'); SP(box,'max-height',avail+'px');
-            // 실제 스크롤 컨테이너(인라인 overflow+height 가진 안쪽 div)까지 높이 적용
-            box.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"], div[style*="overflow"]').forEach(function(el){
-              SP(el,'height',avail+'px'); SP(el,'max-height',avail+'px');
+            // Streamlit이 인라인 height:NNNpx 로 박아둔 스크롤 컨테이너를 모두 찾아 덮어씀
+            box.querySelectorAll('*').forEach(function(el){
+              const s = el.getAttribute('style') || '';
+              if(/height:\\s*\\d+px/.test(s)){
+                SP(el,'height',avail+'px'); SP(el,'max-height',avail+'px'); SP(el,'overflow','auto');
+              }
             });
           }
           function bindDoc(){
