@@ -2004,12 +2004,19 @@ def _floating_chat_widget():
     st.markdown(
         """
         <style>
-        .st-key-chatbtn { position: fixed; bottom: 1.4rem; right: 1.4rem;
-            z-index: 99990; width: 66px !important; }
-        .st-key-chatbtn button { border-radius: 50% !important; width: 60px; height: 60px;
-            font-size: 1.7rem; padding: 0 !important; line-height: 1 !important;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.30);
+        .st-key-chatbtn { position: fixed; bottom: 1.7rem; right: 1.7rem;
+            z-index: 99990; width: auto !important; }
+        .st-key-chatbtn button { position: relative; overflow: visible;
+            border-radius: 28px !important; min-height: 64px; height: 64px;
+            padding: 0 1.8rem !important; font-size: 1.32rem; font-weight: 800;
+            letter-spacing: .07em; line-height: 1 !important;
+            box-shadow: 0 6px 22px rgba(0,0,0,0.34);
             background: #134e4a !important; color: #fff !important; border: none !important; }
+        .st-key-chatbtn button:hover { background: #0f615b !important; color: #fff !important; }
+        .st-key-chatbtn button::after { content: ""; position: absolute;
+            bottom: -9px; right: 26px; width: 0; height: 0;
+            border-width: 10px 10px 0 10px; border-style: solid;
+            border-color: #134e4a transparent transparent transparent; }
         .st-key-chatpanel { position: fixed; bottom: 1.1rem; right: 1.1rem;
             z-index: 99990; width: 470px; max-width: 93vw;
             background: #f3f5f8; border: 1px solid #cfd3da; border-radius: 14px;
@@ -2021,7 +2028,7 @@ def _floating_chat_widget():
     )
     if not open_:
         with st.container(key="chatbtn"):
-            if st.button("💬", key="chat_launch", help="AI 챗 열기 (텔레그램 봇과 공유 대화)"):
+            if st.button("💬 CHAT", key="chat_launch", help="AI 챗 열기 (텔레그램 봇과 공유 대화)"):
                 st.session_state["chat_widget_open"] = True
                 st.rerun(scope="fragment")
         return
