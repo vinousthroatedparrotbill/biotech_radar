@@ -1948,14 +1948,35 @@ def _pf_perf_series(portfolio_id: int, bench_tickers: tuple, sig: str):
     days = max(1, (_pd.Timestamp.now().normalize() - start_ts).days)
     period = "3m" if days <= 95 else "6m" if days <= 190 else "1y" if days <= 380 else "5y"
 
+    import requests as _rq
+    import io as _io
+
+    def _stooq(sym):
+        try:
+            r = _rq.get(f"https://stooq.com/q/d/l/?s={sym}&i=d", timeout=15,
+                        headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code != 200 or not r.text or r.text.lstrip().startswith("<"):
+                return None
+            d = _pd.read_csv(_io.StringIO(r.text))
+            if "Date" not in d.columns or "Close" not in d.columns or d.empty:
+                return None
+            s = _pd.Series(d["Close"].values, index=_pd.to_datetime(d["Date"]).dt.normalize())
+            return s.dropna().sort_index()
+        except Exception:
+            return None
+
     def _close(tk):
-        df = _pr.fetch_ohlcv(tk, period, "1d")
+        t = (tk or "").strip()
+        if t and not (t.isdigit() and len(t) == 6):
+            s = _stooq(f"{t.lower()}.us")          # 미국 알파 티커 — 클라우드(미국 IP)에서 동작
+            if s is not None and not s.empty:
+                return s[~s.index.duplicated(keep="last")]
+        df = _pr.fetch_ohlcv(t, period, "1d")      # KR/폴백 — 토스/DB캐시/yf
         if df is None or df.empty or "Close" not in df:
             return None
         s = df["Close"].copy()
         s.index = _pd.to_datetime(s.index).normalize()
-        s = s[~s.index.duplicated(keep="last")].sort_index()
-        return s
+        return s[~s.index.duplicated(keep="last")].sort_index()
 
     closes = {tk: s for tk in sorted({t["ticker"] for t in txs}) if (s := _close(tk)) is not None}
     if not closes:
@@ -2063,8 +2084,8 @@ def _portfolio_dialog(portfolio_id: int):
             format_func=lambda b: _CUR.get(b, b), key=f"pf_bench_{portfolio_id}",
         )
     with bcol[1]:
-        bench_extra = st.text_input("기타 티커(쉼표)", key=f"pf_bench_extra_{portfolio_id}",
-                                    placeholder="GLPG, 463050 …")
+        bench_extra = st.text_input("비교 종목/ETF 티커 (쉼표)", key=f"pf_bench_extra_{portfolio_id}",
+                                    placeholder="예: AMGN, GILD, XBI …")
     bench = bench_sel + [x.strip().upper() for x in bench_extra.split(",") if x.strip()]
     _psig = f"{s['current_size']:.0f}:{len(s['holdings'])}:{s.get('invested',0):.0f}"
     try:
