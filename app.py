@@ -424,18 +424,18 @@ def _floating_ops_widget():
     st.markdown(
         """
         <style>
-        .st-key-opsbtn { position: fixed; bottom: 6.7rem; right: 1.7rem;
+        .st-key-opsbtn { position: fixed; bottom: 1.5rem; right: 1.7rem;
             z-index: 2147483000; width: auto !important; }
         div[data-testid="stMainBlockContainer"] .st-key-opsbtn button {
             border-radius: 16px !important; min-height: 54px !important; height: 54px !important;
             padding: 0 1.7rem !important; font-size: 1.2rem !important; font-weight: 800 !important;
             letter-spacing: .06em !important; line-height: 1 !important;
             justify-content: center !important; text-align: center !important;
-            background: #13635a !important; color: #ffffff !important; border: none !important;
+            background: #0a3d3a !important; color: #ffffff !important; border: none !important;
             box-shadow: 0 10px 26px -6px rgba(10,61,58,0.5) !important; }
         div[data-testid="stMainBlockContainer"] .st-key-opsbtn button:hover {
             background: #0f5a52 !important; color: #ffffff !important; }
-        .st-key-opspanel { position: fixed; bottom: 6.7rem; right: 1.1rem;
+        .st-key-opspanel { position: fixed; bottom: 1.5rem; right: 1.1rem;
             z-index: 2147483000; width: 300px; max-width: 90vw;
             background: #ffffff; border: 1px solid #d3dbd9; border-radius: 14px;
             box-shadow: 0 10px 34px rgba(0,0,0,0.30); padding: 0.7rem 0.9rem; }
@@ -2512,7 +2512,7 @@ def _floating_chat_widget():
     st.markdown(
         """
         <style>
-        .st-key-chatbtn { position: fixed; bottom: 1.6rem; right: 1.7rem;
+        .st-key-chatbtn { position: fixed; bottom: 6.6rem; right: 1.7rem;
             z-index: 2147483000; width: auto !important; }
         /* 전역 메인-버튼(투명) 규칙을 이기도록 특이도 ↑ — 솔리드 초록 박스 */
         div[data-testid="stMainBlockContainer"] .st-key-chatbtn button {
@@ -2529,7 +2529,7 @@ def _floating_chat_widget():
             width: 600px !important; height: 600px !important;
             min-width: 320px !important; min-height: 300px !important;
             max-width: 95vw !important; max-height: 88vh !important;
-            resize: both !important; overflow: auto !important;   /* 우하단 손잡이 — 가로·세로 자유 */
+            resize: none !important; overflow: hidden !important;   /* 네이티브 resize 끔(코너 스크롤바 충돌 방지) — JS 핸들 사용 */
             background: #f3f5f8; border: 1px solid #cfd3da; border-radius: 14px;
             box-shadow: 0 10px 34px rgba(0,0,0,0.32); padding: 0.6rem 0.8rem 0.3rem; }
         .st-key-chatpanel [data-testid="stVerticalBlock"] { gap: 0.45rem; }

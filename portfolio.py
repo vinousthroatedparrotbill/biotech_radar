@@ -56,8 +56,29 @@ def get(portfolio_id: int) -> dict | None:
 
 
 # ───────────────────────── Holding CRUD ─────────────────────────
+def _stooq_last(ticker: str) -> float | None:
+    """stooq 일별 CSV 마지막 종가 — 미국 티커(.us), 키 불필요·클라우드(미국 IP)에서 동작.
+    yfinance가 차단돼 종목마다 타임아웃하는 것을 대체."""
+    t = (ticker or "").strip().lower()
+    if not t:
+        return None
+    sym = t if "." in t else f"{t}.us"
+    try:
+        import requests, io, csv
+        r = requests.get(f"https://stooq.com/q/d/l/?s={sym}&i=d", timeout=8,
+                         headers={"User-Agent": "Mozilla/5.0"})
+        if r.status_code != 200 or not r.text or r.text.lstrip().startswith("<"):
+            return None
+        rows = list(csv.DictReader(io.StringIO(r.text)))
+        if rows and rows[-1].get("Close"):
+            return float(rows[-1]["Close"])
+    except Exception:
+        return None
+    return None
+
+
 def _fetch_current_price(ticker: str) -> float | None:
-    """현재가 fetch — 토스 live 우선, 없으면 high_low_cache, 그다음 yfinance."""
+    """현재가 fetch — 토스 live → high_low_cache → stooq(미국) → yfinance(최후)."""
     try:
         import toss_market as tm
         if tm.available():
@@ -74,6 +95,11 @@ def _fetch_current_price(ticker: str) -> float | None:
         ).fetchone()
         if r and r["today_close"]:
             return float(r["today_close"])
+    _t = (ticker or "").strip()
+    if _t and not (_t.isdigit() and len(_t) == 6):   # 미국 알파 티커 → stooq(클라우드 OK)
+        sp = _stooq_last(_t)
+        if sp:
+            return sp
     try:
         info = yf.Ticker(ticker).fast_info
         for k in ("last_price", "lastPrice", "regularMarketPrice"):
@@ -187,11 +213,13 @@ def _prices_for(tickers) -> dict:
             out.update({k: v for k, v in tm.quote(list(tickers)).items() if v})
     except Exception:
         pass
-    for tk in tickers:                       # 토스 미수신분만 캐시/yfinance fallback
-        if not out.get(tk):
-            p = _fetch_current_price(tk)
-            if p:
-                out[tk] = p
+    miss = [tk for tk in tickers if not out.get(tk)]   # 토스 미수신분 — 캐시/stooq/yf 병렬
+    if miss:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(8, len(miss))) as ex:
+            for tk, p in zip(miss, ex.map(_fetch_current_price, miss)):
+                if p:
+                    out[tk] = p
     return out
 
 
