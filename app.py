@@ -319,7 +319,7 @@ st.markdown("""
   .st-key-topbar{
     position: sticky; top: 0; z-index: 999;
     width: 100vw; margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);
-    margin-top: 0; margin-bottom: 1.7rem; padding: 0.55rem 3rem;
+    margin-top: 0; margin-bottom: 1.7rem; padding: 0.55rem 1.4rem;
     background: #ffffff;
     border-bottom: 1px solid #e6ece9;
     box-shadow: 0 4px 18px -16px rgba(16,48,46,0.4);
@@ -343,7 +343,7 @@ st.markdown("""
   .st-key-topbar .st-key-main_tab_radio div[role="radiogroup"] > label{
     padding:0.4rem 0.75rem !important; white-space:nowrap;
   }
-  .st-key-topbar .st-key-country{ display:flex; justify-content:flex-end; margin-right:-1.4rem; }
+  .st-key-topbar .st-key-country{ display:flex; justify-content:flex-end; }
   .st-key-topbar .st-key-country div[role="radiogroup"]{ flex-wrap:nowrap !important; }
 
   /* ───── Streamlit 기본 상단 헤더/툴바 숨김 (share·별표·수정·rerun 바 제거) ───── */
@@ -1533,7 +1533,8 @@ def _render_reason_section(df, kind: str):
     import re as _re
     if df is None or df.empty:
         return
-    sub = df.sort_values("market_cap", ascending=False, na_position="last").head(20)
+    _sort_by = "perf_1d" if (kind == "movers" and "perf_1d" in df.columns) else "market_cap"
+    sub = df.sort_values(_sort_by, ascending=False, na_position="last").head(20)
     rows = tuple(
         (str(r.get("ticker") or ""), str(r.get("name") or ""),
          float(r["close"]) if pd.notna(r.get("close")) else None,
@@ -1543,15 +1544,15 @@ def _render_reason_section(df, kind: str):
     )
     sig = f"{kind}:{latest_run_date()}:" + ",".join(sorted(t[0] for t in rows))
     st.divider()
-    st.subheader("🧠 신고가 이유 분석" if kind == "high" else "🧠 급등 이유 분석")
-    st.caption("AI 추정 — 상승 동인·핵심 자산/기전·짧은 평가 (텔레그램 데일리와 동일 로직, 투자 추천 아님).")
+    st.subheader("신고가 이유 분석" if kind == "high" else "급등 이유 분석")
+    st.caption("상승 동인 · 핵심 자산/기전 · 짧은 평가 (투자 추천 아님)")
     gen_key = f"reason_gen_{kind}"
     if st.session_state.get(gen_key) != sig:
-        if st.button("🧠 이유 분석 생성 (AI · ~30초)", key=f"reason_btn_{kind}"):
+        if st.button("이유 분석 생성 (~30초)", key=f"reason_btn_{kind}"):
             st.session_state[gen_key] = sig
             st.rerun()
         return
-    with st.spinner("AI 이유 분석 생성 중…"):
+    with st.spinner("이유 분석 생성 중…"):
         md = _cached_reason_analysis(sig, rows, kind)
     if not md:
         st.info("분석 생성 실패 (API 키/크레딧 확인).")
@@ -1560,16 +1561,28 @@ def _render_reason_section(df, kind: str):
             st.session_state.pop(gen_key, None)
             st.rerun()
         return
-    blocks = [b.strip() for b in _re.split(r"\n(?=\*\*)", md.strip()) if b.strip()]
-    # 종목별 블록 → 티커 매핑 (테이블 티커 hover 툴팁용)
-    known = [t[0] for t in rows if t[0]]
-    rmap = {}
-    for blk in blocks:
-        head = blk.split("\n", 1)[0]
-        for tk in known:
-            if _re.search(rf"(?<![A-Za-z0-9]){_re.escape(tk)}(?![A-Za-z0-9])", head, _re.I):
-                rmap[tk] = blk
-                break
+    # 종목별 블록 슬라이싱 — 티커(없으면 회사명) 등장 위치 기준(내부 ** 볼드에 견고)
+    md_s = md.strip()
+    found = []
+    for tk, name in [(t[0], t[1]) for t in rows if t[0]]:
+        m = _re.search(rf"(?<![A-Za-z0-9]){_re.escape(tk)}(?![A-Za-z0-9])", md_s, _re.I)
+        if not m and name and len(name) >= 2:
+            m = _re.search(_re.escape(name), md_s)
+        if m:
+            ls = md_s.rfind("\n", 0, m.start()) + 1
+            found.append((ls, tk))
+    found.sort()
+    rmap, blocks = {}, []
+    for i, (pos, tk) in enumerate(found):
+        end = found[i + 1][0] if i + 1 < len(found) else len(md_s)
+        blk = _re.split(r"\n-{3,}", md_s[pos:end].strip())[0].strip()
+        if blk and tk not in rmap:
+            rmap[tk] = blk
+            blocks.append(blk)
+    summ = ""
+    msum = _re.search(r"\*\*\s*요약\s*테마", md_s)
+    if msum:
+        summ = md_s[md_s.rfind("\n", 0, msum.start()) + 1:].strip()
     built_key = f"reason_map_built_{kind}"
     if rmap and st.session_state.get(built_key) != sig:
         shared = dict(st.session_state.get("ticker_reason_map", {}))
@@ -1577,11 +1590,17 @@ def _render_reason_section(df, kind: str):
         st.session_state["ticker_reason_map"] = shared
         st.session_state[built_key] = sig
         st.rerun()   # 테이블 hover 툴팁 즉시 반영
+    if not blocks:
+        st.markdown(md_s)
+        return
     cols = st.columns(2)
     for i, blk in enumerate(blocks):
         with cols[i % 2]:
             with st.container(border=True):
                 st.markdown(blk)
+    if summ:
+        with st.container(border=True):
+            st.markdown(summ)
 
 
 @st.fragment
@@ -1912,6 +1931,82 @@ def _section_catalysts():
 
 
 # ───────────────────────── Model Portfolio ─────────────────────────
+@st.cache_data(ttl=900, show_spinner=False)
+def _pf_perf_series(portfolio_id: int, bench_tickers: tuple, sig: str):
+    """포트폴리오 누적수익률(%) 시계열 + 벤치마크. index=date, col=['포트폴리오', *benchmarks].
+    거래내역(매수/매도) + 보유종목 일별 종가로 NAV 복원. 벤치마크는 시작일=0%로 정규화."""
+    import pandas as _pd
+    import portfolio as _pf
+    import prices as _pr
+    txs = _pf._transactions(portfolio_id)
+    p = _pf.get(portfolio_id)
+    if not txs or not p:
+        return _pd.DataFrame()
+    initial = float(p.get("initial_size") or 0) or 1.0
+    start = min(t["trade_date"] for t in txs)[:10]
+    start_ts = _pd.Timestamp(start)
+    days = max(1, (_pd.Timestamp.now().normalize() - start_ts).days)
+    period = "3m" if days <= 95 else "6m" if days <= 190 else "1y" if days <= 380 else "5y"
+
+    def _close(tk):
+        df = _pr.fetch_ohlcv(tk, period, "1d")
+        if df is None or df.empty or "Close" not in df:
+            return None
+        s = df["Close"].copy()
+        s.index = _pd.to_datetime(s.index).normalize()
+        s = s[~s.index.duplicated(keep="last")].sort_index()
+        return s
+
+    closes = {tk: s for tk in sorted({t["ticker"] for t in txs}) if (s := _close(tk)) is not None}
+    if not closes:
+        return _pd.DataFrame()
+    idx = None
+    for s in closes.values():
+        idx = s.index if idx is None else idx.union(s.index)
+    idx = idx[idx >= start_ts]
+    if len(idx) == 0:
+        return _pd.DataFrame()
+
+    txs_sorted = sorted(txs, key=lambda t: (t["trade_date"], t.get("id", 0)))
+    navs = []
+    for d in idx:
+        sh, cash = {}, initial
+        for t in txs_sorted:
+            if _pd.Timestamp(t["trade_date"][:10]) > d:
+                break
+            q, amt = float(t["shares"]), float(t["amount"])
+            if t["action"] == "buy":
+                sh[t["ticker"]] = sh.get(t["ticker"], 0.0) + q
+                cash -= amt
+            else:
+                sh[t["ticker"]] = sh.get(t["ticker"], 0.0) - q
+                cash += amt
+        mv = 0.0
+        for tk, q in sh.items():
+            if abs(q) < 1e-9:
+                continue
+            s = closes.get(tk)
+            if s is None:
+                continue
+            prior = s[s.index <= d]
+            if not prior.empty:
+                mv += q * float(prior.iloc[-1])
+        navs.append(cash + mv)
+    nav_s = _pd.Series(navs, index=idx)
+    out = _pd.DataFrame({"포트폴리오": (nav_s / initial - 1.0) * 100.0})
+
+    for b in bench_tickers:
+        bs = _close(b)
+        if bs is None:
+            continue
+        bs = bs[bs.index >= start_ts].reindex(out.index, method="ffill")
+        base = bs.dropna()
+        if base.empty:
+            continue
+        out[b] = (bs / base.iloc[0] - 1.0) * 100.0
+    return out
+
+
 @st.dialog("💼 포트폴리오 상세", width="large")
 def _portfolio_dialog(portfolio_id: int):
     import portfolio as pf
@@ -1953,6 +2048,39 @@ def _portfolio_dialog(portfolio_id: int):
         f"미실현 ${s.get('unrealized_pnl',0)/1e6:+,.2f}M · 투자원가 ${s.get('invested',0)/1e6:,.1f}M · "
         f"편입 {s['total_weight']:.1f}% · 현금 {s['cash_pct']:.1f}%"
     )
+
+    st.divider()
+
+    # ── 수익률 추이 차트 (포트폴리오 vs 벤치마크) — 종목 리스트 위 ──
+    st.markdown("##### 📈 수익률 추이 (편입 이후 누적 %)")
+    _CUR = {"XBI": "XBI (미국 바이오)", "IBB": "IBB (미국 바이오)", "ARKG": "ARKG (게놈)",
+            "SPY": "SPY (S&P500)", "463050": "TIMEFOLIO K바이오액티브",
+            "305720": "KODEX 바이오", "364970": "TIGER 바이오TOP10"}
+    bcol = st.columns([3, 2])
+    with bcol[0]:
+        bench_sel = st.multiselect(
+            "벤치마크 비교", list(_CUR.keys()), default=["XBI"],
+            format_func=lambda b: _CUR.get(b, b), key=f"pf_bench_{portfolio_id}",
+        )
+    with bcol[1]:
+        bench_extra = st.text_input("기타 티커(쉼표)", key=f"pf_bench_extra_{portfolio_id}",
+                                    placeholder="GLPG, 463050 …")
+    bench = bench_sel + [x.strip().upper() for x in bench_extra.split(",") if x.strip()]
+    _psig = f"{s['current_size']:.0f}:{len(s['holdings'])}:{s.get('invested',0):.0f}"
+    try:
+        with st.spinner("수익률 시계열 계산 중…"):
+            perf = _pf_perf_series(portfolio_id, tuple(dict.fromkeys(bench)), _psig)
+    except Exception as e:
+        perf = None
+        st.caption(f"차트 생성 실패: {type(e).__name__}: {e}")
+    if perf is not None and not perf.empty:
+        _colors = (["#0a3d3a", "#9aa7a5", "#c9b072", "#7e9cc4", "#b48ead", "#88b04b"])[:len(perf.columns)]
+        st.line_chart(perf, height=300, color=_colors)
+        _final = perf.iloc[-1]
+        st.caption(" · ".join(f"{c} {_final[c]:+.1f}%" for c in perf.columns))
+    else:
+        st.caption("거래내역·가격 데이터가 충분치 않아 차트를 표시할 수 없습니다 "
+                   "(보유종목 OHLCV 캐시 필요 — ⚙ 운영 '신고가 갱신').")
 
     st.divider()
 
@@ -2287,7 +2415,7 @@ def _floating_chat_widget():
     )
     if not open_:
         with st.container(key="chatbtn"):
-            if st.button("💬 CHAT", key="chat_launch", help="AI 챗 열기 (텔레그램 봇과 공유 대화)"):
+            if st.button("💬 CHAT", key="chat_launch", help="챗 열기 (텔레그램 봇과 공유 대화)"):
                 st.session_state["chat_widget_open"] = True
                 st.rerun(scope="fragment")
         return
