@@ -1717,6 +1717,22 @@ TOOL_DEFS = [
         },
     },
     {
+        "name": "get_dart_document",
+        "description": "한국 공시의 **원문 본문 전체 텍스트**를 DART 공식 API(document.xml)로 직접 읽음. "
+                       "공시 뷰어(dart.fss.or.kr) 본문은 iframe이라 스크랩 불가 — 정정공시/유증결정/"
+                       "주요사항보고서 등 **본문 내용(정정 사유·변경 전후·금액·일정)을 읽어야 할 땐 반드시 "
+                       "이 도구**를 써라. 먼저 get_dart_disclosures로 해당 공시의 rcept_no를 얻어 넘긴다. "
+                       "당일 막 올라온 공시는 DART 인덱싱 지연으로 014(원본없음)가 날 수 있음(잠시 후 가능).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "rcept_no": {"type": "string",
+                             "description": "공시 접수번호 14자리 (get_dart_disclosures의 rcept_no)"},
+            },
+            "required": ["rcept_no"],
+        },
+    },
+    {
         "name": "get_kr_news",
         "description": "한국 종목/이슈 뉴스 — 네이버 금융 종목별 뉴스(6자리 코드 기반, 가장 풍부·정확) "
                        "+ 한국 바이오 전문매체(히트뉴스·팜뉴스·청년의사·더바이오). "
@@ -2020,13 +2036,20 @@ def get_dart_disclosures(ticker: str, days: int = 30, types: str = None):
     """한국 종목 공시 — **네이버 실시간 종목공시 + DART 전자공시 병합**.
     당일 막 올라온 유상증자·주요사항·거래소 공시도 포함(DART OpenAPI는 인덱싱 지연이 있어
     네이버가 먼저 잡음). 미국·비상장은 빈 결과."""
+    import re as _re
+
+    def _rcpno(u):     # DART/네이버 링크에서 접수번호(14자리) 추출 → get_dart_document용
+        m = _re.search(r"(?:rcpNo|rcept_no)=(\d{14})", u or "")
+        return m.group(1) if m else ""
+
     out = []
     # 1) 네이버 종목 공시 — 실시간(당일 공시 포함)
     try:
         import kr_news
         for d in kr_news.naver_disclosures(ticker, limit=20):
             out.append({"date": (d.get("published") or "").replace(".", "-"),
-                        "title": d["title"], "url": d["link"], "source": "네이버공시"})
+                        "title": d["title"], "url": d["link"],
+                        "rcept_no": _rcpno(d.get("link")), "source": "네이버공시"})
     except Exception:
         pass
     # 2) DART 전자공시 — 상세/뷰어 링크(지연 가능)
@@ -2035,6 +2058,7 @@ def get_dart_disclosures(ticker: str, days: int = 30, types: str = None):
         if dart.available():
             for d in dart.recent_disclosures(ticker, days=days, types=types, limit=30):
                 out.append({"date": d["date"], "title": d["title"], "url": d["url"],
+                            "rcept_no": d.get("rcept_no", ""),
                             "filer": d.get("filer", ""), "source": "DART"})
         elif not out:
             return {"error": "DART_API_KEY 미설정 — 네이버 공시도 미수집"}
@@ -2050,6 +2074,20 @@ def get_dart_disclosures(ticker: str, days: int = 30, types: str = None):
             seen.add(k)
             ded.append(d)
     return {"ticker": ticker, "disclosures": ded}
+
+
+def get_dart_document(rcept_no: str):
+    """DART 공시 '원문 본문 텍스트' — 공식 document.xml API로 직접 받음.
+    (뷰어는 본문이 iframe이라 스크랩 불가 → 반드시 이걸로 본문을 읽는다.)
+    rcept_no는 get_dart_disclosures 결과의 rcept_no 필드. 당일(막 올라온) 공시는
+    DART 인덱싱 지연으로 014(원본없음)가 날 수 있음 → 잠시 후 재시도/메타데이터로 대체."""
+    try:
+        import dart
+        if not dart.available():
+            return {"error": "DART_API_KEY 미설정"}
+        return dart.fetch_document(str(rcept_no or "").strip())
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
 
 
 def get_kr_news(ticker: str = "", query: str = "", limit: int = 15):
@@ -2127,6 +2165,7 @@ def run_tool(name: str, args: dict):
         "get_premarket_movers": get_premarket_movers,
         "get_market_movers": get_market_movers,
         "get_dart_disclosures": get_dart_disclosures,
+        "get_dart_document": get_dart_document,
         "get_kr_news": get_kr_news,
         "read_naver_blog": read_naver_blog,
         # write

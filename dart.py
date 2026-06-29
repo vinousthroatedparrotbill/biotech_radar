@@ -151,11 +151,77 @@ def recent_disclosures(ticker: str, days: int = 30,
         out.append({
             "date": date_iso,
             "title": it.get("report_nm", ""),
+            "rcept_no": it.get("rcept_no", ""),     # 본문 fetch_document() 호출용
             "url": _VIEWER.format(rcept_no=it.get("rcept_no", "")),
             "filer": it.get("flr_nm", ""),
             "type": it.get("rm", ""),
         })
     return out
+
+
+def fetch_document(rcept_no: str, max_chars: int = 12000) -> dict:
+    """DART 공시 '원문 본문 텍스트' — 공식 document.xml API(ZIP) 사용.
+    뷰어(dsaf001/main.do)는 본문이 iframe이라 스크랩 불가 → 이 API로 직접 받는다.
+    return {ok, rcept_no, text, chars, truncated} 또는 {ok:False, error}."""
+    import io
+    import re as _re
+    import warnings
+    import zipfile
+
+    from bs4 import BeautifulSoup
+    try:
+        from bs4 import XMLParsedAsHTMLWarning
+        warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+    except Exception:
+        pass
+
+    rcept_no = (rcept_no or "").strip()
+    if not rcept_no.isdigit():
+        return {"ok": False, "error": f"rcept_no(접수번호 숫자) 필요 — 받은 값: {rcept_no!r}"}
+    try:
+        r = requests.get(f"{_BASE}/document.xml",
+                         params={"crtfc_key": _key(), "rcept_no": rcept_no}, timeout=30)
+        r.raise_for_status()
+    except Exception as e:
+        return {"ok": False, "error": f"요청 실패: {e}"}
+
+    # 키 오류/한도/무자료 등은 ZIP이 아니라 status XML로 옴
+    head = r.content[:300]
+    if b"<status>" in head or b"<result>" in head:
+        try:
+            soup = BeautifulSoup(r.content, "html.parser")
+            st = soup.find("status"); msg = soup.find("message")
+            return {"ok": False,
+                    "error": f"DART {st.text if st else '?'}: {msg.text if msg else '오류'}"}
+        except Exception:
+            return {"ok": False, "error": "DART 오류 응답(본문 없음)"}
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(r.content))
+    except Exception as e:
+        return {"ok": False, "error": f"ZIP 파싱 실패: {e}"}
+
+    texts = []
+    for name in zf.namelist():
+        raw = zf.read(name)
+        html = None
+        for enc in ("utf-8", "euc-kr", "cp949"):    # DART 원문은 보통 EUC-KR
+            try:
+                html = raw.decode(enc); break
+            except Exception:
+                continue
+        if html is None:
+            html = raw.decode("utf-8", "replace")
+        soup = BeautifulSoup(html, "html.parser")
+        for tag in soup(["script", "style"]):
+            tag.decompose()
+        txt = soup.get_text("\n", strip=True)
+        if txt:
+            texts.append(txt)
+    full = _re.sub(r"\n{3,}", "\n\n", "\n\n".join(texts)).strip()
+    if not full:
+        return {"ok": False, "error": "본문 텍스트 추출 실패(빈 문서)"}
+    return {"ok": True, "rcept_no": rcept_no, "chars": len(full),
+            "truncated": len(full) > max_chars, "text": full[:max_chars]}
 
 
 if __name__ == "__main__":
