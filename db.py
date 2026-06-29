@@ -239,6 +239,14 @@ CREATE TABLE IF NOT EXISTS conditional_orders (
     dry_run          BOOLEAN NOT NULL DEFAULT TRUE
 );
 CREATE INDEX IF NOT EXISTS idx_cond_status ON conditional_orders(status);
+-- 라이프사이클(진입→보유→청산) + 체결 기록. status: armed(진입대기)→holding(보유,매도대기)→done.
+-- 체결가/시각은 현재 dry_run=페이퍼(브로커 연결 시 실주문으로 대체).
+ALTER TABLE conditional_orders ADD COLUMN IF NOT EXISTS exit_condition TEXT;
+ALTER TABLE conditional_orders ADD COLUMN IF NOT EXISTS buy_at    TEXT;
+ALTER TABLE conditional_orders ADD COLUMN IF NOT EXISTS buy_price DOUBLE PRECISION;
+ALTER TABLE conditional_orders ADD COLUMN IF NOT EXISTS sell_at   TEXT;
+ALTER TABLE conditional_orders ADD COLUMN IF NOT EXISTS sell_price DOUBLE PRECISION;
+ALTER TABLE conditional_orders ADD COLUMN IF NOT EXISTS exit_eval TEXT;   -- 매도 조건 진행도
 """
 
 

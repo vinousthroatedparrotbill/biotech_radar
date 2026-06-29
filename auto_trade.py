@@ -30,21 +30,25 @@ def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def _as_json(v):
+    return None if v is None else (v if isinstance(v, str) else json.dumps(v, ensure_ascii=False))
+
+
 def create(order: dict) -> int:
     """완성된 조건 주문 저장. order = {ticker,name,side,size_type,size_value,condition,title,
-    portfolio_id?,note?}. status='armed'."""
-    cond = order["condition"]
-    cond_s = cond if isinstance(cond, str) else json.dumps(cond, ensure_ascii=False)
+    exit_condition?,portfolio_id?,note?}. status='armed'(진입 대기).
+    exit_condition(매도 조건)이 있으면 진입 체결 후 'holding'으로 넘어가 청산을 대기한다."""
     now = _now()
     with connect() as c:
         row = c.execute(
             """INSERT INTO conditional_orders
                (portfolio_id, ticker, name, side, size_type, size_value, condition,
-                title, status, note, created_at, armed_at, dry_run)
-               VALUES (?,?,?,?,?,?,?,?,'armed',?,?,?,TRUE) RETURNING id""",
+                exit_condition, title, status, note, created_at, armed_at, dry_run)
+               VALUES (?,?,?,?,?,?,?,?,?,'armed',?,?,?,TRUE) RETURNING id""",
             (order.get("portfolio_id"), order["ticker"].strip(), order.get("name"),
              order["side"].lower().strip(), order["size_type"].strip(),
-             float(order["size_value"]), cond_s, order["title"].strip(),
+             float(order["size_value"]), _as_json(order["condition"]),
+             _as_json(order.get("exit_condition")), order["title"].strip(),
              order.get("note"), now, now),
         ).fetchone()
         c.commit()
@@ -53,7 +57,7 @@ def create(order: dict) -> int:
 
 def _row_to_dict(r: dict) -> dict:
     d = dict(r)
-    for f in ("condition", "triggered_detail", "last_eval"):
+    for f in ("condition", "exit_condition", "triggered_detail", "last_eval", "exit_eval"):
         if d.get(f):
             try:
                 d[f] = json.loads(d[f])
@@ -85,25 +89,41 @@ def get(order_id: int) -> dict | None:
 def cancel(order_id: int) -> None:
     with connect() as c:
         c.execute("UPDATE conditional_orders SET status='cancelled' "
-                  "WHERE id=? AND status IN ('armed','triggered')", (order_id,))
+                  "WHERE id=? AND status IN ('armed','holding')", (order_id,))
         c.commit()
 
 
-def _save_eval(order_id: int, last_eval: dict) -> None:
+def _save_eval(order_id: int, field: str, data: dict) -> None:
+    """진행도 저장. field='last_eval'(진입) 또는 'exit_eval'(청산)."""
     with connect() as c:
-        c.execute("UPDATE conditional_orders SET last_eval=? WHERE id=?",
-                  (json.dumps(last_eval, ensure_ascii=False), order_id))
+        c.execute(f"UPDATE conditional_orders SET {field}=? WHERE id=?",
+                  (json.dumps(data, ensure_ascii=False), order_id))
         c.commit()
 
 
-def _mark_triggered(order_id: int, detail: dict) -> bool:
-    """armed→triggered 원자적 전이. 실제 전이된 경우만 True(로컬+클라우드 동시 평가 시
-    한쪽만 알림 발송 → 중복 발동 방지)."""
+def _fill_entry(order: dict, price, detail: dict) -> bool:
+    """진입 체결(페이퍼). armed→holding(매도조건 있을 때) 또는 armed→done. 원자적 전이."""
+    nxt = "holding" if (order["side"] == "buy" and order.get("exit_condition")) else "done"
+    now = _now()
+    set_fill = "buy_at=?, buy_price=?" if order["side"] == "buy" else "sell_at=?, sell_price=?"
     with connect() as c:
         row = c.execute(
-            "UPDATE conditional_orders SET status='triggered', triggered_at=?, "
+            f"UPDATE conditional_orders SET status=?, {set_fill}, triggered_at=?, "
             "triggered_detail=? WHERE id=? AND status='armed' RETURNING id",
-            (_now(), json.dumps(detail, ensure_ascii=False), order_id)).fetchone()
+            (nxt, now, price, now, json.dumps(detail, ensure_ascii=False), order["id"])
+        ).fetchone()
+        c.commit()
+        return row is not None
+
+
+def _fill_exit(order: dict, price, detail: dict) -> bool:
+    """청산 체결(페이퍼). holding→done. 원자적 전이."""
+    with connect() as c:
+        row = c.execute(
+            "UPDATE conditional_orders SET status='done', sell_at=?, sell_price=?, "
+            "triggered_detail=? WHERE id=? AND status='holding' RETURNING id",
+            (_now(), price, json.dumps(detail, ensure_ascii=False), order["id"])
+        ).fetchone()
         c.commit()
         return row is not None
 
@@ -297,16 +317,15 @@ def _extract_ir_metric(ticker: str, node: dict) -> dict:
 
 
 # ───────────────────────── 실행(dry-run) + 모니터링 ─────────────────────────
-def _place_order_dry_run(order: dict, eval_res: dict) -> None:
-    """발동 시 처리 — **실주문 미발송**. 텔레그램 알림 + status='triggered'.
-    브로커 연동 전까지 이 함수가 실제 주문을 내지 않는다(안전 게이트)."""
-    side_kr = "매수" if order["side"] == "buy" else "매도"
-    unit = {"weight_pct": "비중%", "amount": "금액", "shares": "주"}.get(order["size_type"], "")
-    msg = (f"🔔 <b>자동매매 조건 발동</b> (dry-run · 실주문 미발송)\n"
+def _notify_fill(order: dict, kind: str, price, eval_res: dict) -> None:
+    """체결 알림 — **실주문 미발송**(페이퍼). 브로커 연동 전 안전 게이트.
+    kind='매수' | '매도'."""
+    unit = {"weight_pct": "% 비중", "amount": " (금액)", "shares": "주"}.get(order["size_type"], "")
+    pr = f"{price:,.2f}" if price else "?"
+    msg = (f"🔔 <b>자동매매 {kind} 발동</b> (dry-run · 페이퍼, 실주문 미발송)\n"
            f"<b>{order.get('name') or order['ticker']} ({order['ticker']})</b>\n"
-           f"• 주문: {side_kr} {order['size_value']:g} {unit}\n"
-           f"• 조건: {order['title']}\n"
-           f"• 평가: {eval_res.get('summary','')}\n"
+           f"• {kind} {order['size_value']:g}{unit} @ {pr}\n"
+           f"• 조건: {eval_res.get('summary','')}\n"
            f"⚠️ 증권사 미연동 — 실제 주문은 나가지 않았습니다.")
     try:
         from telegram_report import send
@@ -316,24 +335,44 @@ def _place_order_dry_run(order: dict, eval_res: dict) -> None:
 
 
 def evaluate_all() -> dict:
-    """armed 주문 전부 평가 → 충족 시 발동(dry-run). triggers_runner/30분 cron에서 호출."""
-    armed = list_orders("armed")
-    fired = 0
-    for o in armed:
+    """① 진입 대기(armed) 진입조건 평가 → 체결 시 보유(holding) 또는 완료(done).
+    ② 보유(holding) 청산조건 평가 → 체결 시 완료(done). 체결은 페이퍼(실주문 X).
+    triggers_runner/30분 cron + Render 상시 루프에서 호출."""
+    ev = fired = 0
+    for o in list_orders("armed"):              # ① 진입
+        ev += 1
         try:
             ctx = _ctx(o["ticker"], o.get("portfolio_id"))
             res = evaluate(o["condition"], ctx, o)
-            _save_eval(o["id"], {"at": _now(), "summary": res["summary"],
-                                 "price": ctx.get("price"),
-                                 **({"ir": res["ir"]} if res.get("ir") else {})})
+            _save_eval(o["id"], "last_eval", {"at": _now(), "summary": res["summary"],
+                       "price": ctx.get("price"), **({"ir": res["ir"]} if res.get("ir") else {})})
             if res["met"]:
-                detail = {"summary": res["summary"], "price": ctx.get("price"), "at": _now()}
-                if _mark_triggered(o["id"], detail):    # 원자적 전이 성공한 쪽만 알림
-                    _place_order_dry_run(o, res)
+                detail = {"kind": "entry", "summary": res["summary"],
+                          "price": ctx.get("price"), "at": _now()}
+                if _fill_entry(o, ctx.get("price"), detail):    # 원자적 → 한쪽만 알림
+                    _notify_fill(o, "매수" if o["side"] == "buy" else "매도", ctx.get("price"), res)
                     fired += 1
         except Exception as e:
-            log.warning("주문 평가 실패 id=%s: %s", o.get("id"), e)
-    return {"evaluated": len(armed), "fired": fired}
+            log.warning("진입 평가 실패 id=%s: %s", o.get("id"), e)
+    for o in list_orders("holding"):            # ② 청산(매도)
+        ev += 1
+        try:
+            exitc = o.get("exit_condition")
+            if not exitc:
+                continue
+            ctx = _ctx(o["ticker"], o.get("portfolio_id"))
+            res = evaluate(exitc, ctx, o)
+            _save_eval(o["id"], "exit_eval", {"at": _now(), "summary": res["summary"],
+                                              "price": ctx.get("price")})
+            if res["met"]:
+                detail = {"kind": "exit", "summary": res["summary"],
+                          "price": ctx.get("price"), "at": _now()}
+                if _fill_exit(o, ctx.get("price"), detail):
+                    _notify_fill(o, "매도", ctx.get("price"), res)
+                    fired += 1
+        except Exception as e:
+            log.warning("청산 평가 실패 id=%s: %s", o.get("id"), e)
+    return {"evaluated": ev, "fired": fired}
 
 
 # ───────────────────────── 챗 조건 빌더 ─────────────────────────
@@ -355,9 +394,12 @@ _BUILDER_TOOL = {
                     "side": {"type": "string", "enum": ["buy", "sell"]},
                     "size_type": {"type": "string", "enum": ["weight_pct", "amount", "shares"]},
                     "size_value": {"type": "number"},
-                    "condition": {"type": "object", "description": "조건 트리(kind: price/return_pct/"
-                                  "high_break/date/ir_readout/all/any)"},
-                    "title": {"type": "string", "description": "조건 요약 제목(카드 제목)"},
+                    "condition": {"type": "object", "description": "진입(매수) 조건 트리(kind: price/"
+                                  "return_pct/high_break/date/ir_readout/all/any)"},
+                    "exit_condition": {"type": "object", "description": "청산(매도) 조건 트리(선택). "
+                                       "사용자가 '~되면 매도/익절/손절' 같은 출구 계획을 말하면 채운다. "
+                                       "없으면 생략."},
+                    "title": {"type": "string", "description": "조건 요약 제목(카드 제목) — 진입+청산 함께"},
                     "safety_checks": {"type": "array", "items": {"type": "string"},
                                       "description": "확인한 안전 체크 목록"},
                 },
@@ -377,6 +419,9 @@ _BUILDER_SYS = (
     "[조건 트리] price{op,value}, return_pct{op,value,ref:today|entry}, high_break, "
     "date{date,window:before|on|after,offset_days}, ir_readout{date,metric,op,value,hint}, "
     "all/any{of:[...]}. 복합은 all/any로 묶어라.\n"
+    "[진입/청산] 매수(진입)는 condition에, 매도/익절/손절(청산) 계획이 있으면 exit_condition에 "
+    "넣어라(예: '20만원에 사서 25만원 되면 매도' → condition=price>=20만, exit_condition=price>=25만). "
+    "청산 계획을 말 안 하면 exit_condition 생략(진입만).\n"
     "[원칙] 실제 증권사 미연동(dry-run)이라 발동돼도 실주문은 안 나간다는 점을 알고 설계하되, "
     "조건 자체는 정확해야 한다. 답은 반드시 propose_condition 도구로만. 한국어로 질문/요약."
 )
