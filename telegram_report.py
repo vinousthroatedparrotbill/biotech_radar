@@ -872,19 +872,12 @@ def daily_run() -> dict:
         )
     send(f"🚀 <b>최대 상승폭 (1D)</b> ({len(movers)}종목)\n{_table_render(movers, max_rows=30)}")
 
-    # 4) 종목별 카드 (시총 상위 15) — 차트+정보+뉴스. 시총 상위 6(최근 7일 미발송)은
-    #    카드 바로 뒤에 투자 메모 PDF도 함께 발송. 대상 없으면 메모 생략.
-    import investment_report as _ir
+    # 4) 종목별 카드 (시총 상위 15) — 차트+정보+뉴스만.
+    #    투자 메모(PDF)는 데일리런에서 생략 — 토큰 비용 절감. 필요한 건 웹앱에서 온디맨드 생성.
     card_df = pd.concat([highs, movers], ignore_index=True).drop_duplicates("ticker")
     card_df = card_df.sort_values("market_cap", ascending=False, na_position="last")
     try:
-        recent = _ir.recently_sent_tickers(7)
-    except Exception:
-        recent = set()
-    memo_tickers = [t for t in card_df["ticker"].tolist()
-                    if t and str(t).upper() not in recent][:6]
-    try:
-        cards, memos = send_ticker_cards(card_df, memo_tickers=memo_tickers, max_n=15)
+        cards, memos = send_ticker_cards(card_df, memo_tickers=[], max_n=15)
         main_result["ticker_cards"] = cards
         main_result["investment_reports"] = memos
     except Exception as e:
@@ -977,19 +970,12 @@ def daily_run_kr() -> dict:
     send(f"🚀 <b>최대 상승폭 (1D)</b> ({len(movers)}종목)\n"
          f"{_table_render(movers, max_rows=30)}")
 
-    # 종목별 카드(차트 + 오른 이유 뉴스) + 투자메모 — focus(신고가 or 상승폭) 시총 상위 기준.
-    # 투자메모: 시총 상위 5개 중 최근 7일 내 미발송 종목만.
-    import investment_report as _ir
+    # 종목별 카드(차트 + 오른 이유 뉴스)만 — focus(신고가 or 상승폭) 시총 상위 기준.
+    # 투자메모(PDF)는 데일리런에서 생략 — 토큰 비용 절감. 필요한 건 웹앱에서 온디맨드 생성.
     card_df = focus.drop_duplicates("ticker").sort_values(
         "market_cap", ascending=False, na_position="last")
     try:
-        recent = _ir.recently_sent_tickers(7)
-    except Exception:
-        recent = set()
-    memo_tickers = [t for t in card_df["ticker"].tolist()
-                    if t and str(t).upper() not in recent][:5]
-    try:
-        cards, memos = send_ticker_cards(card_df, memo_tickers=memo_tickers, max_n=12)
+        cards, memos = send_ticker_cards(card_df, memo_tickers=[], max_n=12)
         main_result["ticker_cards"] = cards
         main_result["investment_reports"] = memos
     except Exception as e:
