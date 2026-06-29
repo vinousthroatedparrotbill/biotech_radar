@@ -321,5 +321,6 @@ input.wt { width: 4.2rem; border: 1px solid #cfd3da; border-radius: 6px; padding
 .auto-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 1rem; font-size: 0.9rem; }
 .auto-sec { border-top: 1px solid var(--border, #2a2a2a); padding-top: 0.6rem; }
 .auto-prog { margin-top: 0.3rem; }
+.auto-chart { margin-top: 0.4rem; }
 .auto-fired { margin-top: 0.3rem; background: #e3b34118; padding: 0.5rem; border-radius: 8px; }
 .auto-json { background: #00000030; padding: 0.5rem; border-radius: 8px; overflow-x: auto; font-size: 0.78rem; }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { createChart, CandlestickSeries, LineSeries, AreaSeries } from 'lightweight-charts'
+import { createChart, CandlestickSeries, LineSeries, AreaSeries, createSeriesMarkers } from 'lightweight-charts'
 
 const BASE = {
   layout: { background: { color: '#fff' }, textColor: '#5b6f6e', fontFamily: 'Pretendard, sans-serif' },
@@ -12,16 +12,18 @@ const BASE = {
 const MA = { ma20: '#ff9800', ma60: '#9c27b0', ma120: '#607d8b' }
 
 /* 종목 캔들 차트 + 이동평균 (TradingView lightweight-charts — 경량) */
-export function PriceChart({ data, period = '1y', height = 360 }) {
+export function PriceChart({ data, period = '1y', height = 360, markers = [], priceLines = [] }) {
   const box = useRef(null)
   useEffect(() => {
     const el = box.current
     if (!el || !data || !data.dates?.length) return
     const chart = createChart(el, { ...BASE, width: el.clientWidth, height })
     const lineOnly = period === '1d' || !data.open
+    let main = null
     if (lineOnly) {
       const ln = chart.addSeries(LineSeries, { color: '#1976d2', lineWidth: 2 })
       ln.setData(data.dates.map((t, i) => ({ time: t, value: data.close?.[i] })).filter(p => p.value != null))
+      main = ln
     } else {
       const candle = chart.addSeries(CandlestickSeries, {
         upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
@@ -30,17 +32,27 @@ export function PriceChart({ data, period = '1y', height = 360 }) {
       candle.setData(data.dates.map((t, i) => ({
         time: t, open: data.open?.[i], high: data.high?.[i], low: data.low?.[i], close: data.close?.[i],
       })).filter(p => p.open != null && p.close != null))
+      main = candle
       for (const [k, color] of Object.entries(MA)) {
         if (!data[k]) continue
         const line = chart.addSeries(LineSeries, { color, lineWidth: 1.4, priceLineVisible: false, lastValueVisible: false })
         line.setData(data.dates.map((t, i) => ({ time: t, value: data[k][i] })).filter(p => p.value != null))
       }
     }
+    // 매수/매도 마커 (lightweight-charts v5 — series.setMarkers 제거됨, createSeriesMarkers 사용)
+    if (main && markers?.length) createSeriesMarkers(main, markers)
+    // 진입/청산 가격선
+    if (main && priceLines?.length) {
+      for (const pl of priceLines) {
+        if (pl?.price == null) continue
+        main.createPriceLine({ price: pl.price, color: pl.color || '#888', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: pl.title || '' })
+      }
+    }
     chart.timeScale().fitContent()
     const ro = new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth }))
     ro.observe(el)
     return () => { ro.disconnect(); chart.remove() }
-  }, [data, period, height])
+  }, [data, period, height, markers, priceLines])
   return (
     <div>
       <div ref={box} className="chartbox" />

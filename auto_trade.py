@@ -269,26 +269,63 @@ def _eval_ir(node: dict, ctx: dict, order: dict | None) -> dict:
 
 
 def _extract_ir_metric(ticker: str, node: dict) -> dict:
-    """최근 뉴스/IR/DART 본문 → 해당 metric 수치 추출(LLM). {value, found, evidence}."""
+    """발표 판독 — **회사 IR/뉴스룸 페이지 본문 + 보도자료/기사 본문 + (한국)DART 공시**를
+    실제로 읽어 metric 수치를 LLM으로 추출. {value, found, evidence}. (제목만이 아니라 본문)."""
     key = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
     if not key:
         return {"value": None, "found": False, "evidence": "ANTHROPIC_API_KEY 미설정"}
-    # 자료 수집: 한국=DART+네이버, 공통=뉴스
-    chunks: list[str] = []
     tk = ticker.strip()
+    is_kr = tk.isdigit() and len(tk) == 6
+    metric, hint = node.get("metric", ""), node.get("hint", "")
+    name = tk
+    try:
+        with connect() as c:
+            r = c.execute("SELECT name FROM ticker_master WHERE ticker=?", (tk,)).fetchone()
+            if r and r.get("name"):
+                name = r["name"]
+    except Exception:
+        pass
+    chunks: list[str] = []
     try:
         import bot_tools as bt
-        if tk.isdigit() and len(tk) == 6:
-            dz = bt.get_dart_disclosures(tk, days=10).get("disclosures", [])
-            for d in dz[:3]:
+        # 1) 회사 IR/뉴스룸 페이지 본문 (보도자료 목록·최신 글) — 1차 출처
+        ir_url = None
+        try:
+            import ticker_urls
+            ir_url = (ticker_urls.get(tk) or {}).get("ir_url")
+        except Exception:
+            pass
+        if not ir_url:
+            try:
+                from discover import discover
+                ir_url = (discover(tk) or {}).get("ir_url")
+            except Exception:
+                pass
+        if ir_url:
+            doc = bt.fetch_url(ir_url, max_chars=6000)
+            if doc.get("text"):
+                chunks.append(f"[회사 IR/뉴스룸] {ir_url}\n{doc['text']}")
+        # 2) 뉴스 검색(회사명+metric/임상 키워드) → 상위 기사 '본문'
+        try:
+            q = f"{name} {metric} clinical topline data results".strip()
+            for a in (bt.search_news_by_query(q, days=21, max_results=6) or [])[:3]:
+                u = a.get("link")
+                if u:
+                    d = bt.fetch_url(u, max_chars=3500)
+                    if d.get("text"):
+                        chunks.append(f"[기사] {a.get('title','')}\n{d['text']}")
+        except Exception:
+            pass
+        # 3) 한국: DART 공시 본문(1차)
+        if is_kr:
+            for d in (bt.get_dart_disclosures(tk, days=14).get("disclosures", []) or [])[:3]:
                 if d.get("rcept_no"):
                     doc = bt.get_dart_document(d["rcept_no"])
                     if doc.get("ok"):
                         chunks.append(f"[공시] {d.get('title','')}\n{doc['text'][:4000]}")
-            for n in (bt.get_kr_news(ticker=tk, limit=8).get("news", []) or [])[:8]:
-                chunks.append(f"[뉴스] {n.get('title','')}")
-        else:
-            for n in (bt.fetch_recent_news_for(tk, 8) or [])[:8]:
+        # 4) 폴백 — 제목이라도
+        if not chunks:
+            for n in (bt.fetch_recent_news_for(tk, 8) or []):
                 t = n.get("title", "") if isinstance(n, dict) else str(n)
                 chunks.append(f"[뉴스] {t}")
     except Exception as e:
@@ -422,8 +459,14 @@ _BUILDER_SYS = (
     "[진입/청산] 매수(진입)는 condition에, 매도/익절/손절(청산) 계획이 있으면 exit_condition에 "
     "넣어라(예: '20만원에 사서 25만원 되면 매도' → condition=price>=20만, exit_condition=price>=25만). "
     "청산 계획을 말 안 하면 exit_condition 생략(진입만).\n"
-    "[원칙] 실제 증권사 미연동(dry-run)이라 발동돼도 실주문은 안 나간다는 점을 알고 설계하되, "
-    "조건 자체는 정확해야 한다. 답은 반드시 propose_condition 도구로만. 한국어로 질문/요약."
+    "[중요 — IR/임상 발표 판독은 실제로 지원된다] '못 한다'고 답하지 마라. 발표일 이후 엔진이 "
+    "**회사 IR/뉴스룸 페이지 본문·보도자료·뉴스기사 본문·(한국)DART 공시 본문을 폴링(~15분)**하며 "
+    "지정한 metric 수치를 LLM으로 추출해 비교한다. 그러니 '임상 발표 후 MADRS 8점 이상이면 매수' 같은 "
+    "요청은 ir_readout{date(예정 발표일 또는 추정), metric, op, value, hint}로 설계하라(필요하면 발표 "
+    "예정일을 사용자에게 물어라). 단 폴링 주기(~15분)와 일부 페이지 차단 가능성 때문에 '즉시'가 아니라 "
+    "'근실시간 best-effort'라는 점만 한 줄로 안내해도 된다.\n"
+    "[원칙] 실제 증권사 미연동(dry-run)이라 발동돼도 실주문은 안 나가고 페이퍼로 기록된다는 점을 알고 "
+    "설계하되, 조건 자체는 정확해야 한다. 답은 반드시 propose_condition 도구로만. 한국어로 질문/요약."
 )
 
 

@@ -393,14 +393,32 @@ function AutoTrade() {
   const [orders, setOrders] = useState([])
   const [sel, setSel] = useState(null)
   const [evalBusy, setEvalBusy] = useState(false)
+  const [chart, setChart] = useState(null)
 
   const loadOrders = useCallback(
     () => api.autoOrders().then(d => setOrders(d.orders || [])).catch(() => { }), [])
   useEffect(() => { loadOrders() }, [loadOrders])
 
+  // 선택된 카드의 종목 차트(6개월 일봉) — 매수/매도 마커 + 진입/청산 가격선 표시용
+  useEffect(() => {
+    if (!sel?.ticker) { setChart(null); return }
+    setChart(null)
+    api.getChart(sel.ticker, '6m', '1d').then(d => setChart(d)).catch(() => setChart(null))
+  }, [sel?.ticker])
+
   const sideKr = s => s === 'buy' ? '매수' : '매도'
   const unitKr = t => ({ weight_pct: '% 비중', amount: ' (금액)', shares: '주' }[t] || '')
-  const statusKr = s => ({ armed: '대기', triggered: '발동', cancelled: '취소', error: '오류' }[s] || s)
+  const statusKr = s => ({ armed: '대기', holding: '보유', done: '완료', cancelled: '취소', error: '오류' }[s] || s)
+
+  // 조건 트리에서 첫 가격(kind:'price') 노드를 재귀 탐색 (all/any.of 포함)
+  const firstPriceNode = (cond) => {
+    if (!cond || typeof cond !== 'object') return null
+    if (cond.kind === 'price') return cond
+    if (Array.isArray(cond.of)) {
+      for (const n of cond.of) { const f = firstPriceNode(n); if (f) return f }
+    }
+    return null
+  }
 
   const send = async () => {
     const text = input.trim()
@@ -474,6 +492,7 @@ function AutoTrade() {
             <div className="auto-card-title">{o.title}</div>
             <div className="muted small">{o.name || o.ticker} ({o.ticker}) · {o.size_value}{unitKr(o.size_type)}</div>
             {o.last_eval?.summary && <div className="auto-card-prog">{o.last_eval.summary}</div>}
+            {o.buy_price && <div className="muted small">매수 @ {o.buy_price.toLocaleString()}{o.sell_price ? ` · 매도 @ ${o.sell_price.toLocaleString()}` : ''}</div>}
           </div>
         ))}
       </div>
@@ -490,9 +509,35 @@ function AutoTrade() {
             <div><b>수량</b> {sel.size_value}{unitKr(sel.size_type)}</div>
             <div><b>상태</b> {statusKr(sel.status)} {sel.dry_run && <span className="badge">dry-run</span>}</div>
           </div>
+          {(() => {
+            const entryPx = firstPriceNode(sel.condition)
+            const exitPx = firstPriceNode(sel.exit_condition)
+            const priceLines = []
+            if (entryPx) priceLines.push({ price: entryPx.value, color: '#3fb950', title: '매수 계획 ' + entryPx.op + entryPx.value })
+            if (exitPx) priceLines.push({ price: exitPx.value, color: '#e3b341', title: '매도 계획 ' + exitPx.op + exitPx.value })
+            const markers = []
+            if (sel.buy_at && sel.buy_price) markers.push({ time: String(sel.buy_at).slice(0, 10), position: 'belowBar', color: '#3fb950', shape: 'arrowUp', text: '매수(실)' })
+            if (sel.sell_at && sel.sell_price) markers.push({ time: String(sel.sell_at).slice(0, 10), position: 'aboveBar', color: '#f85149', shape: 'arrowDown', text: '매도(실)' })
+            return (
+              <div className="auto-sec"><b>차트</b>
+                <div className="auto-chart">
+                  {chart && !chart.error && chart.dates?.length
+                    ? <PriceChart data={chart} period="6m" height={300} markers={markers} priceLines={priceLines} />
+                    : <p className="muted small">{chart === null ? '차트 불러오는 중…' : '차트 데이터 없음'}</p>}
+                </div>
+              </div>
+            )
+          })()}
           <div className="auto-sec"><b>조건 진행</b>
             <div className="auto-prog">{sel.last_eval?.summary || '아직 평가 전'}</div>
             {sel.last_eval?.at && <div className="muted small">마지막 평가 {String(sel.last_eval.at).slice(0, 16).replace('T', ' ')}</div>}
+          </div>
+          <div className="auto-sec"><b>계획 / 실제(체결)</b>
+            <div className="auto-prog"><b>진입 계획</b> {sel.last_eval?.summary || '—'}</div>
+            <div className="auto-prog"><b>매수 체결</b> {sel.buy_at ? `${String(sel.buy_at).slice(0, 16).replace('T', ' ')} @ ${sel.buy_price?.toLocaleString()}` : '대기'}</div>
+            <div className="auto-prog"><b>청산 계획</b> {sel.exit_condition ? (sel.exit_eval?.summary || '(보유 시 평가)') : '없음(진입만)'}</div>
+            <div className="auto-prog"><b>매도 체결</b> {sel.sell_at ? `${String(sel.sell_at).slice(0, 16).replace('T', ' ')} @ ${sel.sell_price?.toLocaleString()}` : '대기'}</div>
+            <div className="muted small" style={{ marginTop: '0.3rem' }}>실제 체결은 페이퍼(dry-run) — 증권사 연동 후 실주문으로 대체됩니다.</div>
           </div>
           <div className="auto-sec"><b>매매 실행 내역</b>
             {sel.status === 'triggered'
