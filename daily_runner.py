@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).parent
@@ -39,19 +39,25 @@ def _setup_logging() -> None:
 def main() -> int:
     _setup_logging()
 
-    # 미국장은 주말 휴장 → 일/월(KST) 07시 발송은 직전 금요일 종가의 반복
-    # (= 토요일에 보낸 것과 동일). 중복 발송 방지로 스킵.
-    # 스냅샷(high_low_cache)도 안 쓰므로 웹 보드는 금요일 종가 자료를 그대로 유지.
-    # 강제 발송이 필요하면: python telegram_report.py  (가드 없는 직접 경로)
-    #                  또는 python daily_runner.py --force
-    wd = date.today().weekday()  # Mon=0 ... Sat=5, Sun=6
+    # 미국장은 주말 휴장 → 일/월(KST) 07시 발송은 직전 금요일 종가의 반복(= 토요일에
+    # 보낸 것과 동일)이라 중복. 단 "토요일에 이미 돌았을 때만" 스킵한다 — 토요일에 PC가
+    # 꺼져 발송을 놓쳤으면 일/월에라도 돌아 금요일 종가를 잡아야 하므로(catch-up).
+    # 스냅샷도 안 쓰므로(스킵 시) 웹 보드/신규/상승이유는 금요일 자료를 그대로 유지.
+    # 강제 발송: python telegram_report.py (가드 없는 직접 경로) 또는 --force
+    today_d = date.today()
+    wd = today_d.weekday()  # Mon=0 ... Sat=5, Sun=6
     if wd in (0, 6) and "--force" not in sys.argv:
-        label = {0: "월요일", 6: "일요일"}[wd]
-        print(f"daily_runner: {label}(KST) — 미국장 휴장 반복(금요일 종가)이라 skip. "
-              f"(강제: --force)")
-        return 0
+        saturday = (today_d - timedelta(days=1 if wd == 6 else 2)).isoformat()
+        last = MARKER.read_text(encoding="utf-8").strip() if MARKER.exists() else ""
+        if last >= saturday:    # 이번 주말(토요일~)에 이미 발송함 → 금요일 종가 중복이라 스킵
+            label = {0: "월요일", 6: "일요일"}[wd]
+            print(f"daily_runner: {label}(KST) — 이번 주말 금요일 종가 이미 발송됨"
+                  f"(last={last} ≥ 토 {saturday}). 중복이라 skip. (강제: --force)")
+            return 0
+        print(f"daily_runner: 주말이지만 토요일({saturday}) 발송 누락(last={last or '없음'}) "
+              f"→ 금요일 종가 catch-up 실행.")
 
-    today = date.today().isoformat()
+    today = today_d.isoformat()
     if MARKER.exists():
         last = MARKER.read_text(encoding="utf-8").strip()
         if last == today:
