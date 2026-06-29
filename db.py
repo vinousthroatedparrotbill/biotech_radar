@@ -216,6 +216,29 @@ CREATE TABLE IF NOT EXISTS reason_cache (
     updated_at     TEXT NOT NULL,
     PRIMARY KEY (country, kind)
 );
+
+-- 자동매매(조건매매) 주문 — 조건 충족 시 '발동'. 실주문은 브로커 미연동이라 dry_run(알림만).
+-- condition은 유연한 JSON 트리(price/return_pct/high_break/date/event/ir_readout/all/any).
+CREATE TABLE IF NOT EXISTS conditional_orders (
+    id               BIGSERIAL PRIMARY KEY,
+    portfolio_id     BIGINT,                 -- 대상 MP(선택)
+    ticker           TEXT NOT NULL,
+    name             TEXT,
+    side             TEXT NOT NULL,          -- 'buy' | 'sell'
+    size_type        TEXT NOT NULL,          -- 'weight_pct' | 'amount' | 'shares'
+    size_value       DOUBLE PRECISION NOT NULL,
+    condition        TEXT NOT NULL,          -- JSON 조건 트리
+    title            TEXT NOT NULL,          -- 자동 요약 제목
+    status           TEXT NOT NULL DEFAULT 'armed',  -- armed|triggered|cancelled|error
+    note             TEXT,
+    created_at       TEXT NOT NULL,
+    armed_at         TEXT,
+    triggered_at     TEXT,
+    triggered_detail TEXT,                   -- 발동 시 평가 스냅샷(JSON)
+    last_eval        TEXT,                   -- 마지막 평가/진행도(JSON) — 카드 '남은 조건' 표시
+    dry_run          BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE INDEX IF NOT EXISTS idx_cond_status ON conditional_orders(status);
 """
 
 

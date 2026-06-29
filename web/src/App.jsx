@@ -69,6 +69,7 @@ const NAV = [
   { k: 'memos', label: '투자 메모', kind: 'memos' },
   { k: 'catalysts', label: '카탈리스트', kind: 'cat' },
   { k: 'portfolio', label: '포트폴리오', kind: 'pf' },
+  { k: 'auto', label: '자동 매매', kind: 'auto' },
   { k: 'watchlist', label: '관심종목', kind: 'wl' },
 ]
 
@@ -106,6 +107,7 @@ export default function App() {
         {meta.kind === 'memos' && <Memos onPick={setModal} />}
         {meta.kind === 'cat' && <Catalysts onPick={setModal} />}
         {meta.kind === 'pf' && <Portfolios onPick={setModal} />}
+        {meta.kind === 'auto' && <AutoTrade onPick={setModal} />}
         {meta.kind === 'wl' && <Watchlist onPick={setModal} />}
       </div>
 
@@ -379,6 +381,129 @@ function Catalysts({ onPick }) {
           </table>
         </>}
     </>
+  )
+}
+
+/* ───────────── 자동 매매(조건매매) ───────────── */
+function AutoTrade() {
+  const [msgs, setMsgs] = useState([])
+  const [input, setInput] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [proposal, setProposal] = useState(null)
+  const [orders, setOrders] = useState([])
+  const [sel, setSel] = useState(null)
+  const [evalBusy, setEvalBusy] = useState(false)
+
+  const loadOrders = useCallback(
+    () => api.autoOrders().then(d => setOrders(d.orders || [])).catch(() => { }), [])
+  useEffect(() => { loadOrders() }, [loadOrders])
+
+  const sideKr = s => s === 'buy' ? '매수' : '매도'
+  const unitKr = t => ({ weight_pct: '% 비중', amount: ' (금액)', shares: '주' }[t] || '')
+  const statusKr = s => ({ armed: '대기', triggered: '발동', cancelled: '취소', error: '오류' }[s] || s)
+
+  const send = async () => {
+    const text = input.trim()
+    if (!text || busy) return
+    const next = [...msgs, { role: 'user', content: text }]
+    setMsgs(next); setInput(''); setBusy(true); setProposal(null)
+    try {
+      const r = await api.autoChat(next)
+      if (r.status === 'need_info') setMsgs([...next, { role: 'assistant', content: r.question || '?' }])
+      else if (r.status === 'complete') {
+        setProposal(r.order)
+        const sc = r.order.safety_checks?.length ? '\n확인: ' + r.order.safety_checks.join(' · ') : ''
+        setMsgs([...next, { role: 'assistant', content: '✅ 조건 완성: ' + (r.order.title || '') + sc + '\n아래 「매매 조건 완성」을 누르면 카드가 생성됩니다.' }])
+      } else setMsgs([...next, { role: 'assistant', content: '⚠️ ' + (r.error || '오류') }])
+    } catch (e) { setMsgs([...next, { role: 'assistant', content: '⚠️ ' + e }]) }
+    finally { setBusy(false) }
+  }
+
+  const confirmOrder = async () => {
+    if (!proposal || busy) return
+    setBusy(true)
+    const d = await api.autoCreate(proposal).catch(() => ({}))
+    setBusy(false)
+    if (d.ok) { setProposal(null); setMsgs([]); loadOrders() }
+    else alert('생성 실패: ' + (d.error || ''))
+  }
+
+  const openCard = async (id) => {
+    const d = await api.autoGet(id).catch(() => ({}))
+    if (d.order) setSel(d.order)
+  }
+  const runEval = async () => {
+    setEvalBusy(true); await api.autoEvaluate().catch(() => { }); setEvalBusy(false)
+    loadOrders(); if (sel) openCard(sel.id)
+  }
+  const cancel = async (id) => {
+    if (!confirm('이 조건을 취소할까요?')) return
+    await api.autoCancel(id).catch(() => { }); setSel(null); loadOrders()
+  }
+
+  return (
+    <div className="auto-wrap">
+      <div className="auto-head">
+        <h2 className="wordmark" style={{ margin: 0 }}>자동 매매</h2>
+        <span className="muted small">조건 충족 시 발동 — ⚠️ 증권사 미연동(dry-run), 실주문은 나가지 않습니다</span>
+        <button className="btn ghost sm" onClick={runEval} disabled={evalBusy}>{evalBusy ? '평가…' : '지금 평가'}</button>
+      </div>
+
+      <div className="auto-chat">
+        <div className="auto-msgs">
+          {msgs.length === 0 && <p className="muted small">예: "올릭스가 20만원 넘으면 예수금의 5% 비중으로 매수" / "에이비엘바이오 3상 발표 전날까지 보유, 신고가 돌파 시 3% 매수"</p>}
+          {msgs.map((m, i) => <div key={i} className={'auto-msg ' + m.role}><pre>{m.content}</pre></div>)}
+          {busy && <p className="muted small">분석 중…</p>}
+        </div>
+        {proposal && <button className="btn primary" onClick={confirmOrder} disabled={busy}>＋ 매매 조건 완성 (카드 생성)</button>}
+        <div className="auto-input">
+          <input value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && send()} placeholder="조건을 자연어로 입력…" disabled={busy} />
+          <button className="btn" onClick={send} disabled={busy || !input.trim()}>보내기</button>
+        </div>
+      </div>
+
+      <div className="auto-cards">
+        {orders.length === 0 && <p className="muted small">아직 등록된 조건이 없습니다.</p>}
+        {orders.map(o => (
+          <div key={o.id} className={'auto-card st-' + o.status + (sel?.id === o.id ? ' on' : '')} onClick={() => openCard(o.id)}>
+            <div className="auto-card-top">
+              <span className={'badge side-' + o.side}>{sideKr(o.side)}</span>
+              <span className={'badge st-' + o.status}>{statusKr(o.status)}</span>
+            </div>
+            <div className="auto-card-title">{o.title}</div>
+            <div className="muted small">{o.name || o.ticker} ({o.ticker}) · {o.size_value}{unitKr(o.size_type)}</div>
+            {o.last_eval?.summary && <div className="auto-card-prog">{o.last_eval.summary}</div>}
+          </div>
+        ))}
+      </div>
+
+      {sel && (
+        <div className="auto-detail">
+          <div className="auto-detail-head">
+            <h3 style={{ margin: 0 }}>{sel.title}</h3>
+            <button className="x-sm" onClick={() => setSel(null)}>닫기 ✕</button>
+          </div>
+          <div className="auto-grid2">
+            <div><b>종목</b> {sel.name || sel.ticker} ({sel.ticker})</div>
+            <div><b>방향</b> {sideKr(sel.side)}</div>
+            <div><b>수량</b> {sel.size_value}{unitKr(sel.size_type)}</div>
+            <div><b>상태</b> {statusKr(sel.status)} {sel.dry_run && <span className="badge">dry-run</span>}</div>
+          </div>
+          <div className="auto-sec"><b>조건 진행</b>
+            <div className="auto-prog">{sel.last_eval?.summary || '아직 평가 전'}</div>
+            {sel.last_eval?.at && <div className="muted small">마지막 평가 {String(sel.last_eval.at).slice(0, 16).replace('T', ' ')}</div>}
+          </div>
+          <div className="auto-sec"><b>매매 실행 내역</b>
+            {sel.status === 'triggered'
+              ? <div className="auto-fired">🔔 발동됨 · {String(sel.triggered_at || '').slice(0, 16).replace('T', ' ')}<br />{sel.triggered_detail?.summary}<br /><span className="muted small">⚠️ 증권사 미연동 — 실제 주문은 발송되지 않음(dry-run)</span></div>
+              : <div className="muted small">발동 전 — 조건 충족 시 여기에 발동 내역이 기록됩니다.</div>}
+          </div>
+          <details className="auto-sec"><summary className="muted small">조건 원본(JSON)</summary><pre className="auto-json">{JSON.stringify(sel.condition, null, 2)}</pre></details>
+          {sel.status !== 'cancelled' && <button className="btn ghost sm" onClick={() => cancel(sel.id)}>조건 취소</button>}
+        </div>
+      )}
+    </div>
   )
 }
 

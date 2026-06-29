@@ -292,3 +292,34 @@ input.wt { width: 4.2rem; border: 1px solid #cfd3da; border-radius: 6px; padding
 .pf-tx { margin-top: 1rem; }
 .pf-tx .plist { list-style: none; margin-left: 0; }
 .x-sm + .x-sm { margin-left: 0.3rem; }
+
+/* ── 자동 매매 ── */
+.auto-wrap { display: flex; flex-direction: column; gap: 1rem; }
+.auto-head { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
+.auto-chat { border: 1px solid var(--border, #2a2a2a); border-radius: 10px; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.auto-msgs { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; }
+.auto-msg { max-width: 90%; padding: 0.5rem 0.7rem; border-radius: 10px; }
+.auto-msg.user { align-self: flex-end; background: #1f6feb33; }
+.auto-msg.assistant { align-self: flex-start; background: #ffffff10; }
+.auto-msg pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: inherit; }
+.auto-input { display: flex; gap: 0.5rem; }
+.auto-input input { flex: 1; padding: 0.5rem 0.7rem; border-radius: 8px; border: 1px solid var(--border, #2a2a2a); background: transparent; color: inherit; }
+.auto-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.7rem; }
+.auto-card { border: 1px solid var(--border, #2a2a2a); border-radius: 10px; padding: 0.7rem; cursor: pointer; transition: border-color .15s; }
+.auto-card:hover, .auto-card.on { border-color: #1f6feb; }
+.auto-card.st-triggered { border-color: #e3b341; }
+.auto-card-top { display: flex; justify-content: space-between; margin-bottom: 0.3rem; }
+.auto-card-title { font-weight: 600; margin-bottom: 0.2rem; }
+.auto-card-prog { margin-top: 0.4rem; font-size: 0.82rem; opacity: 0.85; }
+.badge { font-size: 0.72rem; padding: 0.1rem 0.45rem; border-radius: 999px; background: #ffffff18; }
+.badge.side-buy { background: #2ea04333; color: #3fb950; }
+.badge.side-sell { background: #f8514933; color: #ff7b72; }
+.badge.st-triggered { background: #e3b34133; color: #e3b341; }
+.badge.st-cancelled { background: #ffffff12; opacity: 0.6; }
+.auto-detail { border: 1px solid var(--border, #2a2a2a); border-radius: 10px; padding: 0.9rem; display: flex; flex-direction: column; gap: 0.7rem; }
+.auto-detail-head { display: flex; justify-content: space-between; align-items: center; }
+.auto-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 1rem; font-size: 0.9rem; }
+.auto-sec { border-top: 1px solid var(--border, #2a2a2a); padding-top: 0.6rem; }
+.auto-prog { margin-top: 0.3rem; }
+.auto-fired { margin-top: 0.3rem; background: #e3b34118; padding: 0.5rem; border-radius: 8px; }
+.auto-json { background: #00000030; padding: 0.5rem; border-radius: 8px; overflow-x: auto; font-size: 0.78rem; }

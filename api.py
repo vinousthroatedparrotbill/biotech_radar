@@ -1158,6 +1158,61 @@ def ops_telegram(body: OpsIn) -> dict:
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 
+# ───────────────────────── 자동매매(조건매매) ─────────────────────────
+class AutoChatIn(BaseModel):
+    messages: list[dict]                 # [{role:'user'|'assistant', content:str}]
+
+
+class AutoOrderIn(BaseModel):
+    order: dict                          # build_condition 결과의 order(또는 수동 구성)
+
+
+@app.post("/api/auto/chat")
+def auto_chat(body: AutoChatIn) -> dict:
+    """챗 조건 빌더 — need_info(질문) 또는 complete(완성된 order) 반환."""
+    import auto_trade as at
+    return at.build_condition(body.messages)
+
+
+@app.get("/api/auto/orders")
+def auto_orders() -> dict:
+    import auto_trade as at
+    return {"orders": [{k: _clean(v) for k, v in o.items()} for o in at.list_orders()]}
+
+
+@app.post("/api/auto/orders")
+def auto_create(body: AutoOrderIn) -> dict:
+    import auto_trade as at
+    try:
+        return {"ok": True, "id": at.create(body.order)}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
+@app.get("/api/auto/orders/{oid}")
+def auto_get(oid: int) -> dict:
+    import auto_trade as at
+    o = at.get(oid)
+    return {"order": {k: _clean(v) for k, v in o.items()}} if o else {"order": None}
+
+
+@app.post("/api/auto/orders/{oid}/cancel")
+def auto_cancel(oid: int) -> dict:
+    import auto_trade as at
+    try:
+        at.cancel(oid)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
+@app.post("/api/auto/evaluate")
+def auto_evaluate() -> dict:
+    """armed 조건 전부 평가(충족 시 dry-run 발동). 수동/크론 호출."""
+    import auto_trade as at
+    return at.evaluate_all()
+
+
 # ───────────────────────── 정적 프론트(React 빌드) 서빙 ─────────────────────────
 # 프로덕션(단일 서비스)에서는 FastAPI가 빌드된 React(web/dist)를 같은 오리진에서 서빙한다.
 # api.js가 상대경로 /api/* 를 쓰므로 CORS·프록시 불필요. 라우트 정의가 모두 끝난 뒤

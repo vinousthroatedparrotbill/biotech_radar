@@ -26,14 +26,22 @@ def main() -> int:
         format="%(asctime)s %(levelname)s: %(message)s",
     )
     sys.path.insert(0, str(ROOT))
+    rc = 0
     try:
         from telegram_report import send_trigger_alerts
         n = send_trigger_alerts()
-        print(f"triggers_runner: {n} fired")
-        return 0
+        print(f"triggers_runner: {n} price triggers fired")
     except Exception as e:
-        print(f"triggers_runner FAILED: {e}", file=sys.stderr)
-        return 1
+        print(f"triggers_runner price triggers FAILED: {e}", file=sys.stderr)
+        rc = 1
+    # 자동매매 조건 평가(충족 시 dry-run 발동) — 같은 30분 사이클에서
+    try:
+        import auto_trade
+        print(f"triggers_runner: auto_trade {auto_trade.evaluate_all()}")
+    except Exception as e:
+        print(f"triggers_runner auto_trade FAILED: {e}", file=sys.stderr)
+        rc = 1
+    return rc
 
 
 if __name__ == "__main__":
