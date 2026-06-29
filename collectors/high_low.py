@@ -218,13 +218,30 @@ def _country_clause(country: str | None, alias: str) -> str:
     return f"({alias}.country IS NULL OR {alias}.country <> 'KOR')"
 
 
+def _recent_dates(country: str | None, n: int = 1) -> list[str]:
+    """해당 국가 스코프의 최근 computed_date 목록 (최신순).
+
+    전역 MAX(computed_date)를 쓰면 US/KR 스케줄이 어긋날 때(예: US는 주말 스킵,
+    KR은 매일 실행) 보드가 비어버린다 → 반드시 국가별로 최신 날짜를 구한다.
+    """
+    with connect() as conn:
+        rows = conn.execute(
+            f"""SELECT DISTINCT h.computed_date AS d
+                FROM high_low_cache h
+                LEFT JOIN ticker_master t ON t.ticker = h.ticker
+                WHERE {_country_clause(country, 't')}
+                ORDER BY h.computed_date DESC
+                LIMIT {int(n)}"""
+        ).fetchall()
+    return [r["d"] for r in rows]
+
+
 def fetch_new_highs(direction: str = "high", limit: int = 500,
                     country: str | None = None, min_mcap: float = 1500.0) -> pd.DataFrame:
     """오늘 52w 신고가/신저가 종목 — ticker_master와 join하여 회사명 포함."""
     with connect() as conn:
-        latest = conn.execute(
-            "SELECT MAX(computed_date) AS d FROM high_low_cache"
-        ).fetchone()["d"]
+        dates = _recent_dates(country, 1)
+        latest = dates[0] if dates else None
         if not latest:
             return pd.DataFrame()
         if direction == "high":
@@ -258,6 +275,10 @@ def fetch_top_movers(limit: int = 100, min_mcap: float = 500.0,
                      min_perf: float = 5.0, country: str | None = None) -> pd.DataFrame:
     """오늘 일일 상승률 상위 종목 (1D% 내림차순).
     필터: industry 블랙리스트(retailer/시설/보험 등) + 사용자 ticker 블랙리스트."""
+    dates = _recent_dates(country, 1)
+    latest = dates[0] if dates else None
+    if not latest:
+        return pd.DataFrame()
     return pd_read_sql(
         f"""
         SELECT h.ticker, t.name, t.industry, h.today_close AS close,
@@ -265,7 +286,7 @@ def fetch_top_movers(limit: int = 100, min_mcap: float = 500.0,
                h.perf_1d, h.perf_7d, h.perf_1m, h.perf_3m, h.perf_6m, h.perf_1y
         FROM high_low_cache h
         LEFT JOIN ticker_master t ON t.ticker = h.ticker
-        WHERE h.computed_date = (SELECT MAX(computed_date) FROM high_low_cache)
+        WHERE h.computed_date = %s
           AND h.market_cap >= %s
           AND h.perf_1d IS NOT NULL
           AND h.perf_1d >= %s
@@ -275,14 +296,15 @@ def fetch_top_movers(limit: int = 100, min_mcap: float = 500.0,
         ORDER BY h.perf_1d DESC
         LIMIT %s
         """,
-        params=(min_mcap, min_perf, limit),
+        params=(latest, min_mcap, min_perf, limit),
     )
 
 
-def latest_run_date() -> str | None:
-    with connect() as conn:
-        r = conn.execute("SELECT MAX(computed_date) AS d FROM high_low_cache").fetchone()
-        return r["d"] if r else None
+def latest_run_date(country: str | None = None) -> str | None:
+    """해당 국가 보드의 최신 스냅샷 날짜(기본=미국 스코프, KOR 제외).
+    전역 MAX이 아니라 국가별 — US/KR 스케줄이 어긋나도 올바른 기준일 반환."""
+    dates = _recent_dates(country, 1)
+    return dates[0] if dates else None
 
 
 def fetch_new_today_highs(limit: int = 200, country: str | None = None,
@@ -292,52 +314,49 @@ def fetch_new_today_highs(limit: int = 200, country: str | None = None,
       - 오늘 today_high >= high_52w * 0.999 (오늘 신고가)
       - 전일 row가 없거나 (첫 기록), 전일 high_52w 보다 오늘 high_52w가 높음
     """
-    with connect() as conn:
-        dates = conn.execute(
-            "SELECT DISTINCT computed_date FROM high_low_cache ORDER BY computed_date DESC LIMIT 2"
-        ).fetchall()
-        if not dates:
-            return pd.DataFrame()
-        today = dates[0]["computed_date"]
-        yesterday = dates[1]["computed_date"] if len(dates) > 1 else None
+    dates = _recent_dates(country, 2)
+    if not dates:
+        return pd.DataFrame()
+    today = dates[0]
+    yesterday = dates[1] if len(dates) > 1 else None
 
-        bio_filter = (_industry_filter("m") + " AND " + _country_clause(country, "m")
-                      + " AND " + _excluded_ticker_filter("t"))
-        if yesterday:
-            sql = f"""
-                SELECT t.ticker, m.name, m.industry, t.today_close AS close,
-                       t.high_52w, t.low_52w, t.market_cap,
-                       t.perf_1d, t.perf_7d, t.perf_1m, t.perf_3m, t.perf_6m, t.perf_1y,
-                       y.high_52w AS prev_high_52w
-                FROM high_low_cache t
-                LEFT JOIN high_low_cache y
-                  ON y.ticker = t.ticker AND y.computed_date = %s
-                LEFT JOIN ticker_master m ON m.ticker = t.ticker
-                WHERE t.computed_date = %s
-                  AND t.market_cap >= %s
-                  AND {bio_filter}
-                  AND t.today_high >= t.high_52w * 0.999
-                  AND (y.high_52w IS NULL OR t.high_52w > y.high_52w)
-                ORDER BY (t.today_close / NULLIF(t.high_52w,0)) DESC
-                LIMIT %s
-            """
-            params = (yesterday, today, min_mcap, limit)
-        else:
-            sql = f"""
-                SELECT t.ticker, m.name, m.industry, t.today_close AS close,
-                       t.high_52w, t.low_52w, t.market_cap,
-                       t.perf_1d, t.perf_7d, t.perf_1m, t.perf_3m, t.perf_6m, t.perf_1y,
-                       NULL AS prev_high_52w
-                FROM high_low_cache t
-                LEFT JOIN ticker_master m ON m.ticker = t.ticker
-                WHERE t.computed_date = %s
-                  AND t.market_cap >= %s
-                  AND {bio_filter}
-                  AND t.today_high >= t.high_52w * 0.999
-                ORDER BY (t.today_close / NULLIF(t.high_52w,0)) DESC
-                LIMIT %s
-            """
-            params = (today, min_mcap, limit)
+    bio_filter = (_industry_filter("m") + " AND " + _country_clause(country, "m")
+                  + " AND " + _excluded_ticker_filter("t"))
+    if yesterday:
+        sql = f"""
+            SELECT t.ticker, m.name, m.industry, t.today_close AS close,
+                   t.high_52w, t.low_52w, t.market_cap,
+                   t.perf_1d, t.perf_7d, t.perf_1m, t.perf_3m, t.perf_6m, t.perf_1y,
+                   y.high_52w AS prev_high_52w
+            FROM high_low_cache t
+            LEFT JOIN high_low_cache y
+              ON y.ticker = t.ticker AND y.computed_date = %s
+            LEFT JOIN ticker_master m ON m.ticker = t.ticker
+            WHERE t.computed_date = %s
+              AND t.market_cap >= %s
+              AND {bio_filter}
+              AND t.today_high >= t.high_52w * 0.999
+              AND (y.high_52w IS NULL OR t.high_52w > y.high_52w)
+            ORDER BY (t.today_close / NULLIF(t.high_52w,0)) DESC
+            LIMIT %s
+        """
+        params = (yesterday, today, min_mcap, limit)
+    else:
+        sql = f"""
+            SELECT t.ticker, m.name, m.industry, t.today_close AS close,
+                   t.high_52w, t.low_52w, t.market_cap,
+                   t.perf_1d, t.perf_7d, t.perf_1m, t.perf_3m, t.perf_6m, t.perf_1y,
+                   NULL AS prev_high_52w
+            FROM high_low_cache t
+            LEFT JOIN ticker_master m ON m.ticker = t.ticker
+            WHERE t.computed_date = %s
+              AND t.market_cap >= %s
+              AND {bio_filter}
+              AND t.today_high >= t.high_52w * 0.999
+            ORDER BY (t.today_close / NULLIF(t.high_52w,0)) DESC
+            LIMIT %s
+        """
+        params = (today, min_mcap, limit)
 
     df = pd_read_sql(sql, params=params)
     return df

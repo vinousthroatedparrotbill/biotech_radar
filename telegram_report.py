@@ -943,7 +943,7 @@ def daily_run_kr() -> dict:
     header = (
         f"🇰🇷 <b>K-Bio Radar — {datetime.now().strftime('%Y-%m-%d')} 15:30</b>\n"
         f"<i>auto-run: universe={n_uni}, snapshot={n_hl} · 기준일 "
-        f"{latest_run_date() or '—'} · 시총≥5천억</i>"
+        f"{latest_run_date('KOR') or '—'} · 시총≥5천억</i>"
     )
     # 신고가 있으면 신고가 종목, 없으면 상승폭 종목을 동일하게 'AI 상승 동인' 분석
     # (= 미장의 52주 신고가 카드처럼, 신고가 없는 날엔 상승폭 종목에 '왜 올랐나'를 적용)

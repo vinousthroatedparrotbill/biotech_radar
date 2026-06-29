@@ -3,3 +3,13 @@ data/*.db
 .env
 __pycache__/
 *.pyc
+
+# 런타임 산출물 (커밋 금지)
+data/*.log
+data/.last_*
+data/reason_cache.json
+data/dart_corpcode.json
+
+# 프론트 빌드/의존성
+web/node_modules/
+web/dist/

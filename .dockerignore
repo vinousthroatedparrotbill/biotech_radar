@@ -1,0 +1,22 @@
+# 이미지에서 제외 — 빌드 컨텍스트 가볍게 + 비밀/런타임 산출물 차단
+.git/
+.venv/
+__pycache__/
+*.pyc
+.env
+*.md
+
+# 프론트: 소스만 node 스테이지에서 빌드, 로컬 산출물은 제외(컨테이너에서 새로 빌드)
+web/node_modules/
+web/dist/
+
+# 런타임 산출물(로그/마커/캐시/DB) — 시크릿·상태는 이미지에 굽지 않음
+data/*.log
+data/*.db
+data/.last_*
+data/reason_cache.json
+data/dart_corpcode.json
+
+# 로컬 전용 스케줄러/봇 스크립트는 웹 이미지에 불필요(있어도 무해하지만 제외해 슬림하게)
+setup_*.ps1
+run_bot.ps1

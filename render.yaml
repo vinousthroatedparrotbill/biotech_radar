@@ -1,0 +1,27 @@
+# Render Blueprint — React+FastAPI 단일 Docker 웹 서비스
+# 사용법: Render 대시보드 → New → Blueprint → 이 repo 선택 → 아래 시크릿을 입력.
+# (sync: false = 값은 대시보드에서 수동 입력, GitHub에 노출 안 됨)
+services:
+  - type: web
+    name: biotech-radar
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free            # 무료(15분 미사용 시 슬립). 항상 켜두려면 starter로 변경.
+    region: singapore     # 한국 사용자 근접 리전
+    healthCheckPath: /api/board?country=USA&view=high
+    autoDeploy: true      # main 푸시 시 자동 재배포
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APP_PASSWORD       # 웹 접속 비밀번호(Basic Auth). 반드시 설정.
+        sync: false
+      - key: DART_API_KEY
+        sync: false
+      - key: FINVIZ_AUTH_TOKEN
+        sync: false
+      - key: TOSS_API_KEY
+        sync: false
+      - key: TOSS_API_SECRET
+        sync: false

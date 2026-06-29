@@ -77,8 +77,30 @@ def _stooq_last(ticker: str) -> float | None:
     return None
 
 
+def _yf_live(ticker: str) -> float | None:
+    """yfinance 실시간 최종가 — 장중=현재가, 마감 후=당일 종가(다음 개장까지 stay),
+    재개장 시 다시 현재가. 로컬에서 동작(클라우드 IP는 차단 → 상위에서 stooq/캐시 fallback)."""
+    try:
+        fi = yf.Ticker(ticker).fast_info
+        for k in ("lastPrice", "last_price"):
+            try:
+                v = fi[k]
+            except Exception:
+                v = None
+            if v:
+                return float(v)
+    except Exception:
+        pass
+    return None
+
+
 def _fetch_current_price(ticker: str) -> float | None:
-    """현재가 fetch — 토스 live → high_low_cache → stooq(미국) → yfinance(최후)."""
+    """현재가 fetch — 라이브 우선(토스 → yfinance), 실패 시 stooq(미국 EOD),
+    최후에만 일일 스냅샷 캐시(high_low_cache; 전일 종가일 수 있어 마지막 수단)."""
+    _t = (ticker or "").strip()
+    is_kr = _t.isdigit() and len(_t) == 6
+
+    # 1) 토스 live (KR/US 커버 — IP 허용 시. 차단되면 available()=False로 스킵)
     try:
         import toss_market as tm
         if tm.available():
@@ -87,6 +109,17 @@ def _fetch_current_price(ticker: str) -> float | None:
                 return float(p)
     except Exception:
         pass
+
+    # 2) yfinance 실시간 (로컬) → 3) stooq EOD fallback — 미국 알파 티커
+    if _t and not is_kr:
+        v = _yf_live(_t)
+        if v:
+            return v
+        sp = _stooq_last(_t)
+        if sp:
+            return sp
+
+    # 4) 최후: 일일 스냅샷 캐시 (라이브 소스가 전부 실패했을 때만)
     with connect() as conn:
         r = conn.execute(
             "SELECT today_close FROM high_low_cache "
@@ -95,19 +128,6 @@ def _fetch_current_price(ticker: str) -> float | None:
         ).fetchone()
         if r and r["today_close"]:
             return float(r["today_close"])
-    _t = (ticker or "").strip()
-    if _t and not (_t.isdigit() and len(_t) == 6):   # 미국 알파 티커 → stooq(클라우드 OK)
-        sp = _stooq_last(_t)
-        if sp:
-            return sp
-    try:
-        info = yf.Ticker(ticker).fast_info
-        for k in ("last_price", "lastPrice", "regularMarketPrice"):
-            v = info.get(k) if hasattr(info, "get") else getattr(info, k, None)
-            if v:
-                return float(v)
-    except Exception:
-        pass
     return None
 
 

@@ -38,6 +38,19 @@ def _setup_logging() -> None:
 
 def main() -> int:
     _setup_logging()
+
+    # 미국장은 주말 휴장 → 일/월(KST) 07시 발송은 직전 금요일 종가의 반복
+    # (= 토요일에 보낸 것과 동일). 중복 발송 방지로 스킵.
+    # 스냅샷(high_low_cache)도 안 쓰므로 웹 보드는 금요일 종가 자료를 그대로 유지.
+    # 강제 발송이 필요하면: python telegram_report.py  (가드 없는 직접 경로)
+    #                  또는 python daily_runner.py --force
+    wd = date.today().weekday()  # Mon=0 ... Sat=5, Sun=6
+    if wd in (0, 6) and "--force" not in sys.argv:
+        label = {0: "월요일", 6: "일요일"}[wd]
+        print(f"daily_runner: {label}(KST) — 미국장 휴장 반복(금요일 종가)이라 skip. "
+              f"(강제: --force)")
+        return 0
+
     today = date.today().isoformat()
     if MARKER.exists():
         last = MARKER.read_text(encoding="utf-8").strip()

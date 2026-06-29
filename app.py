@@ -416,7 +416,7 @@ def _board_scope():
 
 # ── 운영용 상태 값 (우하단 ⚙ 위젯 + 본문에서 사용) ──
 universe_count = len(get_universe())
-last = latest_run_date()
+last = latest_run_date(COUNTRY)
 
 
 def _stats_counts():
@@ -481,7 +481,7 @@ def _floating_ops_widget():
             _statline = f"메모 {_mn} · 관심 {_wn}"
         except Exception:
             _statline = ""
-        st.caption(f"universe {_uc}종목 · 갱신 {latest_run_date() or '—'}")
+        st.caption(f"universe {_uc}종목 · 갱신 {latest_run_date(COUNTRY) or '—'}")
         if _statline:
             st.caption(_statline)
 
@@ -1583,7 +1583,7 @@ def _render_reason_section(df, kind: str):
          float(r["market_cap"]) if pd.notna(r.get("market_cap")) else None)
         for _, r in sub.iterrows()
     )
-    sig = f"{kind}:{latest_run_date()}:" + ",".join(sorted(t[0] for t in rows))
+    sig = f"{kind}:{latest_run_date(COUNTRY)}:" + ",".join(sorted(t[0] for t in rows))
     st.divider()
     st.subheader("신고가 이유 분석" if kind == "high" else "급등 이유 분석")
     st.caption("상승 동인 · 핵심 자산/기전 · 짧은 평가"
@@ -2763,7 +2763,7 @@ def _section_top_movers():
         st.info("조건에 맞는 종목 없음. '🔄 신고가 갱신' (52주 신고가 탭) 먼저 실행하세요.")
         return
 
-    st.caption(f"{len(df)}종목 · 기준일 {latest_run_date() or '—'} · 회사명 클릭 → 상세")
+    st.caption(f"{len(df)}종목 · 기준일 {latest_run_date(_c) or '—'} · 회사명 클릭 → 상세")
     _render_table(df)
     _render_reason_section(df, "movers")
 

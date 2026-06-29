@@ -1030,5 +1030,77 @@
   "VIR": {
     "ir_url": "https://investors.vir.bio/events-and-presentations/default.aspx",
     "pipeline_url": "https://www.vir.bio/pipeline/"
+  },
+  "KALV": {
+    "pipeline_url": "https://www.kalvista.com/pipeline/"
+  },
+  "CMPS": {
+    "pipeline_url": "https://compasspathways.com/our-work/pipeline/",
+    "ir_url": "https://ir.compasspathways.com/News--Events-/events-and-presentations/default.aspx"
+  },
+  "AVTX": {
+    "ir_url": "https://ir.avalotx.com/news-events-presentations",
+    "pipeline_url": "https://www.avalotx.com/pipeline/"
+  },
+  "009420": {
+    "ir_url": "https://www.hanall.co.kr"
+  },
+  "087010": {
+    "ir_url": "https://www.peptron.co.kr"
+  },
+  "397030": {
+    "ir_url": "https://www.aprilbio.com/"
+  },
+  "NEO": {
+    "ir_url": "https://ir.neogenomics.com/_assets/_0fff1164cdb69ea18d449f36ce0a5794/neogenomics/db/556/5392/pdf/NEO+1Q+2026+Financial+Results+Investor+Presentation+%28wAppendix%29.pdf",
+    "pipeline_url": "https://www.neogenomics.com/providers/oncology-solutions/pantracer-portfolio"
+  },
+  "MRVI": {
+    "ir_url": "https://investors.maravai.com/news-events/presentations"
+  },
+  "SLS": {
+    "ir_url": "https://ir.sellaslifesciences.com/events-and-presentations/default.aspx",
+    "pipeline_url": "https://sellaslifesciences.com/pipeline/"
+  },
+  "ZBIO": {
+    "ir_url": "https://investors.zenasbio.com/events-and-presentations",
+    "pipeline_url": "https://zenasbio.com/our-science/pipeline/"
+  },
+  "AKTS": {
+    "ir_url": "https://investors.aktisoncology.com/events-presentations/events",
+    "pipeline_url": "https://www.aktisoncology.com/pipeline/"
+  },
+  "WGS": {
+    "ir_url": "https://ir.genedx.com/news-events/presentations",
+    "pipeline_url": "https://www.genedx.com/biopharma"
+  },
+  "STAA": {
+    "ir_url": "https://investors.staar.com/news-and-events/events-and-presentations"
+  },
+  "HAE": {
+    "ir_url": "https://haemonetics.gcs-web.com/events-presentations"
+  },
+  "AVBP": {
+    "ir_url": "https://ir.arrivent.com/news-events/events-presentations",
+    "pipeline_url": "https://arrivent.com/programs/"
+  },
+  "DMRA": {
+    "ir_url": "https://ir.damoratx.com/news-and-events/presentations",
+    "pipeline_url": "https://www.damoratx.com/#science-and-pipeline"
+  },
+  "PBLS": {
+    "ir_url": "https://investors.parabilismed.com/news-events/presentations"
+  },
+  "COAG": {
+    "ir_url": "https://ir.hemab.com/news-events/events",
+    "pipeline_url": "https://www.hemab.com/about-us#pipeline"
+  },
+  "ELVN": {
+    "ir_url": "https://ir.enliventherapeutics.com/events",
+    "pipeline_url": "https://www.enliventherapeutics.com/pipeline/"
+  },
+  "SEPN": {
+    "ir_url": "https://ir.septerna.com/events-presentations",
+    "pipeline_url": "https://www.septerna.com/pipeline/"
   }
 }

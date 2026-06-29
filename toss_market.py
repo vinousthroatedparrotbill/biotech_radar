@@ -20,6 +20,8 @@ import requests
 
 BASE = "https://openapi.tossinvest.com"
 _TOKEN = {"value": None, "exp": 0.0}     # 프로세스 내 토큰 캐시
+_FAIL_UNTIL = 0.0    # 인증 실패(예: IP 미허용 403) 시 일정시간 토스 스킵 — 폴링마다 반복 호출 방지
+_FAIL_COOLDOWN = 600.0   # 10분
 
 
 def _creds() -> tuple[str, str]:
@@ -28,7 +30,9 @@ def _creds() -> tuple[str, str]:
 
 
 def available() -> bool:
-    """토스 키가 설정돼 있나."""
+    """토스 키가 설정돼 있고, 최근 인증 실패로 차단된 쿨다운 중이 아닌가."""
+    if time.time() < _FAIL_UNTIL:
+        return False
     cid, sec = _creds()
     return bool(cid and sec)
 
@@ -61,12 +65,17 @@ def _token() -> str:
     cid, sec = _creds()
     if not (cid and sec):
         raise RuntimeError("TOSS_API_KEY/SECRET 미설정")
+    global _FAIL_UNTIL
     r = requests.post(
         f"{BASE}/oauth2/token",
         data={"grant_type": "client_credentials", "client_id": cid, "client_secret": sec},
         headers={"Content-Type": "application/x-www-form-urlencoded"}, timeout=20,
     )
-    r.raise_for_status()
+    if not r.ok:
+        # 403(IP 미허용) 등 인증 실패 → 쿨다운 동안 available()=False로 토스 우회
+        _FAIL_UNTIL = time.time() + _FAIL_COOLDOWN
+        r.raise_for_status()
+    _FAIL_UNTIL = 0.0          # 성공 시 차단 해제
     j = r.json()
     _TOKEN["value"] = j["access_token"]
     _TOKEN["exp"] = time.time() + float(j.get("expires_in", 3600))

@@ -17,3 +17,6 @@ markdown>=3.5
 # 로컬 봇 머신에선: pip install matplotlib mplfinance
 anthropic>=0.40
 python-telegram-bot>=21.0
+# React+FastAPI 웹 백엔드 (Render 단일 서비스 배포)
+fastapi>=0.110
+uvicorn[standard]>=0.29
