@@ -159,14 +159,14 @@ def recent_disclosures(ticker: str, days: int = 30,
     return out
 
 
-def fetch_document(rcept_no: str, max_chars: int = 12000) -> dict:
-    """DART 공시 '원문 본문 텍스트' — 공식 document.xml API(ZIP) 사용.
-    뷰어(dsaf001/main.do)는 본문이 iframe이라 스크랩 불가 → 이 API로 직접 받는다.
-    return {ok, rcept_no, text, chars, truncated} 또는 {ok:False, error}."""
-    import io
+_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+       "Referer": "https://dart.fss.or.kr/"}
+
+
+def _html_to_text(raw: bytes) -> str:
+    """HTML/XML bytes → 본문 텍스트(EUC-KR/UTF-8 자동, script/style 제거)."""
     import re as _re
     import warnings
-    import zipfile
 
     from bs4 import BeautifulSoup
     try:
@@ -174,54 +174,95 @@ def fetch_document(rcept_no: str, max_chars: int = 12000) -> dict:
         warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
     except Exception:
         pass
+    html = None
+    for enc in ("utf-8", "euc-kr", "cp949"):     # DART 원문은 보통 EUC-KR
+        try:
+            html = raw.decode(enc); break
+        except Exception:
+            continue
+    if html is None:
+        html = raw.decode("utf-8", "replace")
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style"]):
+        tag.decompose()
+    txt = soup.get_text("\n", strip=True).replace("\xa0", " ")
+    return _re.sub(r"\n{3,}", "\n\n", txt).strip()
 
-    rcept_no = (rcept_no or "").strip()
-    if not rcept_no.isdigit():
-        return {"ok": False, "error": f"rcept_no(접수번호 숫자) 필요 — 받은 값: {rcept_no!r}"}
+
+def _doc_via_api(rcept_no: str) -> tuple[str, str | None]:
+    """공식 document.xml API(ZIP) → (text, err). 인덱싱된 공시에 최적(깔끔)."""
+    import io
+    import zipfile
     try:
         r = requests.get(f"{_BASE}/document.xml",
                          params={"crtfc_key": _key(), "rcept_no": rcept_no}, timeout=30)
         r.raise_for_status()
     except Exception as e:
-        return {"ok": False, "error": f"요청 실패: {e}"}
-
-    # 키 오류/한도/무자료 등은 ZIP이 아니라 status XML로 옴
+        return "", f"요청 실패: {e}"
     head = r.content[:300]
-    if b"<status>" in head or b"<result>" in head:
+    if b"<status>" in head or b"<result>" in head:     # 키오류/한도/014(미인덱싱) 등
+        from bs4 import BeautifulSoup
         try:
             soup = BeautifulSoup(r.content, "html.parser")
             st = soup.find("status"); msg = soup.find("message")
-            return {"ok": False,
-                    "error": f"DART {st.text if st else '?'}: {msg.text if msg else '오류'}"}
+            return "", f"DART {st.text if st else '?'}: {msg.text if msg else '오류'}"
         except Exception:
-            return {"ok": False, "error": "DART 오류 응답(본문 없음)"}
+            return "", "DART 오류 응답"
     try:
         zf = zipfile.ZipFile(io.BytesIO(r.content))
     except Exception as e:
-        return {"ok": False, "error": f"ZIP 파싱 실패: {e}"}
+        return "", f"ZIP 파싱 실패: {e}"
+    parts = [_html_to_text(zf.read(n)) for n in zf.namelist()]
+    return "\n\n".join(p for p in parts if p).strip(), None
 
-    texts = []
-    for name in zf.namelist():
-        raw = zf.read(name)
-        html = None
-        for enc in ("utf-8", "euc-kr", "cp949"):    # DART 원문은 보통 EUC-KR
-            try:
-                html = raw.decode(enc); break
-            except Exception:
-                continue
-        if html is None:
-            html = raw.decode("utf-8", "replace")
-        soup = BeautifulSoup(html, "html.parser")
-        for tag in soup(["script", "style"]):
-            tag.decompose()
-        txt = soup.get_text("\n", strip=True)
-        if txt:
-            texts.append(txt)
-    full = _re.sub(r"\n{3,}", "\n\n", "\n\n".join(texts)).strip()
-    if not full:
-        return {"ok": False, "error": "본문 텍스트 추출 실패(빈 문서)"}
-    return {"ok": True, "rcept_no": rcept_no, "chars": len(full),
-            "truncated": len(full) > max_chars, "text": full[:max_chars]}
+
+def _doc_via_viewer(rcept_no: str) -> tuple[str, str | None]:
+    """DART 웹뷰어 스크랩 → (text, err). main.do의 viewDoc 파라미터를 파싱해 viewer.do 본문을
+    직접 받는다. **당일/미인덱싱(014) 공시도 즉시 가능**(API 인덱싱과 무관)."""
+    import re as _re
+    try:
+        m = requests.get(f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}",
+                         headers=_UA, timeout=20)
+        m.raise_for_status()
+    except Exception as e:
+        return "", f"main.do 실패: {e}"
+    # viewDoc("rcpNo","dcmNo","eleId","offset","length","dtd"[,"tocNo"]) — 첫 구체값(원문)
+    mt = _re.search(
+        r'viewDoc\(\s*"(\d+)"\s*,\s*"(\d+)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,'
+        r'\s*"([^"]*)"\s*,\s*"([^"]*)"', m.text)
+    if not mt:
+        return "", "viewDoc 파라미터 못 찾음(뷰어 구조 변경?)"
+    rno, dcm, ele, off, length, dtd = mt.groups()
+    try:
+        v = requests.get("https://dart.fss.or.kr/report/viewer.do",
+                         params={"rcpNo": rno, "dcmNo": dcm, "eleId": ele,
+                                 "offset": off, "length": length, "dtd": dtd},
+                         headers=_UA, timeout=25)
+        v.raise_for_status()
+    except Exception as e:
+        return "", f"viewer.do 실패: {e}"
+    txt = _html_to_text(v.content)
+    return (txt, None) if txt else ("", "뷰어 본문 비어있음")
+
+
+def fetch_document(rcept_no: str, max_chars: int = 12000) -> dict:
+    """DART 공시 '원문 본문 텍스트'. ① 공식 API(document.xml) 시도 → 실패(특히 당일
+    공시 014 미인덱싱) 시 ② 웹뷰어 스크랩 폴백(당일 공시도 정정 전/후 표까지 추출 가능).
+    return {ok, rcept_no, text, chars, truncated, source} 또는 {ok:False, error}."""
+    rcept_no = (rcept_no or "").strip()
+    if not rcept_no.isdigit():
+        return {"ok": False, "error": f"rcept_no(접수번호 숫자) 필요 — 받은 값: {rcept_no!r}"}
+
+    text, api_err = _doc_via_api(rcept_no)
+    source = "api"
+    if not text:                                  # API 실패(014 등) → 뷰어 폴백
+        text, web_err = _doc_via_viewer(rcept_no)
+        source = "viewer"
+        if not text:
+            return {"ok": False,
+                    "error": f"API: {api_err} / 뷰어: {web_err}"}
+    return {"ok": True, "rcept_no": rcept_no, "source": source, "chars": len(text),
+            "truncated": len(text) > max_chars, "text": text[:max_chars]}
 
 
 if __name__ == "__main__":
