@@ -394,17 +394,22 @@ function AutoTrade() {
   const [sel, setSel] = useState(null)
   const [evalBusy, setEvalBusy] = useState(false)
   const [chart, setChart] = useState(null)
+  const [chartIv, setChartIv] = useState('1d')   // 봉: 1d/1wk/10m/30m/60m
+  // 봉 종류별 표시 기간 (인트라데이는 짧게)
+  const IV_PERIOD = { '1d': '6m', '1wk': '1y', '10m': '5d', '30m': '5d', '60m': '1m' }
+  const IV_LABEL = { '1d': '일봉', '1wk': '주봉', '10m': '10분', '30m': '30분', '60m': '1시간' }
 
   const loadOrders = useCallback(
     () => api.autoOrders().then(d => setOrders(d.orders || [])).catch(() => { }), [])
   useEffect(() => { loadOrders() }, [loadOrders])
 
-  // 선택된 카드의 종목 차트(6개월 일봉) — 매수/매도 마커 + 진입/청산 가격선 표시용
+  // 선택된 카드의 종목 차트 — 봉 종류(일/주/10·30·60분) + 매수/매도 마커 + 진입/청산 가격선
   useEffect(() => {
     if (!sel?.ticker) { setChart(null); return }
     setChart(null)
-    api.getChart(sel.ticker, '6m', '1d').then(d => setChart(d)).catch(() => setChart(null))
-  }, [sel?.ticker])
+    api.getChart(sel.ticker, IV_PERIOD[chartIv] || '6m', chartIv)
+      .then(d => setChart(d)).catch(() => setChart(null))
+  }, [sel?.ticker, chartIv])
 
   const sideKr = s => s === 'buy' ? '매수' : '매도'
   const unitKr = t => ({ weight_pct: '% 비중', amount: ' (금액)', shares: '주' }[t] || '')
@@ -520,9 +525,14 @@ function AutoTrade() {
             if (sel.sell_at && sel.sell_price) markers.push({ time: String(sel.sell_at).slice(0, 10), position: 'aboveBar', color: '#f85149', shape: 'arrowDown', text: '매도(실)' })
             return (
               <div className="auto-sec"><b>차트</b>
+                <div className="ranges">
+                  {['1d', '1wk', '10m', '30m', '60m'].map(iv =>
+                    <button key={iv} className={chartIv === iv ? 'active' : ''}
+                      onClick={() => setChartIv(iv)}>{IV_LABEL[iv]}</button>)}
+                </div>
                 <div className="auto-chart">
                   {chart && !chart.error && chart.dates?.length
-                    ? <PriceChart data={chart} period="6m" height={300} markers={markers} priceLines={priceLines} />
+                    ? <PriceChart data={chart} period={IV_PERIOD[chartIv] || '6m'} height={300} markers={markers} priceLines={priceLines} />
                     : <p className="muted small">{chart === null ? '차트 불러오는 중…' : '차트 데이터 없음'}</p>}
                 </div>
               </div>

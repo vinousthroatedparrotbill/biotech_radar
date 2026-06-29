@@ -7,7 +7,11 @@ from typing import Literal
 import pandas as pd
 import yfinance as yf
 
-Interval = Literal["1d", "1wk", "1mo"]
+Interval = Literal["10m", "15m", "30m", "60m", "1h", "1d", "1wk", "1mo"]
+# 인트라데이 인터벌 — yfinance 한도(분봉≤60일, 시간봉≤730일) + 10분은 yfinance 미지원(→15분)
+_INTRADAY = {"10m", "15m", "30m", "60m", "1h", "90m"}
+_INTRADAY_YF_PERIOD = {"10m": "1mo", "15m": "1mo", "30m": "1mo", "60m": "3mo",
+                       "1h": "3mo", "90m": "3mo"}
 PeriodKey = Literal["1d", "5d", "1m", "3m", "6m", "1y", "5y", "max"]
 PERIOD_LABELS: dict[PeriodKey, str] = {
     "1d": "1일", "5d": "5일", "1m": "1달", "3m": "3달",
@@ -34,14 +38,16 @@ def fetch_ohlcv(ticker: str, period: PeriodKey, interval: Interval = "1d") -> pd
     except Exception:
         pass
 
-    # 2) DB OHLCV 캐시 — 클라우드(해외 IP, 토스 차단)에서 차트. 로컬 브릿지가 채움.
-    try:
-        import ohlcv_bridge as ob
-        cdf = ob.get_cached(ticker, period, interval)
-        if cdf is not None and not cdf.empty:
-            return cdf
-    except Exception:
-        pass
+    intraday = interval in _INTRADAY
+    # 2) DB OHLCV 캐시 — 클라우드(해외 IP, 토스 차단)에서 차트. 일/주/월봉만 캐시함.
+    if not intraday:
+        try:
+            import ohlcv_bridge as ob
+            cdf = ob.get_cached(ticker, period, interval)
+            if cdf is not None and not cdf.empty:
+                return cdf
+        except Exception:
+            pass
 
     # 3) yfinance fallback (로컬 전용 — 클라우드는 IP 차단)
     #    KR(6자리)은 .KS(KOSPI)/.KQ(KOSDAQ) 접미사 필요 — bare 6자리는 404.
@@ -51,7 +57,12 @@ def fetch_ohlcv(ticker: str, period: PeriodKey, interval: Interval = "1d") -> pd
     df = None
     for _sym in yf_syms:
         try:
-            if period == "1d":
+            if intraday:
+                # yfinance엔 10분봉이 없어 15분으로 대체(한국은 위 토스가 10분 그대로 처리).
+                yiv = "15m" if interval == "10m" else interval
+                df = yf.download(_sym, period=_INTRADAY_YF_PERIOD.get(interval, "1mo"),
+                                 interval=yiv, auto_adjust=True, progress=False)
+            elif period == "1d":
                 df = yf.download(_sym, period="1d", interval="5m",
                                  auto_adjust=True, progress=False)
             else:
@@ -98,4 +109,6 @@ def fetch_chart(ticker: str, period: PeriodKey, interval: Interval) -> pd.DataFr
     if raw.empty:
         return raw
     with_ma = add_moving_averages(raw)
+    if interval in _INTRADAY:        # 인트라데이는 이미 최근 윈도우 → trim 생략(과다 절단 방지)
+        return with_ma
     return trim_to_period(with_ma, period)
