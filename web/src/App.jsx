@@ -390,7 +390,8 @@ function Portfolios({ onPick }) {
   const [sel, setSel] = useState(null)
   const [detail, setDetail] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [bench, setBench] = useState(['XBI'])
+  const [bench, setBench] = useState(['IBB'])
+  const benchInit = useRef(null)   // 포트폴리오별 기본 벤치마크를 1회만 적용(수동 선택 보존)
   const [txs, setTxs] = useState([])
   const [showTx, setShowTx] = useState(false)
   const [newTk, setNewTk] = useState('')
@@ -404,6 +405,17 @@ function Portfolios({ onPick }) {
     setList(d.portfolios || []); if (sel == null && d.portfolios?.[0]) setSel(d.portfolios[0].id)
   }), [sel])
   useEffect(() => { loadList() }, [])
+
+  // 포트폴리오 전환 시 기본 벤치마크: 한국 바이오텍 → TIMEFOLIO K바이오(463050), 그 외(미국) → IBB.
+  // 같은 포트폴리오에선 1회만 적용해 사용자의 수동 선택을 덮어쓰지 않음.
+  useEffect(() => {
+    if (sel == null || benchInit.current === sel) return
+    const p = list.find(x => x.id === sel)
+    if (!p) return
+    benchInit.current = sel
+    const isKR = /바이오|한국|k-?bio|kbio/i.test(p.name || '')
+    setBench([isKR ? '463050' : 'IBB'])
+  }, [sel, list])
 
   const load = useCallback(() => {
     if (sel == null) return
