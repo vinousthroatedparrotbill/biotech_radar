@@ -6,7 +6,7 @@ services:
     name: biotech-radar
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: free            # 무료(15분 미사용 시 슬립). 항상 켜두려면 starter로 변경.
+    plan: starter         # $7/월, 항상 켜둠(슬립 없음). 무료로 쓰려면 free로 변경.
     region: singapore     # 한국 사용자 근접 리전
     healthCheckPath: /healthz
     autoDeploy: true      # main 푸시 시 자동 재배포
