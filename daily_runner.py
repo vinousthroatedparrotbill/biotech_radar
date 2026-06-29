@@ -18,6 +18,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent
 MARKER = ROOT / "data" / ".last_daily_run"
+LOCK = ROOT / "data" / ".daily_run.lock"
+sys.path.insert(0, str(ROOT))
+import run_lock  # noqa: E402
 
 # Windows cp949 콘솔에서 불릿(•) 등 유니코드 print 시 UnicodeEncodeError → exit 1 방지.
 # (작업은 성공해도 마지막 print에서 죽으면 마커 미기록 → 재실행/중복 발송 위험)
@@ -64,8 +67,12 @@ def main() -> int:
             print(f"daily_runner: already ran today ({today}). skip.")
             return 0
 
+    # 중복 실행 방지 락 — 다른 런이 진행 중이면(긴 런 도중 다음 트리거가 떠도) skip
+    if not run_lock.acquire(LOCK):
+        print("daily_runner: 다른 daily_run이 진행 중 — skip.")
+        return 0
+
     print(f"daily_runner: running daily_run for {today}...")
-    sys.path.insert(0, str(ROOT))
     from telegram_report import daily_run
     try:
         result = daily_run()
@@ -83,6 +90,8 @@ def main() -> int:
         print(f"daily_runner: FAILED — {e}", file=sys.stderr)
         # 마커 업데이트 안 함 → 다음 트리거에서 재시도
         return 1
+    finally:
+        run_lock.release(LOCK)
 
 
 if __name__ == "__main__":

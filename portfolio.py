@@ -267,11 +267,43 @@ def nav(portfolio_id: int) -> float:
     return _cash(portfolio_id, initial) + mv
 
 
+def _resolve_ticker(s: str) -> str:
+    """입력을 ticker로 정규화. 심볼/6자리 코드면 그대로, 한국 종목명(올릭스 등)이면
+    ticker_master에서 회사명으로 매칭해 코드로 변환. 못 찾으면 대문자 원본(미국 동작 유지)."""
+    s = (s or "").strip()
+    if not s:
+        return s
+    try:
+        with connect() as conn:
+            # 1) ticker 정확 일치(대소문자 무시) — 미국 심볼/한국 6자리 코드
+            r = conn.execute(
+                "SELECT ticker FROM ticker_master WHERE UPPER(ticker) = UPPER(?)", (s,)
+            ).fetchone()
+            if r:
+                return r["ticker"]
+            # 2) 회사명 정확 일치 (올릭스 → 226950, 한올바이오파마 → 009420)
+            r = conn.execute(
+                "SELECT ticker FROM ticker_master WHERE name = ?", (s,)
+            ).fetchone()
+            if r:
+                return r["ticker"]
+            # 3) 회사명 부분 일치 — 후보가 유일할 때만(애매하면 변환 안 함)
+            rows = conn.execute(
+                "SELECT ticker FROM ticker_master WHERE name ILIKE ? LIMIT 2", (f"%{s}%",)
+            ).fetchall()
+            if len(rows) == 1:
+                return rows[0]["ticker"]
+    except Exception:
+        pass
+    return s.upper()
+
+
 def set_target_weight(portfolio_id: int, ticker: str, target_weight_pct: float,
                       note: str = "") -> dict:
     """종목을 현재 NAV 대비 target_weight_pct%가 되도록 현재가로 체결(매수/매도).
-    실현손익 확정 + 현금 반영. target=0 → 전량 매도. 시장가 체결은 NAV 중립."""
-    ticker = ticker.strip().upper()
+    실현손익 확정 + 현금 반영. target=0 → 전량 매도. 시장가 체결은 NAV 중립.
+    ticker엔 미국 심볼/한국 6자리 코드뿐 아니라 한국 종목명(올릭스 등)도 허용."""
+    ticker = _resolve_ticker(ticker)
     if not ticker:
         raise ValueError("ticker required")
     if target_weight_pct < 0:

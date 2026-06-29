@@ -6,6 +6,7 @@ __pycache__/
 
 # 런타임 산출물 (커밋 금지)
 data/*.log
+data/*.lock
 data/.last_*
 data/reason_cache.json
 data/dart_corpcode.json

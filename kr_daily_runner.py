@@ -15,6 +15,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent
 MARKER = ROOT / "data" / ".last_kr_run"
+LOCK = ROOT / "data" / ".kr_run.lock"
+sys.path.insert(0, str(ROOT))
+import run_lock  # noqa: E402
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -40,8 +43,12 @@ def main() -> int:
             print(f"kr_daily_runner: already ran today ({today}). skip.")
             return 0
 
+    # 중복 실행 방지 락 — 긴 런 도중 다음 트리거(16:30/18:00)가 떠도 중복 실행 안 함
+    if not run_lock.acquire(LOCK):
+        print("kr_daily_runner: 다른 daily_run_kr이 진행 중 — skip.")
+        return 0
+
     print(f"kr_daily_runner: running daily_run_kr for {today}...")
-    sys.path.insert(0, str(ROOT))
     from telegram_report import daily_run_kr
     try:
         result = daily_run_kr()
@@ -58,6 +65,8 @@ def main() -> int:
     except Exception as e:
         print(f"kr_daily_runner: FAILED — {e}", file=sys.stderr)
         return 1
+    finally:
+        run_lock.release(LOCK)
 
 
 if __name__ == "__main__":
