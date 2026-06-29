@@ -8,7 +8,7 @@ services:
     dockerfilePath: ./Dockerfile
     plan: free            # 무료(15분 미사용 시 슬립). 항상 켜두려면 starter로 변경.
     region: singapore     # 한국 사용자 근접 리전
-    healthCheckPath: /api/board?country=USA&view=high
+    healthCheckPath: /healthz
     autoDeploy: true      # main 푸시 시 자동 재배포
     envVars:
       - key: DATABASE_URL

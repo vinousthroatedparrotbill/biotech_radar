@@ -29,8 +29,9 @@ async def _basic_auth(request, call_next):
     from starlette.responses import Response
 
     pw = (_os.environ.get("APP_PASSWORD") or "").strip()
-    # CORS preflight는 통과(자격증명 없이 와도 됨)
-    if pw and request.method != "OPTIONS":
+    # CORS preflight + 헬스체크(/healthz)는 무인증 통과 (Render 헬스체크가 401 받으면
+    # 서비스가 영원히 'almost live'에 멈춤)
+    if pw and request.method != "OPTIONS" and request.url.path != "/healthz":
         hdr = request.headers.get("authorization", "")
         ok = False
         if hdr.startswith("Basic "):
@@ -43,6 +44,12 @@ async def _basic_auth(request, call_next):
             return Response(status_code=401,
                             headers={"WWW-Authenticate": 'Basic realm="Biotech Radar"'})
     return await call_next(request)
+
+
+# 헬스체크 — 무인증, DB 미접근(빠르고 항상 200). Render healthCheckPath 용.
+@app.get("/healthz")
+def healthz() -> dict:
+    return {"ok": True}
 
 
 # ───────────────────────── helpers ─────────────────────────
