@@ -96,12 +96,16 @@ def _save_eval(order_id: int, last_eval: dict) -> None:
         c.commit()
 
 
-def _mark_triggered(order_id: int, detail: dict) -> None:
+def _mark_triggered(order_id: int, detail: dict) -> bool:
+    """armed→triggered 원자적 전이. 실제 전이된 경우만 True(로컬+클라우드 동시 평가 시
+    한쪽만 알림 발송 → 중복 발동 방지)."""
     with connect() as c:
-        c.execute("UPDATE conditional_orders SET status='triggered', triggered_at=?, "
-                  "triggered_detail=? WHERE id=?",
-                  (_now(), json.dumps(detail, ensure_ascii=False), order_id))
+        row = c.execute(
+            "UPDATE conditional_orders SET status='triggered', triggered_at=?, "
+            "triggered_detail=? WHERE id=? AND status='armed' RETURNING id",
+            (_now(), json.dumps(detail, ensure_ascii=False), order_id)).fetchone()
         c.commit()
+        return row is not None
 
 
 # ───────────────────────── 평가 컨텍스트 ─────────────────────────
@@ -323,10 +327,10 @@ def evaluate_all() -> dict:
                                  "price": ctx.get("price"),
                                  **({"ir": res["ir"]} if res.get("ir") else {})})
             if res["met"]:
-                _mark_triggered(o["id"], {"summary": res["summary"], "price": ctx.get("price"),
-                                          "at": _now()})
-                _place_order_dry_run(o, res)
-                fired += 1
+                detail = {"summary": res["summary"], "price": ctx.get("price"), "at": _now()}
+                if _mark_triggered(o["id"], detail):    # 원자적 전이 성공한 쪽만 알림
+                    _place_order_dry_run(o, res)
+                    fired += 1
         except Exception as e:
             log.warning("주문 평가 실패 id=%s: %s", o.get("id"), e)
     return {"evaluated": len(armed), "fired": fired}

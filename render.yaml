@@ -25,3 +25,13 @@ services:
         sync: false
       - key: TOSS_API_SECRET
         sync: false
+      # 자동매매 24/7 평가 루프 — 상시 웹 안에서 15분마다 evaluate_all (별도 cron 불필요)
+      - key: AUTO_EVAL_ENABLED
+        value: "1"
+      - key: AUTO_EVAL_MINUTES
+        value: "15"
+      # 조건 발동 시 텔레그램 알림 발송용 (클라우드에서도 알림 가려면 필요)
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false

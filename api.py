@@ -1213,6 +1213,31 @@ def auto_evaluate() -> dict:
     return at.evaluate_all()
 
 
+@app.on_event("startup")
+async def _auto_eval_loop():
+    """24/7 자동매매 평가 루프 — AUTO_EVAL_ENABLED=1일 때만(=Render 상시 서비스).
+    로컬 uvicorn은 이 env 없이 꺼둠(로컬은 triggers_runner 30분 cron이 담당) → 중복 방지.
+    별도 cron 서비스/추가 빌드 없이 상시 웹 안에서 도는 게 가장 저렴·단순."""
+    import asyncio
+    import os as _os
+    if (_os.environ.get("AUTO_EVAL_ENABLED") or "").strip() not in ("1", "true", "True"):
+        return
+    mins = max(1, int(_os.environ.get("AUTO_EVAL_MINUTES") or 15))
+
+    async def _loop():
+        import auto_trade as at
+        await asyncio.sleep(20)            # 기동 안정화 대기
+        while True:
+            try:
+                res = await asyncio.to_thread(at.evaluate_all)
+                print(f"[auto_eval] {res}", flush=True)
+            except Exception as e:
+                print(f"[auto_eval] error: {e}", flush=True)
+            await asyncio.sleep(mins * 60)
+
+    asyncio.create_task(_loop())
+
+
 # ───────────────────────── 정적 프론트(React 빌드) 서빙 ─────────────────────────
 # 프로덕션(단일 서비스)에서는 FastAPI가 빌드된 React(web/dist)를 같은 오리진에서 서빙한다.
 # api.js가 상대경로 /api/* 를 쓰므로 CORS·프록시 불필요. 라우트 정의가 모두 끝난 뒤
