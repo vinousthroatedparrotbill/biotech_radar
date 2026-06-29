@@ -917,6 +917,18 @@ def daily_run() -> dict:
     except Exception as e:
         main_result["triggers_error"] = str(e)
 
+    # 8) 웹 'AI 상승이유' 캐시(DB) 채우기 — 신고가/상승폭 둘 다. 보드 스냅샷 날짜로 저장
+    #    → 웹(로컬·Render)이 '생성' 안 눌러도 자동 표시 + 다음 스냅샷까지 유지.
+    try:
+        import reason_cache as _rc
+        _snap = latest_run_date("USA") or datetime.now().strftime("%Y-%m-%d")
+        main_result["reason_high"] = len(_rc.refresh("USA", "high",
+                                                     highs.to_dict("records"), _snap))
+        main_result["reason_movers"] = len(_rc.refresh("USA", "movers",
+                                                       movers.to_dict("records"), _snap))
+    except Exception as e:
+        main_result["reason_cache_error"] = str(e)
+
     return main_result
 
 
@@ -982,6 +994,17 @@ def daily_run_kr() -> dict:
         main_result["investment_reports"] = memos
     except Exception as e:
         main_result["cards_error"] = str(e)
+
+    # 웹 'AI 상승이유' 캐시(DB) — KR 신고가/상승폭. 보드 스냅샷 날짜로 저장.
+    try:
+        import reason_cache as _rc
+        _snap = latest_run_date("KOR") or datetime.now().strftime("%Y-%m-%d")
+        main_result["reason_high"] = len(_rc.refresh("KOR", "high",
+                                                     highs.to_dict("records"), _snap))
+        main_result["reason_movers"] = len(_rc.refresh("KOR", "movers",
+                                                       movers.to_dict("records"), _snap))
+    except Exception as e:
+        main_result["reason_cache_error"] = str(e)
     return main_result
 
 

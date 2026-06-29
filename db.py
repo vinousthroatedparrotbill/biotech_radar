@@ -205,6 +205,17 @@ CREATE TABLE IF NOT EXISTS chat_log (
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_chat_log_id ON chat_log(id DESC);
+
+-- 신고가/상승폭 'AI 상승이유' 캐시 — 파일이 아닌 DB에 두어 로컬·클라우드 공유 +
+-- 재배포에도 보존. snapshot_date(보드 기준일)가 바뀌면 무효(재생성). 데일리런이 채움.
+CREATE TABLE IF NOT EXISTS reason_cache (
+    country        TEXT NOT NULL,           -- 'USA' | 'KOR'
+    kind           TEXT NOT NULL,           -- 'high' | 'movers'
+    snapshot_date  TEXT NOT NULL,           -- latest_run_date(country) — 바뀌면 무효
+    markdown       TEXT NOT NULL,
+    updated_at     TEXT NOT NULL,
+    PRIMARY KEY (country, kind)
+);
 """
 
 

@@ -228,70 +228,24 @@ class ReasonIn(BaseModel):
     generate: bool = True       # False면 캐시만 조회(peek), 생성 안 함
 
 
-_REASON_MAX = 100               # 상한(과다 방지)
-_REASON_CHUNK = 22              # 청크당 종목 수 — 토큰 한도로 잘리지 않게 분할
-_REASON_FILE = __import__("os").path.join(__import__("os").path.dirname(__file__), "data", "reason_cache.json")
-
-
-def _reason_load() -> dict:
-    import json
-    try:
-        with open(_REASON_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def _reason_save(d: dict) -> None:
-    import json
-    import os
-    try:
-        os.makedirs(os.path.dirname(_REASON_FILE), exist_ok=True)
-        with open(_REASON_FILE, "w", encoding="utf-8") as f:
-            json.dump(d, f, ensure_ascii=False)
-    except Exception:
-        pass
-
-
 @app.post("/api/reason")
 def reason(body: ReasonIn) -> dict:
-    """신고가/급등 '이유 추정' 마크다운. 22개씩 청크 분할 + 하루 캐시(파일 영속 → 재시작에도 보존).
-    키는 국가:종류 — 보드 종목이 바뀌어도 오늘 생성분 유지."""
-    import re
-    import pandas as pd
-    import telegram_report as tr
+    """신고가/급등 'AI 상승이유' 마크다운. DB 캐시(reason_cache 테이블) 기반 —
+    로컬·클라우드 공유 + 재배포 보존. 유효성은 보드 스냅샷 날짜(latest_run_date) 기준이라
+    미장 주말처럼 스냅샷이 안 바뀌는 동안은 그대로 유지. 데일리런이 미리 채워둠."""
+    import reason_cache as rc
     from collectors.high_low import latest_run_date
-    # 캐시 유효성은 '달력 날짜'가 아니라 '보드 스냅샷 날짜' 기준.
-    # 미국장은 주말 휴장 → 토요일 분석이 화요일(새 스냅샷) 전까지 그대로 유지돼야 함.
-    # (latest_run_date는 국가 스코프; 데이터 없으면 None → 키만으로 보존)
     _country = body.country if body.country in ("USA", "KOR") else None
     snap = latest_run_date(_country) or "_"
-    key = f"{body.country}:{body.kind}"
-    cache = _reason_load()
-    hit = cache.get(key)
-    if hit and hit.get("date") == snap and hit.get("markdown"):    # 스냅샷 동일 → 보존
-        return {"markdown": hit["markdown"], "cached": True}
-    if not body.generate:                                          # peek: 캐시만
+    hit = rc.get(body.country, body.kind, snap)
+    if hit:                                       # 스냅샷 동일 캐시 → 그대로
+        return {"markdown": hit, "cached": True}
+    if not body.generate:                         # peek: 캐시만(생성 안 함)
         return {"markdown": None, "cached": False}
-    cols = ["ticker", "name", "close", "perf_1d", "market_cap"]
-    rows = body.rows[:_REASON_MAX]
-    label = "오늘 크게 상승(급등)한" if body.kind == "movers" else "오늘 52주 신고가를 찍은"
-    full = pd.DataFrame([{c: r.get(c) for c in cols} for r in rows])
     try:
-        parts = []
-        for i in range(0, len(full), _REASON_CHUNK):
-            chunk = full.iloc[i:i + _REASON_CHUNK]
-            try:
-                md = tr._highs_analysis(chunk, max_n=len(chunk), context_label=label)
-            except TypeError:
-                md = tr._highs_analysis(chunk, max_n=len(chunk))
-            if not md:
-                continue
-            md = re.split(r"\n-{3,}\s*\n?\s*\*\*\s*요약", md)[0].strip()   # 청크별 '요약' 제거
-            parts.append(md)
-        out = "\n\n".join(parts)
-        cache[key] = {"date": snap, "markdown": out}
-        _reason_save(cache)
+        out = rc.refresh(body.country, body.kind, body.rows, snap)
+        if not out:
+            return {"markdown": "", "error": "분석 생성 실패(빈 결과 — API 키/크레딧 확인)"}
         return {"markdown": out, "cached": False}
     except Exception as e:
         return {"markdown": "", "error": f"{type(e).__name__}: {e}"}
