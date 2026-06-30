@@ -125,10 +125,11 @@ export default function App() {
       </header>
 
       <div className="wrap">
-        {modals.length > 0 && (
+        {/* 보드 외 페이지: 플로팅 도킹 패널(폴백). 보드 페이지에선 가운데 리스트 칸 위 오버레이로 Board가 직접 렌더 */}
+        {meta.kind !== 'board' && modals.length > 0 && (
           <div className="dock-strip">
             <div className="dock-bar">
-              <span className="muted small">{modals.length}개 패널 · 오른쪽 경계 드래그로 너비 조절 · 뒤 리스트에서 계속 종목 추가</span>
+              <span className="muted small">{modals.length}개 패널 · 오른쪽 경계 드래그로 너비 조절</span>
               {modals.length > 1 && <button className="btn ghost sm" onClick={closeAll}>모두 닫기 ✕</button>}
             </div>
             <div className="dock-row">
@@ -141,7 +142,8 @@ export default function App() {
           </div>
         )}
         <WatchedBanner onPick={openModal} />
-        {meta.kind === 'board' && <Board country={country} view={page} onPick={openModal} tickerMap={tickerMap} />}
+        {meta.kind === 'board' && <Board country={country} view={page} onPick={openModal} tickerMap={tickerMap}
+          modals={modals} onCloseModal={closeModal} onCloseAll={closeAll} />}
         {meta.kind === 'news' && <DailyNews country={country} />}
         {meta.kind === 'memos' && <Memos onPick={openModal} />}
         {meta.kind === 'cat' && <Catalysts onPick={openModal} />}
@@ -176,7 +178,7 @@ const curListW = () => parseFloat(getComputedStyle(document.documentElement).get
 const PERF_COLS = [['perf_1d', '1D'], ['perf_7d', '1W'], ['perf_1m', '1M'], ['perf_3m', '3M'], ['perf_6m', '6M'], ['perf_1y', '1Y']]
 
 /* ───────────── 보드 3분할 (좌: 상승이유 · 중: 티커 리스트 · 우: 인라인 상세) — 가로 리사이즈 ───────────── */
-function Board({ country, view, onPick, tickerMap }) {
+function Board({ country, view, onPick, tickerMap, modals = [], onCloseModal, onCloseAll }) {
   const isHigh = view === 'high'
   const [sub, setSub] = useState('new')   // 신고가 전용: new(오늘 신규) | all(전체)
   const [rows, setRows] = useState([])
@@ -296,6 +298,22 @@ function Board({ country, view, onPick, tickerMap }) {
             </tbody>
           </table>
         </div>
+
+        {/* 종목 모달 — 가운데 신고가 리스트 칸 위에 같은 크기로 오버레이. 좌/우 삼분할 splitter가
+            그대로 리사이즈 → 상승이유(좌)·원래 상세(우)가 유동적으로 함께 밀림 */}
+        {modals.length > 0 && (
+          <div className="mid-overlay">
+            <div className="dock-bar">
+              <span className="muted small">{modals.length}개 패널 · 좌·우 경계 드래그로 너비 조절 · 뒤 리스트에서 계속 추가</span>
+              {modals.length > 1 && <button className="btn ghost sm" onClick={onCloseAll}>모두 닫기 ✕</button>}
+            </div>
+            <div className="dock-row">
+              {modals.map(m => (
+                <DockPanel key={m.ticker} row={m} onClose={() => onCloseModal(m.ticker)} onPick={onPick} tickerMap={tickerMap} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <Splitter onDrag={dx => setRightW(w => clampW(w - dx, 340, 1000))} />
@@ -1053,11 +1071,11 @@ function StockDetail({ row, onClose, onPick, tickerMap }) {
 /* 도킹 패널 — 페이지 위 플로팅 오버레이로 가로로 나란히 배치, 오른쪽 경계 Splitter로 너비 조절. 보드 리스트는 뒤에 그대로 보임. */
 function DockPanel({ row, width, onResizeDelta, onClose, onPick, tickerMap }) {
   return (
-    <div className="dock-panel" style={{ width }}>
+    <div className="dock-panel" style={width ? { width } : undefined}>
       <div className="dock-body">
         <StockDetail row={row} onClose={onClose} onPick={onPick} tickerMap={tickerMap} />
       </div>
-      <Splitter onDrag={onResizeDelta} />
+      {onResizeDelta && <Splitter onDrag={onResizeDelta} />}
     </div>
   )
 }
