@@ -247,6 +247,28 @@ ALTER TABLE conditional_orders ADD COLUMN IF NOT EXISTS buy_price DOUBLE PRECISI
 ALTER TABLE conditional_orders ADD COLUMN IF NOT EXISTS sell_at   TEXT;
 ALTER TABLE conditional_orders ADD COLUMN IF NOT EXISTS sell_price DOUBLE PRECISION;
 ALTER TABLE conditional_orders ADD COLUMN IF NOT EXISTS exit_eval TEXT;   -- 매도 조건 진행도
+
+-- 리드 자산 '피크 글로벌 연매출($M)' LLM 추정 캐시(안정적 → 길게 보존, mcap만 매일 갱신).
+CREATE TABLE IF NOT EXISTS peak_sales_est (
+    ticker        TEXT PRIMARY KEY,
+    peak_sales_m  DOUBLE PRECISION,        -- $M
+    basis         TEXT,                     -- 추정 근거 한 줄
+    updated_at    TEXT NOT NULL
+);
+
+-- '연두색 음영' 스크린 플래그 — 8개월 내 2/3상 readout + mcap/peak_sales ≤ 4배. 데일리 갱신.
+CREATE TABLE IF NOT EXISTS screen_flags (
+    ticker          TEXT PRIMARY KEY,
+    snapshot_date   TEXT,
+    flagged         BOOLEAN NOT NULL DEFAULT FALSE,
+    ratio           DOUBLE PRECISION,       -- mcap / peak_sales
+    peak_sales_m    DOUBLE PRECISION,
+    market_cap      DOUBLE PRECISION,
+    catalyst_date   TEXT,
+    catalyst_title  TEXT,
+    note            TEXT,
+    updated_at      TEXT NOT NULL
+);
 """
 
 

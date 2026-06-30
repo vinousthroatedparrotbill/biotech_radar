@@ -925,6 +925,13 @@ def daily_run() -> dict:
     except Exception as e:
         main_result["reason_cache_error"] = str(e)
 
+    # 9) '연두색 음영' 스크린 — 8개월 내 2/3상 + mcap/peak_sales ≤ 4배 플래그
+    try:
+        import screen
+        main_result["green_flags"] = screen.refresh_board_flags("USA")
+    except Exception as e:
+        main_result["screen_error"] = str(e)
+
     return main_result
 
 
@@ -994,6 +1001,13 @@ def daily_run_kr() -> dict:
                                                        movers.to_dict("records"), _snap))
     except Exception as e:
         main_result["reason_cache_error"] = str(e)
+
+    # '연두색 음영' 스크린 (KR)
+    try:
+        import screen
+        main_result["green_flags"] = screen.refresh_board_flags("KOR")
+    except Exception as e:
+        main_result["screen_error"] = str(e)
     return main_result
 
 

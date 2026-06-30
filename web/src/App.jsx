@@ -248,7 +248,7 @@ function Board({ country, view, onPick, tickerMap }) {
                     onMouseEnter={e => showPop(r, e)}
                     onMouseMove={e => hasReason && setPop(p => p ? { ...p, x: e.clientX, y: e.clientY } : p)}
                     onMouseLeave={() => setPop(null)}>
-                    <td className="l"><span className="pick-name">{r.name || r.ticker}</span><span className="pick-tk muted">{r.ticker}</span></td>
+                    <td className="l"><span className={'pick-name' + (r.green ? ' green-flag' : '')} title={r.green ? (r.green_note || '8개월 내 2/3상 · mcap/peak_sales ≤ 4배') : undefined}>{r.name || r.ticker}</span><span className="pick-tk muted">{r.ticker}</span></td>
                     <td>{fmtPrice(r.close, r.ticker)}</td>
                     {PERF_COLS.map(([k]) => <td key={k}><Pct v={r[k]} /></td>)}
                     <td>{fmtMcap(r.market_cap, r.ticker)}</td>
@@ -406,6 +406,24 @@ function Catalysts({ onPick }) {
 }
 
 /* ───────────── 자동 매매(조건매매) ───────────── */
+// 조건 트리 → 사람이 읽는 한국어 요약
+function condToText(node) {
+  if (!node) return '—'
+  const op = (o) => ({ '>=': '≥', '<=': '≤', '>': '>', '<': '<', '==': '=' }[o] || o)
+  const k = node.kind
+  if (k === 'price') return `현재가 ${op(node.op)} ${Number(node.value).toLocaleString()}`
+  if (k === 'return_pct') return `${node.ref === 'entry' ? '편입대비' : '당일'} 수익률 ${op(node.op)} ${node.value}%`
+  if (k === 'high_break') return '52주 신고가 돌파'
+  if (k === 'date') {
+    const w = node.window === 'before' ? `${node.offset_days || 0}일 전까지` : node.window === 'after' ? '이후' : '당일'
+    return `${node.date} ${w}`
+  }
+  if (k === 'ir_readout') return `${node.metric || '발표'} ${op(node.op)} ${node.value}${node.unit || ''} (${node.date || '발표'} 판독)`
+  if (k === 'all') return (node.of || []).map(condToText).join(' 그리고 ')
+  if (k === 'any') return (node.of || []).map(condToText).join(' 또는 ')
+  return JSON.stringify(node)
+}
+
 function AutoTrade() {
   const [msgs, setMsgs] = useState([])
   const [input, setInput] = useState('')
@@ -534,6 +552,10 @@ function AutoTrade() {
             <div><b>방향</b> {sideKr(sel.side)}</div>
             <div><b>수량</b> {sel.size_value}{unitKr(sel.size_type)}</div>
             <div><b>상태</b> {statusKr(sel.status)} {sel.dry_run && <span className="badge">dry-run</span>}</div>
+          </div>
+          <div className="auto-sec"><b>조건 요약</b> <span className="muted small">(내가 입력한 조건)</span>
+            <div className="auto-prog"><b>진입</b> {sideKr(sel.side)} · {condToText(sel.condition)}</div>
+            <div className="auto-prog"><b>청산</b> {sel.exit_condition ? condToText(sel.exit_condition) : '없음(진입만)'}</div>
           </div>
           {(() => {
             const entryPx = firstPriceNode(sel.condition)

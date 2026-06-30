@@ -119,7 +119,19 @@ def board(country: str = "USA", view: str = "high", limit: int = 300) -> dict:
             df = fetch_new_today_highs(limit=limit, country=country, min_mcap=mm)
         else:
             df = fetch_new_highs("high", limit=limit, country=country, min_mcap=mm)
-        return {"rows": _records(df), "country": country, "view": view}
+        rows = _records(df)
+        # '연두색 음영' 플래그(8개월 내 2/3상 + mcap/peak_sales ≤ 4배) 부착
+        try:
+            import screen
+            fm = screen.flags_map([r.get("ticker") for r in rows if r.get("ticker")])
+            for r in rows:
+                f = fm.get(r.get("ticker"))
+                if f and f.get("flagged"):
+                    r["green"] = True
+                    r["green_note"] = f.get("note")
+        except Exception:
+            pass
+        return {"rows": rows, "country": country, "view": view}
     except Exception as e:
         return {"rows": [], "error": f"{type(e).__name__}: {e}"}
 
