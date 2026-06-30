@@ -1159,6 +1159,31 @@ def ops_telegram(body: OpsIn) -> dict:
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 
+# ───────────────────────── 티커 사전(모달 내 종목명 링크화용) ─────────────────────────
+@app.get("/api/tickers")
+def tickers() -> dict:
+    """{ticker: name} 전체 — 프론트가 모달 본문의 종목명/티커를 클릭 가능하게 링크화하는 데 사용.
+    (12시간 캐시)"""
+    def _build():
+        from db import connect
+        with connect() as conn:
+            rows = conn.execute("SELECT ticker, name FROM ticker_master").fetchall()
+        return {"map": {r["ticker"]: (r["name"] or r["ticker"]) for r in rows}}
+    return _cached(("tickers_map",), 43200, _build)
+
+
+# ───────────────────────── 유사 종목(peer 아이디어) ─────────────────────────
+@app.get("/api/peers")
+def peers_for(ticker: str) -> dict:
+    """모달 종목과 투자포인트/적응증/기전/에셋을 공유하는 peer 아이디어(하루 캐시)."""
+    import peers as pr
+    try:
+        return _cached(("peers", ticker.strip().upper()), 86400,
+                       lambda: pr.suggest(ticker))
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
 # ───────────────────────── 자동매매(조건매매) ─────────────────────────
 class AutoChatIn(BaseModel):
     messages: list[dict]                 # [{role:'user'|'assistant', content:str}]
