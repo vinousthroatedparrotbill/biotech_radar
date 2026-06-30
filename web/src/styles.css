@@ -353,13 +353,15 @@ input.wt { width: 4.2rem; border: 1px solid #cfd3da; border-radius: 6px; padding
    .tri-list 안에 inset:0로 떠서 신고가 리스트와 정확히 같은 크기.
    좌/우 삼분할 splitter가 그대로 동작 → 상승이유·상세가 함께 유동적으로 밀림 */
 .mid-overlay { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column;
-  background: #fff; }
-.mid-overlay .dock-bar { margin: 0 0 0.5rem; align-self: stretch; justify-content: space-between;
-  background: rgba(255,255,255,0.96); }
-.mid-overlay .dock-row { flex: 1 1 auto; min-height: 0; align-items: stretch; gap: 0.7rem;
-  overflow-x: auto; overflow-y: hidden; padding: 0; }
-.mid-overlay .dock-panel { flex: 1 1 0; min-width: 300px; flex-direction: column; }
-.mid-overlay .dock-body { flex: 1 1 auto; min-height: 0; max-height: none; }
+  background: rgba(231,243,240,0.55); border-radius: 12px; padding: 0.45rem; }
+.mid-overlay .dock-bar { margin: 0 0 0.45rem; align-self: stretch; justify-content: space-between;
+  border-radius: 10px; background: rgba(255,255,255,0.97); }
+/* 패널들이 가운데 칸 너비를 '등분' — 스크롤 없이 균등 분할(1개면 꽉 채움) */
+.mid-overlay .dock-row { flex: 1 1 auto; min-height: 0; align-items: stretch; gap: 0.5rem;
+  overflow: hidden; padding: 0; }
+.mid-overlay .dock-panel { flex: 1 1 0; min-width: 0; flex-direction: column; }
+.mid-overlay .dock-body { flex: 1 1 auto; min-width: 0; min-height: 0; max-height: none;
+  padding: 1rem 1.1rem; box-shadow: 0 16px 48px -20px rgba(16,48,46,0.6); }
 
 /* ── 클릭 가능한 티커(본문 내) ── */
 .tklink { color: var(--mint); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; font-weight: 600; }
