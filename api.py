@@ -226,6 +226,7 @@ class ReasonIn(BaseModel):
     country: str = "USA"        # USA | KOR
     rows: list[dict]            # [{ticker,name,close,perf_1d,market_cap}]
     generate: bool = True       # False면 캐시만 조회(peek), 생성 안 함
+    force: bool = False         # True면 캐시 있어도 무시하고 강제 재생성(재생성 버튼)
 
 
 @app.post("/api/reason")
@@ -238,7 +239,7 @@ def reason(body: ReasonIn) -> dict:
     _country = body.country if body.country in ("USA", "KOR") else None
     snap = latest_run_date(_country) or "_"
     hit = rc.get(body.country, body.kind, snap)
-    if hit:                                       # 스냅샷 동일 캐시 → 그대로
+    if hit and not body.force:                    # 스냅샷 동일 캐시 → 그대로(force면 무시)
         return {"markdown": hit, "cached": True}
     if not body.generate:                         # peek: 캐시만(생성 안 함)
         return {"markdown": None, "cached": False}

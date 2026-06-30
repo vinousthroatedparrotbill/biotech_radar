@@ -13,16 +13,17 @@ const patch = (url, body) =>
 export const getBoard = (country, view) => fetch(`/api/board?country=${country}&view=${view}`).then(j)
 export const getChart = (ticker, period, interval = '1d') => fetch(`/api/chart?ticker=${enc(ticker)}&period=${period}&interval=${interval}`).then(j)
 export const getStock = (ticker, name) => fetch(`/api/stock?ticker=${enc(ticker)}&name=${enc(name || '')}`).then(j)
-export const postReason = (kind, rows, generate = true, country = 'USA') => post('/api/reason', { kind, rows, generate, country })
+export const postReason = (kind, rows, generate = true, country = 'USA', force = false) => post('/api/reason', { kind, rows, generate, country, force })
 
 // 진행 중 이유분석 promise를 모듈 레벨에 보존 — 탭 전환(컴포넌트 언마운트)에도 유지
 const _reasonRuns = {}
 const _reasonKey = (kind, country) => country + '|' + kind
-export function runReason(kind, rows, country = 'USA') {
+export function runReason(kind, rows, country = 'USA', force = false) {
   const key = _reasonKey(kind, country)
+  if (force) delete _reasonRuns[key]            // 강제 재생성: 기존(완료된) promise 버리고 새로
   if (!_reasonRuns[key]) {
-    _reasonRuns[key] = postReason(kind, rows, true, country)
-      .then(d => d.markdown || '(분석 없음)')
+    _reasonRuns[key] = postReason(kind, rows, true, country, force)
+      .then(d => { delete _reasonRuns[key]; return d.markdown || '(분석 없음)' })  // 완료 후 정리 → 다음 재생성 가능
       .catch(e => { delete _reasonRuns[key]; throw e })
   }
   return _reasonRuns[key]

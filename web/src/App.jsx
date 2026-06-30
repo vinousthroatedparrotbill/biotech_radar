@@ -172,7 +172,8 @@ function Board({ country, view }) {
   const loadReason = () => {
     if (reasonBusy || !rows.length) return
     setReasonBusy(true)
-    api.runReason(reasonKind, rows.slice(0, 100), country)
+    // 버튼(생성/재생성)은 항상 강제 재생성(force) — 캐시가 있어도 새로 분석
+    api.runReason(reasonKind, rows.slice(0, 100), country, true)
       .then(md => setReason(md)).catch(e => setReason('⚠️ ' + e)).finally(() => setReasonBusy(false))
   }
 
