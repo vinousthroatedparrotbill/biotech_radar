@@ -325,8 +325,19 @@ input.wt { width: 4.2rem; border: 1px solid #cfd3da; border-radius: 6px; padding
 .auto-fired { margin-top: 0.3rem; background: #e3b34118; padding: 0.5rem; border-radius: 8px; }
 .auto-json { background: #00000030; padding: 0.5rem; border-radius: 8px; overflow-x: auto; font-size: 0.78rem; }
 
-/* ── 병렬 모달(계단식) ── */
-.modal.stack { box-shadow: 0 24px 70px -22px rgba(16,48,46,0.55); }
+/* ── 도킹 패널 스트립(상단 가로 배치, 리사이즈) — 중앙 오버레이 대체 ── */
+.dock-strip { margin: 0 0 1.4rem; }
+.dock-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem; }
+.dock-row { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding-bottom: 0.5rem; }
+.dock-panel { flex: 0 0 auto; display: flex; align-items: stretch; }
+.dock-body { position: relative; flex: 1 1 auto; min-width: 0;
+  max-height: calc(100vh - 150px); overflow-y: auto;
+  background: #fff; border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 14px 44px -20px rgba(16,48,46,0.5); padding: 1.1rem 1.3rem; }
+.dock-body h2 { margin: 0 0 0.2rem; color: var(--green); }
+.dock-body .x { position: absolute; top: 0.8rem; right: 1rem; z-index: 2;
+  border: 0; background: none; font-size: 1.3rem; cursor: pointer; color: var(--muted); }
+.dock-body section { margin-top: 1.3rem; padding-top: 0.9rem; border-top: 1px solid var(--line); }
 
 /* ── 클릭 가능한 티커(본문 내) ── */
 .tklink { color: var(--mint); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; font-weight: 600; }
@@ -350,5 +361,5 @@ input.wt { width: 4.2rem; border: 1px solid #cfd3da; border-radius: 6px; padding
 .peer-note { font-size: 0.82rem; color: #44524f; line-height: 1.5; margin-top: 0.3rem; }
 .peer-note p { margin: 0.15rem 0; }
 
-/* 연두색 음영 — 8개월 내 2/3상 + mcap/peak_sales ≤ 4배(승률 높았던 패턴) */
-.green-flag { background: #b9f6ca; border-radius: 4px; padding: 0 0.25rem; cursor: help; }
+/* 그린 플래그 아이콘 — 8개월 내 2/3상 + mcap/peak_sales ≤ 5배(승률 높았던 패턴) */
+.gflag { display: inline-flex; align-items: center; margin: 0 0.3rem 0 0.15rem; vertical-align: middle; cursor: help; }

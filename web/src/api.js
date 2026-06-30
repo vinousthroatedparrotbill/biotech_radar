@@ -122,19 +122,101 @@ export function mdToHtml(md) {
   return out.join('\n')
 }
 
-// 본문 텍스트(HTML) 안의 알려진 티커를 클릭 가능한 <span class="tklink">로 래핑.
-// 텍스트 노드만 변환(태그/속성·<a> 내부는 건너뜀), map에 정확히 존재하는 토큰만, 흔한 영단어는 제외.
+// 본문 텍스트(HTML) 안의 알려진 티커/회사명을 클릭 가능한 <span class="tklink">로 래핑.
+// 텍스트 노드만 변환(태그/속성·<a> 내부는 건너뜀). 티커는 map에 정확히 존재하는 ALL-CAPS 토큰만,
+// 흔한 영단어/바이오 약어는 제외. 회사명(map의 value)은 전체명 + 안전한 약칭으로 매칭(대소문자 무시, 최장일치).
 const _TK_STOP = new Set([
   'A', 'I', 'IT', 'IS', 'ON', 'OR', 'SO', 'BE', 'AT', 'IN', 'AS', 'AI', 'AN', 'OF', 'TO', 'BY', 'NO', 'UP',
-  'US', 'EU', 'AND', 'THE', 'FOR', 'ARE', 'CAN', 'MAY', 'NEW', 'ALL', 'CEO', 'CFO', 'FDA', 'IND', 'NDA',
+  'US', 'EU', 'UK', 'AND', 'THE', 'FOR', 'ARE', 'CAN', 'MAY', 'NEW', 'ALL', 'CEO', 'CFO', 'FDA', 'IND', 'NDA',
   'BLA', 'IPO', 'ETF', 'USA', 'API', 'II', 'III', 'IV', 'Q1', 'Q2', 'Q3', 'Q4', 'DATA', 'PHASE', 'NYSE', 'OTC',
+  // 흔한 바이오/금융 약어 — 티커와 충돌하지만 본문에선 일반명사처럼 쓰임 → 티커로 링크하지 않음
+  'RNA', 'DNA', 'MRNA', 'SIRNA', 'ADC', 'TCE', 'CAR', 'IL', 'CNS', 'NASH', 'MASH', 'NSCLC',
+  'ORR', 'PFS', 'OS', 'PASI', 'IGA', 'EPS', 'SOTP', 'DCF', 'P1', 'P2', 'P3',
 ])
+
+// 회사명 약칭을 만들 때 떼어내는 접미사(소문자, 끝의 마침표 제거)
+const _ALIAS_SUFFIX = new Set([
+  'pharmaceuticals', 'pharmaceutical', 'pharma', 'therapeutics', 'therapeutic', 'biosciences', 'bioscience',
+  'sciences', 'science', 'biopharmaceuticals', 'biopharma', 'biotechnology', 'biotechnologies', 'biotech',
+  'holdings', 'holding', 'corporation', 'incorporated', 'technologies', 'technology', 'laboratories',
+  'group', 'company', 'limited', 'bio', 'inc', 'corp', 'ltd', 'plc', 'co', 'llc', 'nv', 'sa', 'ag', 'ab',
+])
+// 약칭으로 쓰기엔 너무 일반적인 단어 → 전체명만 링크
+const _GENERIC_ALIAS = new Set([
+  'BIO', 'LIFE', 'HEALTH', 'HEALTHCARE', 'GLOBAL', 'AMERICAN', 'UNITED', 'NATIONAL', 'MEDICAL', 'PHARMA',
+  'MEDICINE', 'MEDICINES', 'GENETICS', 'GENOMICS', 'ONCOLOGY', 'IMMUNO', 'CELL', 'GENE', 'DRUG', 'CLINICAL',
+  'NOVA', 'NOVO', 'META', 'BETA', 'ALPHA', 'VITAL', 'PRIME', 'CORE', 'EDGE', 'NEXT', 'OPEN', 'TRUE', 'REAL',
+  'BLUE', 'NORTH', 'SOUTH', 'FIRST', 'GRAND', 'GREAT', 'THERAPY', 'GROUP', 'HOLDINGS', 'BIOPHARMA', 'BIOTECH',
+])
+
+// 큐레이션된 대형 제약사 별칭(소문자) → 티커. ticker_master에 풀네임이 없거나 약칭 생성이
+// 실패하는 흔한 빅파마를 보강. 모두 실제 상장 티커이며 이름 인덱스에 최우선으로 병합한다.
+const _CURATED_ALIASES = {
+  'pfizer': 'PFE', 'merck': 'MRK', 'merck & co': 'MRK', 'abbvie': 'ABBV', 'sanofi': 'SNY',
+  'novartis': 'NVS', 'astrazeneca': 'AZN', 'bristol myers': 'BMY', 'bristol-myers squibb': 'BMY',
+  'bristol myers squibb': 'BMY', 'bms': 'BMY', 'eli lilly': 'LLY', 'lilly': 'LLY', 'amgen': 'AMGN',
+  'gilead': 'GILD', 'regeneron': 'REGN', 'biogen': 'BIIB', 'vertex': 'VRTX', 'moderna': 'MRNA',
+  'gsk': 'GSK', 'glaxosmithkline': 'GSK', 'johnson & johnson': 'JNJ', 'j&j': 'JNJ', 'roche': 'RHHBY',
+  'genentech': 'RHHBY', 'novo nordisk': 'NVO', 'takeda': 'TAK', 'wave life sciences': 'WVE',
+}
+
+// 회사명 → 약칭 (끝의 접미사 단어들을 반복 제거)
+function _alias(name) {
+  let words = name.replace(/,/g, ' ').trim().split(/\s+/)
+  while (words.length > 1) {
+    const last = words[words.length - 1].toLowerCase().replace(/[.,]+$/, '')
+    if (_ALIAS_SUFFIX.has(last)) words.pop()
+    else break
+  }
+  return words.join(' ').trim()
+}
+
+// map(티커→회사명)에서 이름 인덱스를 1회 빌드(WeakMap 캐시).
+// 전체명 + 고유한 약칭만 등록하고, 두 종목이 같은 변형을 만들면 충돌로 제외.
+const _nameIdxCache = new WeakMap()
+function _buildNameIndex(map) {
+  let idx = _nameIdxCache.get(map)
+  if (idx) return idx
+  const cand = new Map()   // 소문자 변형 → 티커 (null = 충돌하여 제외)
+  const add = (variant, tk) => {
+    const k = variant.toLowerCase()
+    if (!cand.has(k)) cand.set(k, tk)
+    else if (cand.get(k) !== tk) cand.set(k, null)
+  }
+  for (const tk in map) {
+    if (!Object.prototype.hasOwnProperty.call(map, tk)) continue
+    const name = (map[tk] || '').trim()
+    if (name.length >= 4 && /[A-Za-z]/.test(name) && name.toUpperCase() !== tk) add(name, tk)
+    const al = _alias(name)
+    if (al.length >= 4 && al.toLowerCase() !== name.toLowerCase() && /[A-Za-z]/.test(al)
+      && al.toUpperCase() !== tk && !_GENERIC_ALIAS.has(al.toUpperCase())) add(al, tk)
+  }
+  const nameMap = new Map()
+  for (const [k, tk] of cand) if (tk) nameMap.set(k, tk)
+  // 큐레이션 별칭은 최우선 — 기존 변형/충돌을 덮어쓴다. '&'는 본문이 mdToHtml로
+  // '&amp;'로 이스케이프되므로 이스케이프 변형도 함께 등록한다.
+  for (const k in _CURATED_ALIASES) {
+    const tk = _CURATED_ALIASES[k]
+    nameMap.set(k, tk)
+    if (k.includes('&')) nameMap.set(k.replace(/&/g, '&amp;'), tk)
+  }
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // 최장일치 우선: 긴 이름을 alternation 앞쪽에 배치
+  const nameAlt = [...nameMap.keys()].sort((a, b) => b.length - a.length)
+    .map(k => `(?<![A-Za-z0-9])${esc(k)}(?![A-Za-z0-9])`)
+  // 이름 기준 전용 — 단독 대문자 티커 토큰(DNA/RNA 등 단어성 오탐) 제외, KR 6자리 코드만 추가 허용
+  const tokenSrc = (nameAlt.length ? nameAlt.join('|') + '|' : '') + '\\b\\d{6}\\b'
+  idx = { nameMap, re: new RegExp(tokenSrc, 'gi') }   // i 플래그 → 회사명은 대소문자 무시
+  _nameIdxCache.set(map, idx)
+  return idx
+}
+
 export function linkify(html, map) {
   if (!html || !map) return html || ''
-  const re = /(<[^>]+>)/g
-  const TK = /\b([A-Z]{1,6}|\d{6})\b/g
+  const { nameMap, re } = _buildNameIndex(map)
+  const tag = /(<[^>]+>)/g
   let inA = false
-  return html.split(re).map(seg => {
+  return html.split(tag).map(seg => {
     if (!seg) return seg
     if (seg[0] === '<') {
       const t = seg.slice(0, 3).toLowerCase()
@@ -143,10 +225,14 @@ export function linkify(html, map) {
       return seg
     }
     if (inA) return seg
-    return seg.replace(TK, (m) => {
-      if (_TK_STOP.has(m)) return m
-      if (!Object.prototype.hasOwnProperty.call(map, m)) return m
-      return `<span class="tklink" data-tk="${m}">${m}</span>`
+    // 한 번의 패스로 회사명/티커 모두 래핑 → 중복 래핑·교차 매칭 없음
+    return seg.replace(re, (m) => {
+      const byName = nameMap.get(m.toLowerCase())
+      if (byName) return `<span class="tklink" data-tk="${byName}">${m}</span>`
+      // 단독 토큰은 KR 6자리 코드만(명확). US 대문자 토큰(DNA/RNA 등)은 단어 오탐이라 링크 안 함 — 회사명으로만.
+      if (/^\d{6}$/.test(m) && Object.prototype.hasOwnProperty.call(map, m))
+        return `<span class="tklink" data-tk="${m}">${m}</span>`
+      return m
     })
   }).join('')
 }

@@ -2,6 +2,18 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import * as api from './api.js'
 import { PriceChart, PerfChart } from './Chart.jsx'
 
+/* 그린 플래그 — 8개월 내 2/3상 + mcap/peak_sales ≤ 5배(승률 높았던 패턴) 표식 */
+function GreenFlag({ title }) {
+  return (
+    <span className="gflag" title={title}>
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+        <line x1="2.5" y1="1.2" x2="2.5" y2="11" stroke="#0a3d3a" strokeWidth="1.4" strokeLinecap="round" />
+        <path d="M2.6 1.6 L10.2 3.7 L2.6 5.8 Z" fill="#3fae9b" />
+      </svg>
+    </span>
+  )
+}
+
 /* 상승 이유 마크다운 → 티커별 분석 텍스트 맵. 헤더 예: **회사명 · TICKER $123 (+4%)** */
 function parseReasonByTicker(md) {
   if (!md) return {}
@@ -76,18 +88,17 @@ const NAV = [
 export default function App() {
   const [country, setCountry] = useState('USA')
   const [page, setPage] = useState('high')
-  const [modals, setModals] = useState([])   // 동시에 여러 종목 모달(병렬 비교)
-  const [focusedTk, setFocusedTk] = useState(null)
+  const [modals, setModals] = useState([])   // 동시에 여러 종목 패널(병렬 비교, 상단 도킹)
+  const [dockW, setDockW] = useState({})      // 패널별 너비(px) — 티커별
   const [tickerMap, setTickerMap] = useState({})
   const meta = NAV.find(n => n.k === page)
 
   useEffect(() => { api.getTickers().then(d => setTickerMap(d.map || {})).catch(() => { }) }, [])
 
-  // 모달 열기(중복 티커는 무시하고 포커스만), 닫기, 전체 닫기
+  // 패널 열기(중복 티커는 무시), 닫기, 전체 닫기
   const openModal = useCallback((r) => {
     if (!r || !r.ticker) return
     setModals(ms => ms.some(x => x.ticker === r.ticker) ? ms : [...ms, r])
-    setFocusedTk(r.ticker)
   }, [])
   const closeModal = useCallback((tk) => setModals(ms => ms.filter(x => x.ticker !== tk)), [])
   const closeAll = useCallback(() => setModals([]), [])
@@ -114,6 +125,21 @@ export default function App() {
       </header>
 
       <div className="wrap">
+        {modals.length > 0 && (
+          <div className="dock-strip">
+            <div className="dock-bar">
+              <span className="muted small">{modals.length}개 패널 · 오른쪽 경계 드래그로 너비 조절 · 아래 리스트에서 계속 종목 추가</span>
+              {modals.length > 1 && <button className="btn ghost sm" onClick={closeAll}>모두 닫기 ✕</button>}
+            </div>
+            <div className="dock-row">
+              {modals.map(m => (
+                <DockPanel key={m.ticker} row={m} width={dockW[m.ticker] || 480}
+                  onResizeDelta={dx => setDockW(s => ({ ...s, [m.ticker]: clampW((s[m.ticker] || 480) + dx, 320, 900) }))}
+                  onClose={() => closeModal(m.ticker)} onPick={openModal} tickerMap={tickerMap} />
+              ))}
+            </div>
+          </div>
+        )}
         <WatchedBanner onPick={openModal} />
         {meta.kind === 'board' && <Board country={country} view={page} onPick={openModal} tickerMap={tickerMap} />}
         {meta.kind === 'news' && <DailyNews country={country} />}
@@ -124,14 +150,6 @@ export default function App() {
         {meta.kind === 'wl' && <Watchlist onPick={openModal} />}
       </div>
 
-      {modals.length > 0 && <div className="backdrop" onClick={closeAll} />}
-      {modals.map((m, i) => (
-        <StockModal key={m.ticker} row={m} index={i}
-          focused={focusedTk === m.ticker}
-          onFocus={() => setFocusedTk(m.ticker)}
-          onClose={() => closeModal(m.ticker)}
-          onPick={openModal} tickerMap={tickerMap} />
-      ))}
       <Chat />
       <OpsWidget country={country} />
     </>
@@ -248,7 +266,7 @@ function Board({ country, view, onPick, tickerMap }) {
                     onMouseEnter={e => showPop(r, e)}
                     onMouseMove={e => hasReason && setPop(p => p ? { ...p, x: e.clientX, y: e.clientY } : p)}
                     onMouseLeave={() => setPop(null)}>
-                    <td className="l"><span className={'pick-name' + (r.green ? ' green-flag' : '')} title={r.green ? (r.green_note || '8개월 내 2/3상 · mcap/peak_sales ≤ 5배') : undefined}>{r.name || r.ticker}</span><span className="pick-tk muted">{r.ticker}</span></td>
+                    <td className="l"><span className="pick-name">{r.name || r.ticker}</span>{r.green && <GreenFlag title={r.green_note || '8개월 내 2/3상 · mcap/peak_sales ≤ 5배 (승률 높았던 패턴)'} />}<span className="pick-tk muted">{r.ticker}</span></td>
                     <td>{fmtPrice(r.close, r.ticker)}</td>
                     {PERF_COLS.map(([k]) => <td key={k}><Pct v={r[k]} /></td>)}
                     <td>{fmtMcap(r.market_cap, r.ticker)}</td>
@@ -410,17 +428,44 @@ function Catalysts({ onPick }) {
 function condToText(node) {
   if (!node) return '—'
   const op = (o) => ({ '>=': '≥', '<=': '≤', '>': '>', '<': '<', '==': '=' }[o] || o)
-  const k = node.kind
-  if (k === 'price') return `현재가 ${op(node.op)} ${Number(node.value).toLocaleString()}`
-  if (k === 'return_pct') return `${node.ref === 'entry' ? '편입대비' : '당일'} 수익률 ${op(node.op)} ${node.value}%`
-  if (k === 'high_break') return '52주 신고가 돌파'
-  if (k === 'date') {
-    const w = node.window === 'before' ? `${node.offset_days || 0}일 전까지` : node.window === 'after' ? '이후' : '당일'
-    return `${node.date} ${w}`
+  const isCmp = (o) => ['>=', '<=', '>', '<', '=='].includes(o)
+  // 사용자가 입력한 메모/힌트를 항상 뒤에 덧붙임
+  const withExtra = (s, n) => {
+    const extra = [n.note, n.hint].filter(Boolean).join(' · ')
+    return extra ? `${s} — ${extra}` : s
   }
-  if (k === 'ir_readout') return `${node.metric || '발표'} ${op(node.op)} ${node.value}${node.unit || ''} (${node.date || '발표'} 판독)`
-  if (k === 'all') return (node.of || []).map(condToText).join(' 그리고 ')
-  if (k === 'any') return (node.of || []).map(condToText).join(' 또는 ')
+  const k = node.kind
+  if (k === 'price') return withExtra(`현재가 ${op(node.op)} ${Number(node.value).toLocaleString()}`, node)
+  if (k === 'return_pct') return withExtra(`${node.ref === 'entry' ? '편입대비' : '당일'} 수익률 ${op(node.op)} ${node.value}%`, node)
+  if (k === 'high_break') return withExtra('52주 신고가 돌파', node)
+  if (k === 'twap') return withExtra(`${node.tranches}회 ${node.horizon} TWAP 분할`, node)
+  if (k === 'date') {
+    let w
+    if (node.window === 'before') w = `${node.offset_days || 0}일 전까지`
+    else if (node.window === 'after') w = node.poll_until ? `이후~${node.poll_until}` : '이후'
+    else w = '당일'
+    return withExtra(`${node.date} ${w}`, node)
+  }
+  if (k === 'ir_readout') {
+    let s = isCmp(node.op)
+      ? `[발표 판독] ${node.metric || '발표'} ${op(node.op)} ${node.value}${node.unit || ''}`
+      : `[발표 판독] ${node.metric || '발표'}`
+    const win = []
+    if (node.date) win.push(node.date)
+    if (node.window) win.push(node.window === 'after' ? '이후' : node.window)
+    if (node.poll_until) win.push(`~${node.poll_until}`)
+    if (win.length) s += ` (${win.join(' ')})`
+    // 판독은 힌트(다중 hold 기준)를 항상 표시
+    if (node.hint) s += ` — ${node.hint}`
+    if (node.note) s += ` — ${node.note}`
+    return s
+  }
+  if (k === 'all' || k === 'any') {
+    const label = k === 'all' ? '모두 충족:' : '하나라도:'
+    const lines = (node.of || []).map(child =>
+      condToText(child).split('\n').map((ln, i) => (i === 0 ? `• ${ln}` : `  ${ln}`)).join('\n'))
+    return [label, ...lines].join('\n')
+  }
   return JSON.stringify(node)
 }
 
@@ -578,8 +623,8 @@ function AutoTrade() {
             )
           })()}
           <div className="auto-sec"><b>조건 요약</b> <span className="muted small">(내가 입력한 조건)</span>
-            <div className="auto-prog"><b>진입</b> {sideKr(sel.side)} · {condToText(sel.condition)}</div>
-            <div className="auto-prog"><b>청산</b> {sel.exit_condition ? condToText(sel.exit_condition) : '없음(진입만)'}</div>
+            <div className="auto-prog" style={{ whiteSpace: 'pre-line' }}><b>진입</b> {sideKr(sel.side)} · {condToText(sel.condition)}</div>
+            <div className="auto-prog" style={{ whiteSpace: 'pre-line' }}><b>청산</b> {sel.exit_condition ? condToText(sel.exit_condition) : '없음(진입만)'}</div>
           </div>
           <div className="auto-sec"><b>조건 진행</b>
             <div className="auto-prog">{sel.last_eval?.summary || '아직 평가 전'}</div>
@@ -640,15 +685,19 @@ function Portfolios({ onPick }) {
     setBench([isKR ? '463050' : 'IBB'])
   }, [sel, list])
 
+  const loadId = useRef(0)   // 요청 경합 가드: 최신 요청 결과만 반영(벤치마크 전환 시 stale 응답 무시)
   const load = useCallback(() => {
     if (sel == null) return
+    const myId = ++loadId.current
     setLoading(true); setDetail(null)
     api.getPortfolio(sel, bench.join(',')).then(d => {
+      if (myId !== loadId.current) return
       setDetail(d)
       const t = {}; (d.holdings || []).forEach(h => t[h.ticker] = Math.round((h.weight_pct || 0) * 10) / 10); setTgt(t)
       setLiveTs(new Date())
-    }).catch(() => setDetail(null)).finally(() => setLoading(false))
-    api.getPortfolioTxs(sel).then(d => setTxs(d.txs || [])).catch(() => setTxs([]))
+    }).catch(() => { if (myId === loadId.current) setDetail(null) })
+      .finally(() => { if (myId === loadId.current) setLoading(false) })
+    api.getPortfolioTxs(sel).then(d => { if (myId === loadId.current) setTxs(d.txs || []) }).catch(() => { if (myId === loadId.current) setTxs([]) })
   }, [sel, bench])
   useEffect(() => { load() }, [load])
 
@@ -981,13 +1030,14 @@ function StockDetail({ row, onClose, onPick, tickerMap }) {
   )
 }
 
-/* 오버레이 모달 — 여러 개를 병렬(계단식 오프셋)로 띄워 비교. 공유 backdrop은 App에서 1개만 렌더. */
-function StockModal({ row, index = 0, focused, onFocus, onClose, onPick, tickerMap }) {
-  const off = Math.min(index, 8) * 34
+/* 도킹 패널 — 상단에 가로로 나란히 배치, 오른쪽 경계 Splitter로 너비 조절. 보드 리스트는 아래에 그대로 유지. */
+function DockPanel({ row, width, onResizeDelta, onClose, onPick, tickerMap }) {
   return (
-    <div className="modal stack" onMouseDown={onFocus}
-      style={{ marginTop: off, marginLeft: off, zIndex: focused ? 90 : 81 }}>
-      <StockDetail row={row} onClose={onClose} onPick={onPick} tickerMap={tickerMap} />
+    <div className="dock-panel" style={{ width }}>
+      <div className="dock-body">
+        <StockDetail row={row} onClose={onClose} onPick={onPick} tickerMap={tickerMap} />
+      </div>
+      <Splitter onDrag={onResizeDelta} />
     </div>
   )
 }
