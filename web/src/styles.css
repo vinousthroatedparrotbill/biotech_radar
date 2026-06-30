@@ -327,9 +327,10 @@ input.wt { width: 4.2rem; border: 1px solid #cfd3da; border-radius: 6px; padding
 
 /* ── 도킹 패널 — 페이지 위에 떠 있는 플로팅 오버레이(Z축). 보드는 뒤에 그대로 보임(밀려나지 않음) ── */
 /* 컨테이너는 클릭 통과(pointer-events:none) → 빈 영역 클릭은 뒤 보드로 전달. 바/행/패널만 상호작용 */
-/* 상승이유(좌) 폭만큼 오프셋 → 가운데 '리스트' 영역 위에 오버레이(상승이유는 왼쪽에 그대로 보임).
-   보드가 가운데 정렬(max-width 1680)이라 중앙 오프셋 + 상승이유폭(~18rem) 보정 */
-.dock-strip { position: fixed; top: 70px; left: calc(max(0px, (100vw - 1680px) / 2) + 18rem); z-index: 90;
+/* 가운데 '리스트' 컬럼 위에 정확히 오버레이(상승이유는 왼쪽에 그대로 보임).
+   --list-left/--list-width는 App에서 .tri-list를 ResizeObserver로 실측해 주입(리사이즈·스플리터 추적).
+   보드가 없는 페이지에선 폴백(16rem) 적용 */
+.dock-strip { position: fixed; top: 70px; left: var(--list-left, 16rem); z-index: 90;
   max-width: 100vw; display: flex; flex-direction: column; align-items: flex-start;
   padding: 0 0.8rem 0.6rem; pointer-events: none; }
 .dock-bar { display: flex; align-items: center; justify-content: flex-start; gap: 0.8rem;

@@ -133,8 +133,8 @@ export default function App() {
             </div>
             <div className="dock-row">
               {modals.map(m => (
-                <DockPanel key={m.ticker} row={m} width={dockW[m.ticker] || 480}
-                  onResizeDelta={dx => setDockW(s => ({ ...s, [m.ticker]: clampW((s[m.ticker] || 480) + dx, 320, 900) }))}
+                <DockPanel key={m.ticker} row={m} width={dockW[m.ticker] || 'var(--list-width, 480px)'}
+                  onResizeDelta={dx => setDockW(s => ({ ...s, [m.ticker]: clampW((s[m.ticker] || curListW()) + dx, 320, 900) }))}
                   onClose={() => closeModal(m.ticker)} onPick={openModal} tickerMap={tickerMap} />
               ))}
             </div>
@@ -171,6 +171,8 @@ function Splitter({ onDrag }) {
 }
 
 const clampW = (w, min, max) => Math.max(min, Math.min(max, w))
+// 측정된 리스트 너비(--list-width)를 px 숫자로 — 패널 첫 드래그 시작값(미측정 시 480 폴백)
+const curListW = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--list-width')) || 480
 const PERF_COLS = [['perf_1d', '1D'], ['perf_7d', '1W'], ['perf_1m', '1M'], ['perf_3m', '3M'], ['perf_6m', '6M'], ['perf_1y', '1Y']]
 
 /* ───────────── 보드 3분할 (좌: 상승이유 · 중: 티커 리스트 · 우: 인라인 상세) — 가로 리사이즈 ───────────── */
@@ -184,6 +186,24 @@ function Board({ country, view, onPick, tickerMap }) {
   const [picked, setPicked] = useState(null)
   const [leftW, setLeftW] = useState(250)    // 상승이유 너비(px)
   const [rightW, setRightW] = useState(580)  // 상세 너비(px)
+  const listRef = useRef(null)               // 가운데 '리스트' 컬럼 — 도킹 패널 정렬 기준
+
+  // 가운데 리스트 컬럼의 실제 위치/너비를 측정 → CSS 변수로 노출(도킹 패널 정렬·기본 너비)
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    const measure = () => {
+      const r = el.getBoundingClientRect()
+      const root = document.documentElement.style
+      root.setProperty('--list-left', r.left + 'px')
+      root.setProperty('--list-width', r.width + 'px')
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    window.addEventListener('resize', measure)
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure) }
+  }, [leftW, rightW])
 
   const apiView = isHigh ? (sub === 'new' ? 'new' : 'high') : 'movers'
   const reasonKind = view === 'movers' ? 'movers' : 'high'
@@ -237,7 +257,7 @@ function Board({ country, view, onPick, tickerMap }) {
       <Splitter onDrag={dx => setLeftW(w => clampW(w + dx, 150, 480))} />
 
       {/* 중: 티커 리스트 (넓히면 perf 컬럼 전체 노출) */}
-      <div className="tri-list">
+      <div className="tri-list" ref={listRef}>
         <div className="board-head">
           <h2 className="wordmark sec" style={{ margin: 0 }}>{isHigh ? '52주 신고가' : '상승폭'}</h2>
           {isHigh && (
