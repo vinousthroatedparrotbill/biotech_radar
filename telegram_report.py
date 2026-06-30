@@ -910,15 +910,18 @@ def daily_run() -> dict:
     except Exception as e:
         main_result["triggers_error"] = str(e)
 
-    # 8) 웹 'AI 상승이유' 캐시(DB) 채우기 — 신고가/상승폭 둘 다. 보드 스냅샷 날짜로 저장
-    #    → 웹(로컬·Render)이 '생성' 안 눌러도 자동 표시 + 다음 스냅샷까지 유지.
+    # 8) 웹 'AI 상승이유' 캐시(DB) 채우기 — **웹 보드와 동일한 USA 스코프**로 생성해야
+    #    보드 전 종목이 덮인다(텔레그램용 highs/movers는 country=None이라 외국 종목이 섞여
+    #    set이 달라짐 → 보드 상위 누락됨). 웹 보드와 같은 country='USA' + 넉넉한 limit 사용.
     try:
         import reason_cache as _rc
         _snap = latest_run_date("USA") or datetime.now().strftime("%Y-%m-%d")
+        _hi = fetch_new_highs("high", limit=100, country="USA", min_mcap=1500.0)
+        _mv = fetch_top_movers(limit=100, min_mcap=1500.0, min_perf=5.0, country="USA")
         main_result["reason_high"] = len(_rc.refresh("USA", "high",
-                                                     highs.to_dict("records"), _snap))
+                                                     _hi.to_dict("records"), _snap))
         main_result["reason_movers"] = len(_rc.refresh("USA", "movers",
-                                                       movers.to_dict("records"), _snap))
+                                                       _mv.to_dict("records"), _snap))
     except Exception as e:
         main_result["reason_cache_error"] = str(e)
 
