@@ -362,6 +362,13 @@ input.wt { width: 4.2rem; border: 1px solid #cfd3da; border-radius: 6px; padding
 .mid-overlay .dock-panel { flex: 1 1 0; min-width: 0; flex-direction: column; }
 .mid-overlay .dock-body { flex: 1 1 auto; min-width: 0; min-height: 0; max-height: none;
   padding: 1rem 1.1rem; box-shadow: 0 16px 48px -20px rgba(16,48,46,0.6); }
+/* 모달 좌·우 모서리 리사이즈 핸들 — 오버레이 위(z=26)에 떠서 잡기 쉬움. leftW/rightW 구동 */
+.mid-overlay .ov-edge { position: absolute; top: 0; bottom: 0; width: 16px; z-index: 26; display: flex; }
+.mid-overlay .ov-edge-l { left: -8px; }
+.mid-overlay .ov-edge-r { right: -8px; }
+.mid-overlay .ov-edge .splitter { flex: 1 1 auto; width: 100%; }
+.mid-overlay .ov-edge .splitter::after { left: 7px; width: 3px; background: var(--mint); opacity: 0.55; }
+.mid-overlay .ov-edge .splitter:hover::after { opacity: 1; width: 4px; }
 
 /* ── 클릭 가능한 티커(본문 내) ── */
 .tklink { color: var(--mint); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; font-weight: 600; }

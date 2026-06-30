@@ -303,8 +303,15 @@ function Board({ country, view, onPick, tickerMap, modals = [], onCloseModal, on
             그대로 리사이즈 → 상승이유(좌)·원래 상세(우)가 유동적으로 함께 밀림 */}
         {modals.length > 0 && (
           <div className="mid-overlay">
+            {/* 모달 좌·우 모서리 리사이즈 핸들 — 드래그하면 상승이유(좌)·원래 상세(우)가 함께 유동적으로 움직임 */}
+            <div className="ov-edge ov-edge-l" title="왼쪽 경계 — 상승이유와 함께 너비 조절">
+              <Splitter onDrag={dx => setLeftW(w => clampW(w + dx, 150, 480))} />
+            </div>
+            <div className="ov-edge ov-edge-r" title="오른쪽 경계 — 상세와 함께 너비 조절">
+              <Splitter onDrag={dx => setRightW(w => clampW(w - dx, 340, 1000))} />
+            </div>
             <div className="dock-bar">
-              <span className="muted small">{modals.length}개 패널 · 좌·우 경계 드래그로 너비 조절 · 뒤 리스트에서 계속 추가</span>
+              <span className="muted small">{modals.length}개 패널 · 좌·우 모서리를 드래그하면 상승이유·상세와 함께 너비 조절</span>
               {modals.length > 1 && <button className="btn ghost sm" onClick={onCloseAll}>모두 닫기 ✕</button>}
             </div>
             <div className="dock-row">
