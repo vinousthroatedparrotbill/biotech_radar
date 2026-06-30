@@ -231,8 +231,9 @@ def _find_next_p23(ticker: str, name: str) -> dict | None:
     }
 
 
-def _insert_p23_catalyst(ticker: str, res: dict) -> bool:
-    """찾은 readout을 catalysts에 clinical_readout으로 insert. 중복이면 skip. 삽입 여부 반환."""
+def _insert_p23_catalyst(ticker: str, res: dict, source: str = "ai_p23_fill") -> bool:
+    """찾은 readout을 catalysts에 clinical_readout으로 insert. 중복이면 skip. 삽입 여부 반환.
+    source='memo'면 메모 파싱에서 온 사용자 데이터."""
     iso = res["date"]
     phase = res["phase"]
     prog = res.get("program") or ""
@@ -241,7 +242,8 @@ def _insert_p23_catalyst(ticker: str, res: dict) -> bool:
     if gran != "exact":                        # 분기/월 등 정밀도 표기를 제목에 남김
         title += " (가이던스 시점)"
     title = title[:300]
-    desc = (f"date_hint: {res.get('source','')[:80]} · 출처: AI 2/3상 보강"
+    origin = "메모(투자메모)" if source == "memo" else "AI 2/3상 보강"
+    desc = (f"date_hint: {res.get('source','')[:80]} · 출처: {origin}"
             f"({gran}, conf={res.get('confidence','')})")
     now = datetime.now().isoformat(timespec="seconds")
     with connect() as c:
@@ -256,7 +258,7 @@ def _insert_p23_catalyst(ticker: str, res: dict) -> bool:
             "INSERT INTO catalysts (ticker, event_date, event_type, title, "
             "description, source, fetched_at) VALUES (?,?,?,?,?,?,?) "
             "ON CONFLICT (ticker, event_date, event_type, title) DO NOTHING",
-            (ticker, iso, "clinical_readout", title, desc, "ai_p23_fill", now))
+            (ticker, iso, "clinical_readout", title, desc, source, now))
         c.commit()
     return True
 
@@ -315,6 +317,170 @@ def fill_p23_for_board(country: str | None = None,
             "skipped_ttl": skipped_ttl}
 
 
+# ─────────────── 투자메모 → 지표 파싱(ZERO-TOKEN 데일리런의 소스) ───────────────
+# 메모 저장 시 1회만 싸게(claude-haiku-4-5, text-only, NO web_search) 파싱:
+#   • base case 글로벌 피크 연매출($M) → peak_sales_est(basis='memo', TTL 무시=사용자 데이터)
+#   • 다음 2/3상 readout 날짜 → catalysts(source='memo')
+# 절대 지어내지 않음(사용자 standing rule): 메모에 명시된 값만, 없으면 null.
+
+def peak_from_memo(ticker: str) -> float | None:
+    """메모에서 파싱한 base case 피크매출($M). basis='memo'는 사용자 데이터라 TTL 무시."""
+    with connect() as c:
+        r = c.execute(
+            "SELECT peak_sales_m FROM peak_sales_est WHERE ticker=? AND basis='memo'",
+            (ticker,)).fetchone()
+    if not r or r["peak_sales_m"] is None:
+        return None
+    try:
+        v = float(r["peak_sales_m"])
+    except Exception:
+        return None
+    return v if v > 0 else None
+
+
+def _has_memo(ticker: str) -> bool:
+    with connect() as c:
+        r = c.execute("SELECT 1 FROM memos WHERE ticker=? LIMIT 1", (ticker,)).fetchone()
+    return bool(r)
+
+
+def parse_memo_metrics(ticker: str, force: bool = False) -> dict:
+    """ticker의 모든 메모 본문을 합쳐(최신순) claude-haiku-4-5(저렴·텍스트전용, 도구/web_search
+    없음)로 1회 파싱 → peak(base case)·2/3상 날짜 추출 후 DB 캐시. 추출된 값 dict 반환.
+    절대 지어내지 않음: 메모에 명시된 값만, 없으면 null. 실패 시 {} 반환."""
+    with connect() as c:
+        rows = c.execute(
+            "SELECT body FROM memos WHERE ticker=? ORDER BY created_at DESC",
+            (ticker,)).fetchall()
+    if not rows:
+        return {}
+    text = "\n\n---\n\n".join((r["body"] or "") for r in rows).strip()
+    if not text:
+        return {}
+    key = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+    if not key:
+        return {}
+    import anthropic
+    cl = anthropic.Anthropic(api_key=key)
+    today = date.today().isoformat()
+    prompt = (
+        "아래는 한 종목에 대한 투자자의 메모 전문이다. 메모 텍스트에 **명시적으로 적혀 있는** "
+        "값만 추출하라. 추론·추측·외부지식 사용 절대 금지. 적혀 있지 않으면 반드시 null.\n"
+        "1) peak_sales_m: 투자자가 메모에 **'peak'(피크/최대 매출)로 명시한** 자산별 글로벌 "
+        "연간 피크 매출만 $M(백만달러) 숫자로 **합산**하라.\n"
+        "   - 메모에 'peak'으로 적힌 수치 = 곧 사용자의 base case다. 메모에 '업사이드가 다 "
+        "찼다' 같은 코멘트가 있어도 적힌 peak 수치를 그대로 사용하라. 특정 수치가 명시적으로 "
+        "'bull/낙관/optimistic/upside 시나리오'라고 **라벨된 경우에만** 제외.\n"
+        "   - 시가총액(MC)·EV·implied MC·목표주가·합산 MC 등 **매출이 아닌 수치는 절대 제외**. "
+        "예: 'vyjuvek: peak $1B ... = $5B MC' 에서는 peak인 $1B(=1000)만 취하고 $5B MC는 무시.\n"
+        "   - 예: 'vyjuvek peak $1B + kb407 peak $1B' → 1000+1000 = 2000. "
+        "단위: $1B=1000, $1.5B=1500, $750M=750. peak이 하나도 없으면 null.\n"
+        f"2) p23_date: 다음 **2상 또는 3상** topline/data readout 예정일(YYYY-MM-DD). "
+        "분기/반기/월만 있으면 대표일로 정규화(Q1→03-31,Q2→06-30,Q3→09-30,Q4→12-31,"
+        f"1H→06-30,2H→12-31,월말). 오늘({today}) 이후 가장 가까운 2/3상만. "
+        "1상·4상·승인/PDUFA·단순 enrollment는 제외. 명시 없으면 null.\n"
+        "3) p23_phase: \"Phase 2\" | \"Phase 3\" | \"Phase 2/3\" 중 하나, 없으면 null.\n"
+        "4) program: 해당 자산명/적응증, 없으면 null.\n"
+        "마지막 줄에 JSON만 출력(다른 텍스트 금지): "
+        "{\"peak_sales_m\": <숫자 또는 null>, \"p23_date\": <\"YYYY-MM-DD\" 또는 null>, "
+        "\"p23_phase\": <문자열 또는 null>, \"program\": <문자열 또는 null>}\n\n"
+        f"=== 메모 전문 ===\n{text}")
+    txt = ""
+    try:
+        r = cl.messages.create(
+            model="claude-haiku-4-5", max_tokens=600, temperature=0,
+            messages=[{"role": "user", "content": prompt}])
+        txt = "".join(b.text for b in r.content if b.type == "text")
+    except Exception as e:
+        log.warning("parse_memo_metrics LLM 실패 %s: %s", ticker, e)
+        return {}
+    # 견고 파싱 — 마지막 JSON 객체
+    obj = None
+    for m in re.finditer(r"\{[^{}]*peak_sales_m[^{}]*\}", txt, re.S):
+        try:
+            obj = json.loads(m.group(0))
+        except Exception:
+            obj = None
+    out: dict = {}
+    # ── peak ──
+    peak = obj.get("peak_sales_m") if isinstance(obj, dict) else None
+    if peak is None:                                # 폴백: peak_sales_m 뒤 숫자 직접
+        mm = re.search(r'peak_sales_m["\s:=]*\$?\s*([\d,]+(?:\.\d+)?)', txt, re.I)
+        if mm:
+            try:
+                peak = float(mm.group(1).replace(",", ""))
+            except Exception:
+                peak = None
+    try:
+        peak = float(peak) if peak is not None else None
+    except Exception:
+        peak = None
+    if peak and peak > 0:
+        with connect() as c:
+            c.execute(
+                """INSERT INTO peak_sales_est (ticker, peak_sales_m, basis, updated_at)
+                   VALUES (?,?,?,?) ON CONFLICT (ticker) DO UPDATE SET
+                     peak_sales_m=excluded.peak_sales_m, basis=excluded.basis,
+                     updated_at=excluded.updated_at""",
+                (ticker, peak, "memo", datetime.now().isoformat(timespec="seconds")))
+            c.commit()
+        out["peak_sales_m"] = peak
+    # ── 2/3상 readout ──
+    if isinstance(obj, dict):
+        ed = obj.get("p23_date")
+        if ed and str(ed).strip().lower() not in ("null", "none", ""):
+            dm = _DATE_RE.search(str(ed))
+            iso = None
+            if dm:
+                try:
+                    iso = date(int(dm.group(1)), int(dm.group(2)),
+                               int(dm.group(3))).isoformat()
+                except Exception:
+                    iso = None
+            if iso and iso >= today:                # 과거 readout은 스킵
+                phase_raw = str(obj.get("p23_phase") or "").strip()
+                pl = phase_raw.lower()
+                if "2/3" in phase_raw or ("2" in pl and "3" in pl):
+                    phase = "Phase 2/3"
+                elif "3" in pl:
+                    phase = "Phase 3"
+                elif "2" in pl:
+                    phase = "Phase 2"
+                else:
+                    phase = "Phase 2/3"             # 명시 없으면 둘 다 매칭
+                res = {"date": iso, "phase": phase,
+                       "program": (str(obj.get("program") or "").strip())[:120],
+                       "granularity": "exact", "source": "메모", "confidence": "memo"}
+                try:
+                    _insert_p23_catalyst(ticker, res, source="memo")
+                    out["p23_date"] = iso
+                    out["p23_phase"] = phase
+                except Exception as e:
+                    log.warning("parse_memo_metrics p23 insert 실패 %s: %s", ticker, e)
+    return out
+
+
+def parse_all_memo_metrics(force: bool = False) -> dict:
+    """memos의 모든 DISTINCT ticker에 대해 parse_memo_metrics 실행.
+    force=False면 이미 메모 peak이 있는 종목은 스킵(토큰 절약). 통계/세부 dict 반환."""
+    with connect() as c:
+        rows = c.execute("SELECT DISTINCT ticker FROM memos").fetchall()
+    tickers = [r["ticker"] for r in rows if r["ticker"]]
+    parsed = skipped = 0
+    details: dict = {}
+    for tk in tickers:
+        if not force and peak_from_memo(tk) is not None:
+            skipped += 1
+            details[tk] = {"skipped": True, "peak_sales_m": peak_from_memo(tk)}
+            continue
+        res = parse_memo_metrics(tk, force=force)
+        parsed += 1
+        details[tk] = res
+    with_peak = sum(1 for tk in tickers if peak_from_memo(tk) is not None)
+    return {"tickers": len(tickers), "parsed": parsed, "skipped": skipped,
+            "with_peak": with_peak, "details": details}
+
+
 def _upsert_flag(ticker, snap, flagged, ratio, ps, mcap, cat, note):
     with connect() as c:
         c.execute(
@@ -335,8 +501,10 @@ def _upsert_flag(ticker, snap, flagged, ratio, ps, mcap, cat, note):
 
 
 def refresh_board_flags(country: str | None = None) -> dict:
-    """보드(신고가 ∪ 상승폭) 종목에 대해 플래그 갱신. 8개월 내 2/3상 있는 종목만 peak_sales
-    추정(캐시) → mcap/peak_sales ≤ 4면 flagged. 데일리런에서 호출."""
+    """보드(신고가 ∪ 상승폭) 종목 플래그 갱신 — **메모 게이트 + ZERO-TOKEN(DB만 읽음)**.
+    플래그 조건: ① 메모 존재 ② 메모 base-case peak 존재 ③ 8개월 내 2/3상(catalysts) 존재
+    ④ mcap/peak ≤ RATIO_MAX. peak·2/3상은 메모 저장 시 1회 파싱된 캐시를 읽기만 하므로
+    LLM/web_search 호출이 전혀 없다. 데일리런에서 호출."""
     from collectors.high_low import fetch_new_highs, fetch_top_movers
     floor = 1500.0
     if country == "KOR":
@@ -356,30 +524,35 @@ def refresh_board_flags(country: str | None = None) -> dict:
     except Exception as e:
         return {"error": str(e)}
     snap = date.today().isoformat()
-    flagged_n = checked = 0
+    flagged_n = with_memo = 0
     for tk, d in cand.items():
         try:
-            cat = upcoming_p23(tk)
-            if not cat:
-                _upsert_flag(tk, snap, False, None, None, d["mcap"], None, "2/3상 없음")
-                continue
-            checked += 1
             mcap = d.get("mcap")
-            ps = peak_sales(tk, d["name"], cat.get("title", "")) if mcap else None
-            if not ps or not mcap:
-                _upsert_flag(tk, snap, False, None, (ps or {}).get("peak_sales_m"),
-                             mcap, cat, "peak_sales 추정 실패")
+            if not _has_memo(tk):                       # ① 메모 없음
+                _upsert_flag(tk, snap, False, None, None, mcap, None, "메모 없음")
                 continue
-            ratio = mcap / ps["peak_sales_m"]
+            with_memo += 1
+            peak = peak_from_memo(tk)                   # ② 메모 peak 없음
+            if peak is None:
+                _upsert_flag(tk, snap, False, None, None, mcap, None, "메모에 peak 없음")
+                continue
+            cat = upcoming_p23(tk)                      # ③ 2/3상 일정 없음
+            if not cat:
+                _upsert_flag(tk, snap, False, None, peak, mcap, None, "2/3상 일정 없음")
+                continue
+            if not mcap:
+                _upsert_flag(tk, snap, False, None, peak, mcap, cat, "시총 없음")
+                continue
+            ratio = mcap / peak                         # ④ 비율
             flagged = ratio <= RATIO_MAX
-            note = (f"2/3상 {cat['date']} · mcap/peak_sales {ratio:.1f}x "
-                    f"(peak ${ps['peak_sales_m']:,.0f}M)")
-            _upsert_flag(tk, snap, flagged, ratio, ps["peak_sales_m"], mcap, cat, note)
+            note = (f"2/3상 {cat['date']} · mcap/peak {ratio:.1f}x "
+                    f"(peak ${peak:,.0f}M · 메모)")
+            _upsert_flag(tk, snap, flagged, ratio, peak, mcap, cat, note)
             if flagged:
                 flagged_n += 1
         except Exception as e:
             log.warning("flag 계산 실패 %s: %s", tk, e)
-    return {"candidates": len(cand), "with_p23": checked, "flagged": flagged_n}
+    return {"candidates": len(cand), "with_memo": with_memo, "flagged": flagged_n}
 
 
 def flags_map(tickers: list[str]) -> dict[str, dict]:

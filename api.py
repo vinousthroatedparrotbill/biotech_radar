@@ -733,11 +733,33 @@ def memos_for(ticker: str) -> dict:
         return {"memos": [], "error": f"{type(e).__name__}: {e}"}
 
 
+def _kick_memo_parse(ticker: str) -> None:
+    """메모 저장 후 백그라운드(데몬 스레드)로 screen.parse_memo_metrics 실행 —
+    응답 지연 없이 peak·2/3상을 캐시. 실패해도 저장은 깨지지 않음(전부 try/except)."""
+    if not ticker:
+        return
+    import threading
+
+    def _run():
+        try:
+            import screen
+            screen.parse_memo_metrics(ticker, force=True)
+        except Exception:
+            pass
+
+    try:
+        threading.Thread(target=_run, daemon=True).start()
+    except Exception:
+        pass
+
+
 @app.post("/api/memos/by_ticker/{ticker}")
 def memo_add(ticker: str, body: MemoIn) -> dict:
     import memo
     try:
-        return {"id": memo.add(ticker, body.body)}
+        mid = memo.add(ticker, body.body)
+        _kick_memo_parse(ticker)            # 메모 → 지표 파싱(논블로킹)
+        return {"id": mid}
     except ValueError as e:
         return {"error": str(e)}
     except Exception as e:
@@ -749,6 +771,16 @@ def memo_update(memo_id: int, body: MemoIn) -> dict:
     import memo
     try:
         memo.update(memo_id, body.body)
+        # memo_id만 받으므로 ticker 조회 후 파싱 트리거(논블로킹)
+        try:
+            from db import connect
+            with connect() as c:
+                row = c.execute("SELECT ticker FROM memos WHERE id=?",
+                                (memo_id,)).fetchone()
+            if row and row["ticker"]:
+                _kick_memo_parse(row["ticker"])
+        except Exception:
+            pass
         return {"ok": True}
     except ValueError as e:
         return {"ok": False, "error": str(e)}

@@ -925,14 +925,10 @@ def daily_run() -> dict:
     except Exception as e:
         main_result["reason_cache_error"] = str(e)
 
-    # 9) '연두색 음영' 스크린 — 8개월 내 2/3상 + mcap/peak_sales ≤ 4배 플래그
-    #    먼저 보드 종목의 2/3상 readout 날짜를 web_search로 보강(누락 메우기) → 플래그 갱신.
+    # 9) '연두색 음영' 스크린 — 메모 게이트 + ZERO-TOKEN(DB만 읽음).
+    #    peak·2/3상은 메모 저장 시 1회 파싱된 캐시를 읽으므로 web_search 보강 호출 없음.
     try:
         import screen
-        try:
-            main_result["p23_fill"] = screen.fill_p23_for_board("USA")
-        except Exception as e:
-            main_result["p23_fill_error"] = str(e)
         main_result["green_flags"] = screen.refresh_board_flags("USA")
     except Exception as e:
         main_result["screen_error"] = str(e)
@@ -1007,13 +1003,9 @@ def daily_run_kr() -> dict:
     except Exception as e:
         main_result["reason_cache_error"] = str(e)
 
-    # '연두색 음영' 스크린 (KR) — 2/3상 readout 날짜 보강 후 플래그 갱신
+    # '연두색 음영' 스크린 (KR) — 메모 게이트 + ZERO-TOKEN(DB만 읽음, web_search 없음)
     try:
         import screen
-        try:
-            main_result["p23_fill"] = screen.fill_p23_for_board("KOR")
-        except Exception as e:
-            main_result["p23_fill_error"] = str(e)
         main_result["green_flags"] = screen.refresh_board_flags("KOR")
     except Exception as e:
         main_result["screen_error"] = str(e)
