@@ -359,11 +359,10 @@ def _notify_fill(order: dict, kind: str, price, eval_res: dict) -> None:
     kind='매수' | '매도'."""
     unit = {"weight_pct": "% 비중", "amount": " (금액)", "shares": "주"}.get(order["size_type"], "")
     pr = f"{price:,.2f}" if price else "?"
-    msg = (f"🔔 <b>자동매매 {kind} 발동</b> (dry-run · 페이퍼, 실주문 미발송)\n"
+    msg = (f"<b>자동매매 {kind} 발동</b> (dry-run)\n"
            f"<b>{order.get('name') or order['ticker']} ({order['ticker']})</b>\n"
            f"• {kind} {order['size_value']:g}{unit} @ {pr}\n"
-           f"• 조건: {eval_res.get('summary','')}\n"
-           f"⚠️ 증권사 미연동 — 실제 주문은 나가지 않았습니다.")
+           f"• 조건: {eval_res.get('summary','')}")
     try:
         from telegram_report import send
         send(msg)

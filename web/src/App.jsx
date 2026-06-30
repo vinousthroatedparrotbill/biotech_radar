@@ -248,7 +248,7 @@ function Board({ country, view, onPick, tickerMap }) {
                     onMouseEnter={e => showPop(r, e)}
                     onMouseMove={e => hasReason && setPop(p => p ? { ...p, x: e.clientX, y: e.clientY } : p)}
                     onMouseLeave={() => setPop(null)}>
-                    <td className="l"><span className={'pick-name' + (r.green ? ' green-flag' : '')} title={r.green ? (r.green_note || '8개월 내 2/3상 · mcap/peak_sales ≤ 4배') : undefined}>{r.name || r.ticker}</span><span className="pick-tk muted">{r.ticker}</span></td>
+                    <td className="l"><span className={'pick-name' + (r.green ? ' green-flag' : '')} title={r.green ? (r.green_note || '8개월 내 2/3상 · mcap/peak_sales ≤ 5배') : undefined}>{r.name || r.ticker}</span><span className="pick-tk muted">{r.ticker}</span></td>
                     <td>{fmtPrice(r.close, r.ticker)}</td>
                     {PERF_COLS.map(([k]) => <td key={k}><Pct v={r[k]} /></td>)}
                     <td>{fmtMcap(r.market_cap, r.ticker)}</td>
@@ -507,7 +507,7 @@ function AutoTrade() {
     <div className="auto-wrap">
       <div className="auto-head">
         <h2 className="wordmark" style={{ margin: 0 }}>자동 매매</h2>
-        <span className="muted small">조건 충족 시 발동 — ⚠️ 증권사 미연동(dry-run), 실주문은 나가지 않습니다</span>
+        <span className="muted small">조건 충족 시 발동 · dry-run</span>
         <button className="btn ghost sm" onClick={runEval} disabled={evalBusy}>{evalBusy ? '평가…' : '지금 평가'}</button>
       </div>
 
@@ -553,10 +553,6 @@ function AutoTrade() {
             <div><b>수량</b> {sel.size_value}{unitKr(sel.size_type)}</div>
             <div><b>상태</b> {statusKr(sel.status)} {sel.dry_run && <span className="badge">dry-run</span>}</div>
           </div>
-          <div className="auto-sec"><b>조건 요약</b> <span className="muted small">(내가 입력한 조건)</span>
-            <div className="auto-prog"><b>진입</b> {sideKr(sel.side)} · {condToText(sel.condition)}</div>
-            <div className="auto-prog"><b>청산</b> {sel.exit_condition ? condToText(sel.exit_condition) : '없음(진입만)'}</div>
-          </div>
           {(() => {
             const entryPx = firstPriceNode(sel.condition)
             const exitPx = firstPriceNode(sel.exit_condition)
@@ -581,6 +577,10 @@ function AutoTrade() {
               </div>
             )
           })()}
+          <div className="auto-sec"><b>조건 요약</b> <span className="muted small">(내가 입력한 조건)</span>
+            <div className="auto-prog"><b>진입</b> {sideKr(sel.side)} · {condToText(sel.condition)}</div>
+            <div className="auto-prog"><b>청산</b> {sel.exit_condition ? condToText(sel.exit_condition) : '없음(진입만)'}</div>
+          </div>
           <div className="auto-sec"><b>조건 진행</b>
             <div className="auto-prog">{sel.last_eval?.summary || '아직 평가 전'}</div>
             {sel.last_eval?.at && <div className="muted small">마지막 평가 {String(sel.last_eval.at).slice(0, 16).replace('T', ' ')}</div>}
@@ -590,11 +590,11 @@ function AutoTrade() {
             <div className="auto-prog"><b>매수 체결</b> {sel.buy_at ? `${String(sel.buy_at).slice(0, 16).replace('T', ' ')} @ ${sel.buy_price?.toLocaleString()}` : '대기'}</div>
             <div className="auto-prog"><b>청산 계획</b> {sel.exit_condition ? (sel.exit_eval?.summary || '(보유 시 평가)') : '없음(진입만)'}</div>
             <div className="auto-prog"><b>매도 체결</b> {sel.sell_at ? `${String(sel.sell_at).slice(0, 16).replace('T', ' ')} @ ${sel.sell_price?.toLocaleString()}` : '대기'}</div>
-            <div className="muted small" style={{ marginTop: '0.3rem' }}>실제 체결은 페이퍼(dry-run) — 증권사 연동 후 실주문으로 대체됩니다.</div>
+            <div className="muted small" style={{ marginTop: '0.3rem' }}>dry-run</div>
           </div>
           <div className="auto-sec"><b>매매 실행 내역</b>
             {sel.status === 'triggered'
-              ? <div className="auto-fired">🔔 발동됨 · {String(sel.triggered_at || '').slice(0, 16).replace('T', ' ')}<br />{sel.triggered_detail?.summary}<br /><span className="muted small">⚠️ 증권사 미연동 — 실제 주문은 발송되지 않음(dry-run)</span></div>
+              ? <div className="auto-fired">발동됨 · {String(sel.triggered_at || '').slice(0, 16).replace('T', ' ')}<br />{sel.triggered_detail?.summary}<br /><span className="muted small">dry-run</span></div>
               : <div className="muted small">발동 전 — 조건 충족 시 여기에 발동 내역이 기록됩니다.</div>}
           </div>
           <details className="auto-sec"><summary className="muted small">조건 원본(JSON)</summary><pre className="auto-json">{JSON.stringify(sel.condition, null, 2)}</pre></details>
