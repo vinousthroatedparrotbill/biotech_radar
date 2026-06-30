@@ -13,6 +13,8 @@ const patch = (url, body) =>
 export const getBoard = (country, view) => fetch(`/api/board?country=${country}&view=${view}`).then(j)
 export const getChart = (ticker, period, interval = '1d') => fetch(`/api/chart?ticker=${enc(ticker)}&period=${period}&interval=${interval}`).then(j)
 export const getStock = (ticker, name) => fetch(`/api/stock?ticker=${enc(ticker)}&name=${enc(name || '')}`).then(j)
+export const getPeers = (ticker) => fetch(`/api/peers?ticker=${enc(ticker)}`).then(j)
+export const getTickers = () => fetch('/api/tickers').then(j)
 export const postReason = (kind, rows, generate = true, country = 'USA', force = false) => post('/api/reason', { kind, rows, generate, country, force })
 
 // 진행 중 이유분석 promise를 모듈 레벨에 보존 — 탭 전환(컴포넌트 언마운트)에도 유지
@@ -118,4 +120,33 @@ export function mdToHtml(md) {
   }
   if (inList) out.push('</ul>')
   return out.join('\n')
+}
+
+// 본문 텍스트(HTML) 안의 알려진 티커를 클릭 가능한 <span class="tklink">로 래핑.
+// 텍스트 노드만 변환(태그/속성·<a> 내부는 건너뜀), map에 정확히 존재하는 토큰만, 흔한 영단어는 제외.
+const _TK_STOP = new Set([
+  'A', 'I', 'IT', 'IS', 'ON', 'OR', 'SO', 'BE', 'AT', 'IN', 'AS', 'AI', 'AN', 'OF', 'TO', 'BY', 'NO', 'UP',
+  'US', 'EU', 'AND', 'THE', 'FOR', 'ARE', 'CAN', 'MAY', 'NEW', 'ALL', 'CEO', 'CFO', 'FDA', 'IND', 'NDA',
+  'BLA', 'IPO', 'ETF', 'USA', 'API', 'II', 'III', 'IV', 'Q1', 'Q2', 'Q3', 'Q4', 'DATA', 'PHASE', 'NYSE', 'OTC',
+])
+export function linkify(html, map) {
+  if (!html || !map) return html || ''
+  const re = /(<[^>]+>)/g
+  const TK = /\b([A-Z]{1,6}|\d{6})\b/g
+  let inA = false
+  return html.split(re).map(seg => {
+    if (!seg) return seg
+    if (seg[0] === '<') {
+      const t = seg.slice(0, 3).toLowerCase()
+      if (t === '<a ' || t === '<a>') inA = true
+      else if (t === '</a') inA = false
+      return seg
+    }
+    if (inA) return seg
+    return seg.replace(TK, (m) => {
+      if (_TK_STOP.has(m)) return m
+      if (!Object.prototype.hasOwnProperty.call(map, m)) return m
+      return `<span class="tklink" data-tk="${m}">${m}</span>`
+    })
+  }).join('')
 }

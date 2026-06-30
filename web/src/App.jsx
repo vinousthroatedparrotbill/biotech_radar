@@ -76,8 +76,21 @@ const NAV = [
 export default function App() {
   const [country, setCountry] = useState('USA')
   const [page, setPage] = useState('high')
-  const [modal, setModal] = useState(null)
+  const [modals, setModals] = useState([])   // 동시에 여러 종목 모달(병렬 비교)
+  const [focusedTk, setFocusedTk] = useState(null)
+  const [tickerMap, setTickerMap] = useState({})
   const meta = NAV.find(n => n.k === page)
+
+  useEffect(() => { api.getTickers().then(d => setTickerMap(d.map || {})).catch(() => { }) }, [])
+
+  // 모달 열기(중복 티커는 무시하고 포커스만), 닫기, 전체 닫기
+  const openModal = useCallback((r) => {
+    if (!r || !r.ticker) return
+    setModals(ms => ms.some(x => x.ticker === r.ticker) ? ms : [...ms, r])
+    setFocusedTk(r.ticker)
+  }, [])
+  const closeModal = useCallback((tk) => setModals(ms => ms.filter(x => x.ticker !== tk)), [])
+  const closeAll = useCallback(() => setModals([]), [])
 
   return (
     <>
@@ -101,17 +114,24 @@ export default function App() {
       </header>
 
       <div className="wrap">
-        <WatchedBanner onPick={setModal} />
-        {meta.kind === 'board' && <Board country={country} view={page} onPick={setModal} />}
+        <WatchedBanner onPick={openModal} />
+        {meta.kind === 'board' && <Board country={country} view={page} onPick={openModal} tickerMap={tickerMap} />}
         {meta.kind === 'news' && <DailyNews country={country} />}
-        {meta.kind === 'memos' && <Memos onPick={setModal} />}
-        {meta.kind === 'cat' && <Catalysts onPick={setModal} />}
-        {meta.kind === 'pf' && <Portfolios onPick={setModal} />}
-        {meta.kind === 'auto' && <AutoTrade onPick={setModal} />}
-        {meta.kind === 'wl' && <Watchlist onPick={setModal} />}
+        {meta.kind === 'memos' && <Memos onPick={openModal} />}
+        {meta.kind === 'cat' && <Catalysts onPick={openModal} />}
+        {meta.kind === 'pf' && <Portfolios onPick={openModal} />}
+        {meta.kind === 'auto' && <AutoTrade onPick={openModal} />}
+        {meta.kind === 'wl' && <Watchlist onPick={openModal} />}
       </div>
 
-      {modal && <StockModal row={modal} onClose={() => setModal(null)} />}
+      {modals.length > 0 && <div className="backdrop" onClick={closeAll} />}
+      {modals.map((m, i) => (
+        <StockModal key={m.ticker} row={m} index={i}
+          focused={focusedTk === m.ticker}
+          onFocus={() => setFocusedTk(m.ticker)}
+          onClose={() => closeModal(m.ticker)}
+          onPick={openModal} tickerMap={tickerMap} />
+      ))}
       <Chat />
       <OpsWidget country={country} />
     </>
@@ -136,7 +156,7 @@ const clampW = (w, min, max) => Math.max(min, Math.min(max, w))
 const PERF_COLS = [['perf_1d', '1D'], ['perf_7d', '1W'], ['perf_1m', '1M'], ['perf_3m', '3M'], ['perf_6m', '6M'], ['perf_1y', '1Y']]
 
 /* ───────────── 보드 3분할 (좌: 상승이유 · 중: 티커 리스트 · 우: 인라인 상세) — 가로 리사이즈 ───────────── */
-function Board({ country, view }) {
+function Board({ country, view, onPick, tickerMap }) {
   const isHigh = view === 'high'
   const [sub, setSub] = useState('new')   // 신고가 전용: new(오늘 신규) | all(전체)
   const [rows, setRows] = useState([])
@@ -245,7 +265,7 @@ function Board({ country, view }) {
       {/* 우: 인라인 상세 (클릭 시) — 중간을 넓히면 거꾸로 줄어듦 */}
       <div className="tri-detail" style={{ width: rightW }}>
         {picked
-          ? <div className="detail-inline" key={picked.ticker}><StockDetail row={picked} onClose={() => setPicked(null)} /></div>
+          ? <div className="detail-inline" key={picked.ticker}><StockDetail row={picked} onClose={() => setPicked(null)} onPick={onPick} tickerMap={tickerMap} /></div>
           : <div className="detail-empty muted">← 종목을 클릭하면 여기에 상세가 표시됩니다.</div>}
       </div>
 
@@ -857,7 +877,7 @@ function Lazy({ title, children, defaultOpen = false }) {
 }
 
 /* ───────────── 종목 상세 (모달/인라인 공용 본문) ───────────── */
-function StockDetail({ row, onClose }) {
+function StockDetail({ row, onClose, onPick, tickerMap }) {
   const [period, setPeriod] = useState('1y')
   const [interval, setIntervalV] = useState('1d')
   const [chart, setChart] = useState(null)
@@ -902,6 +922,8 @@ function StockDetail({ row, onClose }) {
         {chart ? (chart.error || !chart.dates?.length ? <p className="muted">차트 데이터 없음</p> : <PriceChart data={chart} period={period} />)
           : <div className="chartbox skel" />}
 
+        <Lazy title="Peer 아이디어"><PeerIdeas ticker={row.ticker} name={row.name} onPick={onPick} tickerMap={tickerMap} /></Lazy>
+
         <Lazy title="IR · 파이프라인 URL 설정"><UrlSettings ticker={row.ticker} init={stock?.urls} /></Lazy>
         <Lazy title="IR 발표자료(PDF) 추출"><IrPdfs ticker={row.ticker} /></Lazy>
         <Lazy title="파이프라인 페이지"><PipelinePage url={stock?.urls?.pipeline_url} /></Lazy>
@@ -931,19 +953,59 @@ function StockDetail({ row, onClose }) {
         </Lazy>
 
         <Lazy title="내부자 거래 (SEC Form 4)"><Insiders ticker={row.ticker} /></Lazy>
-        <Lazy title="투자 리포트"><AiReport ticker={row.ticker} /></Lazy>
+        <Lazy title="투자 리포트"><AiReport ticker={row.ticker} onPick={onPick} tickerMap={tickerMap} /></Lazy>
         <Lazy title="투자 메모" defaultOpen><MemoSection ticker={row.ticker} /></Lazy>
     </>
   )
 }
 
-/* 오버레이 모달 (메모/카탈리스트/포트폴리오/관심종목 탭에서 사용) */
-function StockModal({ row, onClose }) {
+/* 오버레이 모달 — 여러 개를 병렬(계단식 오프셋)로 띄워 비교. 공유 backdrop은 App에서 1개만 렌더. */
+function StockModal({ row, index = 0, focused, onFocus, onClose, onPick, tickerMap }) {
+  const off = Math.min(index, 8) * 34
   return (
-    <>
-      <div className="backdrop" onClick={onClose} />
-      <div className="modal"><StockDetail row={row} onClose={onClose} /></div>
-    </>
+    <div className="modal stack" onMouseDown={onFocus}
+      style={{ marginTop: off, marginLeft: off, zIndex: focused ? 90 : 81 }}>
+      <StockDetail row={row} onClose={onClose} onPick={onPick} tickerMap={tickerMap} />
+    </div>
+  )
+}
+
+/* 본문 마크다운 + 알려진 티커 클릭 → 병렬 모달. .tklink 클릭은 상위(행) onClick 전파 차단. */
+function Linkified({ md, map, onPick, className = 'md', stop = false }) {
+  const html = useMemo(() => api.linkify(api.mdToHtml(md || ''), map || {}), [md, map])
+  const onClick = (e) => {
+    const el = e.target.closest && e.target.closest('.tklink')
+    if (!el) return
+    e.preventDefault(); if (stop) e.stopPropagation()
+    const tk = el.getAttribute('data-tk')
+    if (tk && onPick) onPick({ ticker: tk, name: (map && map[tk]) || tk })
+  }
+  return <div className={className} onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />
+}
+
+/* ───────────── 모달 하위: Peer 아이디어 (유사 투자 아이디어 — 클릭 시 병렬 모달) ───────────── */
+const PEER_BASIS = { thesis: '투자포인트', indication: '적응증', mechanism: '기전', asset: '에셋' }
+function PeerIdeas({ ticker, name, onPick, tickerMap }) {
+  const [d, setD] = useState(undefined)
+  useEffect(() => { setD(undefined); api.getPeers(ticker).then(setD).catch(() => setD({ error: 'x' })) }, [ticker])
+  if (d === undefined) return <p className="muted">유사 아이디어 분석 중… (최초 1회 1–2분, 이후 캐시)</p>
+  if (d.error) return <p className="muted">불러오기 실패</p>
+  const peers = d.peers || []
+  return (
+    <div className="peers">
+      {d.target_thesis && <Linkified className="peer-thesis md" md={d.target_thesis} map={tickerMap} onPick={onPick} />}
+      {peers.length === 0 ? <p className="muted">추천 아이디어 없음</p> : peers.map((p, i) => (
+        <div key={p.ticker || i} className="peer-row" onClick={() => onPick && onPick({ ticker: p.ticker, name: p.name })}>
+          <div className="peer-top">
+            <span className="peer-name">{p.name || p.ticker} <span className="muted">({p.ticker})</span></span>
+            <span className="peer-px">{fmtPrice(p.price, p.ticker)}</span>
+            {p.basis && <span className="peer-basis">{PEER_BASIS[p.basis] || p.basis}</span>}
+            {p.in_universe === false && <span className="peer-ref">참고</span>}
+          </div>
+          {p.note && <Linkified className="peer-note" md={p.note} map={tickerMap} onPick={onPick} stop />}
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -1002,7 +1064,7 @@ function MemoSection({ ticker }) {
 }
 
 /* ───────────── 모달 하위: AI 리포트 ───────────── */
-function AiReport({ ticker }) {
+function AiReport({ ticker, onPick, tickerMap }) {
   const [rep, setRep] = useState(undefined)
   const [busy, setBusy] = useState(false)
   useEffect(() => { api.getReport(ticker).then(d => setRep(d.cached ? d : null)).catch(() => setRep(null)) }, [ticker])
@@ -1012,7 +1074,7 @@ function AiReport({ ticker }) {
   return (
     <>
       <div className="muted small">{(rep.generated_at || '').slice(0, 16).replace('T', ' ')} · {rep.model || ''}</div>
-      <div className="md" dangerouslySetInnerHTML={{ __html: api.mdToHtml(rep.body) }} />
+      <Linkified md={rep.body} map={tickerMap} onPick={onPick} />
       <button className="btn ghost sm" onClick={gen} disabled={busy}>{busy ? '재생성 중… (1–3분)' : '재생성'}</button>
     </>
   )

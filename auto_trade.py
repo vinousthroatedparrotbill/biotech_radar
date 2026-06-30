@@ -462,43 +462,74 @@ _BUILDER_SYS = (
     "[중요 — IR/임상 발표 판독은 실제로 지원된다] '못 한다'고 답하지 마라. 발표일 이후 엔진이 "
     "**회사 IR/뉴스룸 페이지 본문·보도자료·뉴스기사 본문·(한국)DART 공시 본문을 폴링(~15분)**하며 "
     "지정한 metric 수치를 LLM으로 추출해 비교한다. 그러니 '임상 발표 후 MADRS 8점 이상이면 매수' 같은 "
-    "요청은 ir_readout{date(예정 발표일 또는 추정), metric, op, value, hint}로 설계하라(필요하면 발표 "
-    "예정일을 사용자에게 물어라). 단 폴링 주기(~15분)와 일부 페이지 차단 가능성 때문에 '즉시'가 아니라 "
-    "'근실시간 best-effort'라는 점만 한 줄로 안내해도 된다.\n"
-    "[원칙] 실제 증권사 미연동(dry-run)이라 발동돼도 실주문은 안 나가고 페이퍼로 기록된다는 점을 알고 "
-    "설계하되, 조건 자체는 정확해야 한다. 답은 반드시 propose_condition 도구로만. 한국어로 질문/요약."
+    "요청은 ir_readout{date, metric, op, value, hint}로 설계하라.\n"
+    "[발표일·사실은 직접 조사 — 사용자에게 되묻지 마라] '3상 발표 전날 매도', 'CSU Phase 3 readout 후' "
+    "같이 날짜/이벤트가 필요하면 **web_search·search_clinicaltrials·get_dart_disclosures·get_kr_news·"
+    "fetch_url 도구로 예정 발표일(또는 가이던스 분기)을 네가 직접 찾아서** date 조건에 넣어라. "
+    "예: 'CLDX CSU 3상 발표 전날 매도' → CLDX(Celldex) barzolvolimab CSU Phase 3 readout 예정일을 검색→"
+    "확정 후 exit_condition=date{date:발표일, window:before, offset_days:1}. 날짜를 못 찾을 때만(정말 "
+    "미공개) 사용자에게 물어라. 기전/적응증/에셋도 모르면 검색해서 정확히. 폴링(~15분) best-effort 안내 가능.\n"
+    "[원칙] 실제 증권사 미연동(dry-run)이라 발동돼도 실주문은 안 나가고 페이퍼로 기록됨을 알고 설계하되, "
+    "조건은 정확해야 한다. 충분히 명확해지면 **propose_condition(status:complete)** 로 마무리, 정말 확인이 "
+    "필요한 것만 propose_condition(status:need_info, question)으로 하나씩 물어라. 한국어."
 )
 
 
 def build_condition(messages: list[dict]) -> dict:
-    """대화(messages: [{role, content}]) → {status, question} 또는 {status, order}.
-    프론트 챗 빌더가 호출."""
+    """대화 → {status:'need_info', question} 또는 {status:'complete', order}.
+    **웹 챗봇급** — web_search + 임상/공시 리서치 툴로 발표일·기전 등을 직접 조사한 뒤 조건화한다
+    (예: 'CLDX CSU 3상 발표 전날 매도' → 발표 예정일을 스스로 검색해 date 조건에 반영)."""
     key = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
     if not key:
         return {"status": "error", "error": "ANTHROPIC_API_KEY 미설정"}
     import anthropic
+    import bot_agent
+    import bot_tools
     cl = anthropic.Anthropic(api_key=key)
     msgs = [{"role": m["role"], "content": m["content"]} for m in (messages or [])
             if m.get("content")]
     if not msgs:
         return {"status": "error", "error": "메시지 없음"}
-    try:
-        r = cl.messages.create(
-            model=CLAUDE_MODEL, max_tokens=2000, system=_BUILDER_SYS,
-            tools=[_BUILDER_TOOL], tool_choice={"type": "tool", "name": "propose_condition"},
-            messages=msgs)
-        tu = next((b for b in r.content if b.type == "tool_use"), None)
-        if not tu:
-            return {"status": "error", "error": "도구 응답 없음"}
-        out = tu.input
-        # 한국 종목명 → 코드 보정
-        if out.get("status") == "complete" and out.get("order"):
-            try:
-                import portfolio as pf
-                o = out["order"]
-                o["ticker"] = pf._resolve_ticker(o.get("ticker", ""))
-            except Exception:
-                pass
-        return out
-    except Exception as e:
-        return {"status": "error", "error": f"{type(e).__name__}: {e}"}
+    tools = bot_tools.TOOL_DEFS + bot_agent.WEB_TOOLS + [_BUILDER_TOOL]
+
+    for _step in range(10):
+        try:
+            r = cl.messages.create(
+                model=CLAUDE_MODEL, max_tokens=8000,
+                thinking={"type": "adaptive"},
+                system=_BUILDER_SYS, tools=tools, messages=msgs)
+        except Exception as e:
+            return {"status": "error", "error": f"{type(e).__name__}: {e}"}
+
+        if r.stop_reason == "pause_turn":                 # 서버 도구(web_search) 자동 재개
+            msgs.append({"role": "assistant", "content": r.content})
+            continue
+        if r.stop_reason == "tool_use":
+            tus = [b for b in r.content if b.type == "tool_use"]
+            prop = next((b for b in tus if b.name == "propose_condition"), None)
+            if prop:                                       # 최종 산출
+                out = dict(prop.input)
+                if out.get("status") == "complete" and out.get("order"):
+                    try:
+                        import portfolio as pf
+                        out["order"]["ticker"] = pf._resolve_ticker(
+                            out["order"].get("ticker", ""))
+                    except Exception:
+                        pass
+                return out
+            # 리서치 툴 실행 후 재개
+            msgs.append({"role": "assistant", "content": r.content})
+            results = []
+            for tu in tus:
+                try:
+                    o = bot_tools.run_tool(tu.name, tu.input)
+                except Exception as e:
+                    o = {"error": f"{type(e).__name__}: {e}"}
+                results.append({"type": "tool_result", "tool_use_id": tu.id,
+                                "content": json.dumps(o, ensure_ascii=False, default=str)[:15000]})
+            msgs.append({"role": "user", "content": results})
+            continue
+        # end_turn(텍스트만) → 질문으로 간주
+        txt = "".join(b.text for b in r.content if b.type == "text").strip()
+        return {"status": "need_info", "question": txt or "조건을 좀 더 구체적으로 알려줘."}
+    return {"status": "error", "error": "빌더 루프 한도 초과 — 다시 시도해줘"}

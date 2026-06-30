@@ -324,3 +324,28 @@ input.wt { width: 4.2rem; border: 1px solid #cfd3da; border-radius: 6px; padding
 .auto-chart { margin-top: 0.4rem; }
 .auto-fired { margin-top: 0.3rem; background: #e3b34118; padding: 0.5rem; border-radius: 8px; }
 .auto-json { background: #00000030; padding: 0.5rem; border-radius: 8px; overflow-x: auto; font-size: 0.78rem; }
+
+/* ── 병렬 모달(계단식) ── */
+.modal.stack { box-shadow: 0 24px 70px -22px rgba(16,48,46,0.55); }
+
+/* ── 클릭 가능한 티커(본문 내) ── */
+.tklink { color: var(--mint); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; font-weight: 600; }
+.tklink:hover { color: var(--green2); text-decoration: underline; }
+
+/* ── Peer 아이디어 ── */
+.peers { display: flex; flex-direction: column; gap: 0.5rem; }
+.peer-thesis { font-size: 0.88rem; line-height: 1.55; background: #f5f9f8; border: 1px solid var(--line);
+  border-radius: 10px; padding: 0.5rem 0.75rem; margin-bottom: 0.2rem; }
+.peer-row { border: 1px solid var(--line); border-radius: 10px; padding: 0.55rem 0.75rem; cursor: pointer;
+  background: #fff; transition: border-color .15s, background .15s; }
+.peer-row:hover { border-color: var(--mint); background: #f7faf9; }
+.peer-top { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.peer-name { font-weight: 700; color: var(--green); }
+.peer-name .muted { font-weight: 500; }
+.peer-px { margin-left: auto; font-weight: 600; font-size: 0.9rem; }
+.peer-basis { font-size: 0.72rem; font-weight: 700; color: var(--green2); background: #e7f3f0;
+  border: 1px solid #cfe3dd; border-radius: 999px; padding: 0.05rem 0.5rem; }
+.peer-ref { font-size: 0.68rem; font-weight: 600; color: var(--muted); background: #f0f4f3;
+  border: 1px solid var(--line); border-radius: 999px; padding: 0.05rem 0.45rem; }
+.peer-note { font-size: 0.82rem; color: #44524f; line-height: 1.5; margin-top: 0.3rem; }
+.peer-note p { margin: 0.15rem 0; }
