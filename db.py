@@ -256,6 +256,16 @@ CREATE TABLE IF NOT EXISTS peak_sales_est (
     updated_at    TEXT NOT NULL
 );
 
+-- 2/3상 readout 날짜 자동 보강(catalyst_fill) 체크 캐시 — 매일 같은 종목을 web_search
+-- 재호출하지 않도록 TTL 기록. found=False(미발견)는 TTL 후 재확인, 이미 catalysts에
+-- 미래 readout이 있으면 upcoming_p23 게이트에서 자동 스킵되므로 여긴 기록만.
+CREATE TABLE IF NOT EXISTS catalyst_check (
+    ticker      TEXT PRIMARY KEY,
+    checked_at  TEXT NOT NULL,           -- ISO YYYY-MM-DDTHH:MM:SS
+    found       BOOLEAN NOT NULL DEFAULT FALSE,
+    note        TEXT
+);
+
 -- '연두색 음영' 스크린 플래그 — 8개월 내 2/3상 readout + mcap/peak_sales ≤ 4배. 데일리 갱신.
 CREATE TABLE IF NOT EXISTS screen_flags (
     ticker          TEXT PRIMARY KEY,
