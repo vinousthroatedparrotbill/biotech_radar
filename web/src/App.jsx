@@ -128,7 +128,7 @@ export default function App() {
         {modals.length > 0 && (
           <div className="dock-strip">
             <div className="dock-bar">
-              <span className="muted small">{modals.length}개 패널 · 오른쪽 경계 드래그로 너비 조절 · 아래 리스트에서 계속 종목 추가</span>
+              <span className="muted small">{modals.length}개 패널 · 오른쪽 경계 드래그로 너비 조절 · 뒤 리스트에서 계속 종목 추가</span>
               {modals.length > 1 && <button className="btn ghost sm" onClick={closeAll}>모두 닫기 ✕</button>}
             </div>
             <div className="dock-row">
@@ -1030,7 +1030,7 @@ function StockDetail({ row, onClose, onPick, tickerMap }) {
   )
 }
 
-/* 도킹 패널 — 상단에 가로로 나란히 배치, 오른쪽 경계 Splitter로 너비 조절. 보드 리스트는 아래에 그대로 유지. */
+/* 도킹 패널 — 페이지 위 플로팅 오버레이로 가로로 나란히 배치, 오른쪽 경계 Splitter로 너비 조절. 보드 리스트는 뒤에 그대로 보임. */
 function DockPanel({ row, width, onResizeDelta, onClose, onPick, tickerMap }) {
   return (
     <div className="dock-panel" style={{ width }}>
@@ -1135,6 +1135,28 @@ function MemoSection({ ticker }) {
   )
 }
 
+/* AI 리포트 본문을 (경쟁 파이프라인 섹션) / (나머지)로 분리.
+   "## …경쟁 파이프라인" 헤딩부터 다음 최상위 "## " 헤딩 직전까지를 comp로 떼어낸다.
+   헤딩이 없으면 전체를 before로 두어 리포트 내 linkify를 끈다. */
+function splitCompetitive(md) {
+  if (!md) return { before: '', comp: '', after: '' }
+  const lines = md.split('\n')
+  let start = -1
+  for (let i = 0; i < lines.length; i++) {
+    if (/^##\s+.*경쟁\s*파이프라인/.test(lines[i])) { start = i; break }
+  }
+  if (start === -1) return { before: md, comp: '', after: '' }
+  let end = lines.length
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^##\s+/.test(lines[i])) { end = i; break }
+  }
+  return {
+    before: lines.slice(0, start).join('\n'),
+    comp: lines.slice(start, end).join('\n'),
+    after: lines.slice(end).join('\n'),
+  }
+}
+
 /* ───────────── 모달 하위: AI 리포트 ───────────── */
 function AiReport({ ticker, onPick, tickerMap }) {
   const [rep, setRep] = useState(undefined)
@@ -1143,10 +1165,14 @@ function AiReport({ ticker, onPick, tickerMap }) {
   const gen = async () => { setBusy(true); try { const d = await api.genReport(ticker); if (d.ok) setRep(d); else alert(d.error || '생성 실패') } finally { setBusy(false) } }
   if (rep === undefined) return <p className="muted">…</p>
   if (!rep) return <button className="btn" onClick={gen} disabled={busy}>{busy ? '생성 중… (1–3분)' : '리포트 생성'}</button>
+  // 리포트 본문 중 '경쟁 파이프라인' 섹션만 linkify(경쟁사명 클릭) → 나머지는 오탐 방지로 plain 렌더
+  const { before, comp, after } = splitCompetitive(rep.body)
   return (
     <>
       <div className="muted small">{(rep.generated_at || '').slice(0, 16).replace('T', ' ')} · {rep.model || ''}</div>
-      <Linkified md={rep.body} map={tickerMap} onPick={onPick} />
+      {before && <div className="md" dangerouslySetInnerHTML={{ __html: api.mdToHtml(before) }} />}
+      {comp && <Linkified md={comp} map={tickerMap} onPick={onPick} />}
+      {after && <div className="md" dangerouslySetInnerHTML={{ __html: api.mdToHtml(after) }} />}
       <button className="btn ghost sm" onClick={gen} disabled={busy}>{busy ? '재생성 중… (1–3분)' : '재생성'}</button>
     </>
   )

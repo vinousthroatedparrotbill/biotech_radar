@@ -86,26 +86,34 @@ def peak_sales(ticker: str, name: str, asset_hint: str = "") -> dict | None:
     except Exception as e:
         log.warning("peak_sales LLM 실패 %s: %s", ticker, e)
         return None
-    m = re.search(r"\{[^{}]*peak_sales_m[^{}]*\}", txt, re.S)
-    if not m:
-        return None
-    try:
-        j = json.loads(m.group(0))
-        val = float(j.get("peak_sales_m"))
+    # 견고 파싱 — JSON 코드블록/$·콤마/일본어 등 다양한 출력에서 숫자만 직접 추출
+    val = None
+    try:                                              # 우선 정식 JSON 시도
+        m = re.search(r"\{[^{}]*peak_sales_m[^{}]*\}", txt, re.S)
+        if m:
+            val = float(json.loads(m.group(0)).get("peak_sales_m"))
     except Exception:
+        val = None
+    if val is None:                                   # 폴백: peak_sales_m 뒤 숫자 직접
+        m = re.search(r'peak_sales_m["\s:=]*\$?\s*([\d,]+(?:\.\d+)?)', txt, re.I)
+        if m:
+            try:
+                val = float(m.group(1).replace(",", ""))
+            except Exception:
+                val = None
+    if not val or val <= 0:
         return None
-    if val <= 0:
-        return None
+    bm = re.search(r'basis["\s:=]*["\']?([^"\'\n}]+)', txt, re.I)
+    basis = (bm.group(1).strip()[:300] if bm else "")
     with connect() as c:
         c.execute(
             """INSERT INTO peak_sales_est (ticker, peak_sales_m, basis, updated_at)
                VALUES (?,?,?,?) ON CONFLICT (ticker) DO UPDATE SET
                  peak_sales_m=excluded.peak_sales_m, basis=excluded.basis,
                  updated_at=excluded.updated_at""",
-            (ticker, val, str(j.get("basis", ""))[:300],
-             datetime.now().isoformat(timespec="seconds")))
+            (ticker, val, basis, datetime.now().isoformat(timespec="seconds")))
         c.commit()
-    return {"peak_sales_m": val, "basis": j.get("basis", "")}
+    return {"peak_sales_m": val, "basis": basis}
 
 
 def _upsert_flag(ticker, snap, flagged, ratio, ps, mcap, cat, note):

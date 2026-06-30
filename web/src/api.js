@@ -158,6 +158,9 @@ const _CURATED_ALIASES = {
   'gilead': 'GILD', 'regeneron': 'REGN', 'biogen': 'BIIB', 'vertex': 'VRTX', 'moderna': 'MRNA',
   'gsk': 'GSK', 'glaxosmithkline': 'GSK', 'johnson & johnson': 'JNJ', 'j&j': 'JNJ', 'roche': 'RHHBY',
   'genentech': 'RHHBY', 'novo nordisk': 'NVO', 'takeda': 'TAK', 'wave life sciences': 'WVE',
+  // 경쟁 파이프라인에서 이름으로 자주 언급되는 (보드 유니버스 밖) 바이오텍 — 모두 실제 상장 티커
+  'merus': 'MRUS', 'genmab': 'GMAB', 'argenx': 'ARGX', 'zymeworks': 'ZYME', 'moonlake': 'MLTX',
+  'apogee': 'APGE', 'insmed': 'INSM', 'arcus': 'RCUS', 'immunome': 'IMNM', 'nuvation': 'NUVB',
 }
 
 // 회사명 → 약칭 (끝의 접미사 단어들을 반복 제거)

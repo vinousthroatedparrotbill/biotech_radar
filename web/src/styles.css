@@ -325,13 +325,20 @@ input.wt { width: 4.2rem; border: 1px solid #cfd3da; border-radius: 6px; padding
 .auto-fired { margin-top: 0.3rem; background: #e3b34118; padding: 0.5rem; border-radius: 8px; }
 .auto-json { background: #00000030; padding: 0.5rem; border-radius: 8px; overflow-x: auto; font-size: 0.78rem; }
 
-/* ── 도킹 패널 스트립(상단 가로 배치, 리사이즈) — 중앙 오버레이 대체 ── */
-.dock-strip { margin: 0 0 1.4rem; }
-.dock-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem; }
-.dock-row { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding-bottom: 0.5rem; }
+/* ── 도킹 패널 — 페이지 위에 떠 있는 플로팅 오버레이(Z축). 보드는 뒤에 그대로 보임(밀려나지 않음) ── */
+/* 컨테이너는 클릭 통과(pointer-events:none) → 빈 영역 클릭은 뒤 보드로 전달. 바/행/패널만 상호작용 */
+.dock-strip { position: fixed; top: 70px; right: 0; z-index: 90;
+  max-width: 100vw; display: flex; flex-direction: column; align-items: flex-end;
+  padding: 0 0.8rem 0.6rem; pointer-events: none; }
+.dock-bar { display: flex; align-items: center; justify-content: flex-end; gap: 0.8rem;
+  margin-bottom: 0.5rem; pointer-events: auto; align-self: flex-end;
+  background: rgba(255,255,255,0.94); border: 1px solid var(--line); border-radius: 999px;
+  padding: 0.3rem 0.5rem 0.3rem 0.9rem; box-shadow: 0 8px 24px -12px rgba(16,48,46,0.45); }
+.dock-row { display: flex; align-items: stretch; gap: 0; overflow-x: auto;
+  max-width: 100vw; padding-bottom: 0.5rem; pointer-events: auto; }
 .dock-panel { flex: 0 0 auto; display: flex; align-items: stretch; }
 .dock-body { position: relative; flex: 1 1 auto; min-width: 0;
-  max-height: calc(100vh - 150px); overflow-y: auto;
+  max-height: calc(100vh - 128px); overflow-y: auto;
   background: #fff; border: 1px solid var(--line); border-radius: 14px;
   box-shadow: 0 14px 44px -20px rgba(16,48,46,0.5); padding: 1.1rem 1.3rem; }
 .dock-body h2 { margin: 0 0 0.2rem; color: var(--green); }
