@@ -268,6 +268,8 @@ def reason(body: ReasonIn) -> dict:
 class ChatIn(BaseModel):
     message: str
     history: list[dict] | None = None
+    # 첨부파일: [{kind:'pdf'|'image'|'text', data(base64)|text, media_type?, name?}]
+    attachments: list[dict] | None = None
 
 
 @app.post("/api/chat")
@@ -275,16 +277,19 @@ def chat(body: ChatIn) -> dict:
     """텔레그램 봇과 동일 엔진(run_agent) + chat_store 공유 (텔레↔웹 대화 공유)."""
     import bot_agent
     import chat_store
+    atts = body.attachments or None
     try:
         hist = chat_store.recent(40)            # 공유 히스토리 (텔레 포함), 현재 메시지 추가 전
     except Exception:
         hist = body.history or []
+    # 히스토리에 남길 사용자 발화 — 본문이 비고 파일만 있으면 첨부 표식으로 대체
+    note = body.message or (f"[📎 첨부 {len(atts)}개]" if atts else "")
     try:
-        chat_store.append("user", body.message, "web")
+        chat_store.append("user", note, "web")
     except Exception:
         pass
     try:
-        text, _ = bot_agent.run_agent(body.message, hist)
+        text, _ = bot_agent.run_agent(body.message, hist, attachments=atts)
     except Exception as e:
         text = f"⚠️ 오류: {type(e).__name__}: {e}"
     try:

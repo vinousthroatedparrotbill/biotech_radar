@@ -1381,9 +1381,11 @@ function Chat() {
   const [msgs, setMsgs] = useState([])
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
+  const [atts, setAtts] = useState([])          // 첨부파일 [{kind,name,...}]
   const [geo, setGeo] = useState({ x: window.innerWidth - 470, y: 90, w: 430, h: 540 })
   const drag = useRef(null)
   const msgsRef = useRef(null)
+  const fileRef = useRef(null)
 
   useEffect(() => { window.__askChat = (q) => { setOpen(true); setText(q) }; return () => { delete window.__askChat } }, [])
   useEffect(() => { if (msgsRef.current) msgsRef.current.scrollTop = msgsRef.current.scrollHeight }, [msgs, busy])
@@ -1408,11 +1410,26 @@ function Chat() {
     window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
   }
 
+  const pickFiles = async (fileList) => {
+    const files = Array.from(fileList || [])
+    if (!files.length) return
+    const MAX = 25 * 1024 * 1024   // 25MB/파일 가드
+    for (const f of files) {
+      if (f.size > MAX) { alert(`${f.name}: 25MB 초과 — 첨부 불가`); continue }
+      try { const a = await api.fileToAttachment(f); setAtts(p => [...p, a]) }
+      catch (e) { alert(String(e.message || e)) }
+    }
+    if (fileRef.current) fileRef.current.value = ''   // 같은 파일 재선택 허용
+  }
+  const removeAtt = (i) => setAtts(p => p.filter((_, k) => k !== i))
+
   const send = async () => {
-    const q = text.trim(); if (!q || busy) return
+    const q = text.trim(); if ((!q && atts.length === 0) || busy) return
     const hist = msgs.map(m => ({ role: m.role, content: m.content }))
-    setMsgs(m => [...m, { role: 'user', content: q }]); setText(''); setBusy(true)
-    try { const d = await api.postChat(q, hist); setMsgs(m => [...m, { role: 'assistant', content: d.reply || '(응답 없음)' }]) }
+    const sending = atts
+    const label = q || `📎 ${sending.map(a => a.name).join(', ')}`
+    setMsgs(m => [...m, { role: 'user', content: label }]); setText(''); setAtts([]); setBusy(true)
+    try { const d = await api.postChat(q, hist, sending.length ? sending : undefined); setMsgs(m => [...m, { role: 'assistant', content: d.reply || '(응답 없음)' }]) }
     catch (e) { setMsgs(m => [...m, { role: 'assistant', content: '⚠️ ' + e }]) }
     finally { setBusy(false) }
   }
@@ -1425,7 +1442,9 @@ function Chat() {
         <button onMouseDown={e => e.stopPropagation()} onClick={reset}>초기화</button>
         <button onMouseDown={e => e.stopPropagation()} onClick={() => setOpen(false)}>➖</button>
       </div>
-      <div className="msgs" ref={msgsRef}>
+      <div className="msgs" ref={msgsRef}
+        onDragOver={e => { e.preventDefault() }}
+        onDrop={e => { e.preventDefault(); pickFiles(e.dataTransfer?.files) }}>
         {msgs.length === 0 && <div className="spin">질문을 입력하세요. (예: RVMD 분석 / KRAS G12D degrader 기전)</div>}
         {msgs.map((m, i) => m.role === 'assistant'
           ? <div key={i} className="msg assistant md-wrap">
@@ -1435,9 +1454,23 @@ function Chat() {
           : <div key={i} className={'msg user' + (m.source === 'telegram' ? ' tg' : '')}>{m.source === 'telegram' ? '[텔레] ' : ''}{m.content}</div>)}
         {busy && <div className="spin">조사 중… (도구 호출, 최대 1–2분)</div>}
       </div>
+      {atts.length > 0 && (
+        <div className="att-chips">
+          {atts.map((a, i) => (
+            <span key={i} className="att-chip" title={a.name}>
+              {a.kind === 'image' ? '🖼' : a.kind === 'pdf' ? '📄' : '📎'} {a.name}
+              <button onClick={() => removeAtt(i)} title="제거">✕</button>
+            </span>
+          ))}
+        </div>
+      )}
       <div className="input">
+        <input ref={fileRef} type="file" multiple accept="image/*,application/pdf,.txt,.md,.csv,.tsv,.json,.log,.xml,.yml,.yaml,.py,.js,.ts,.html"
+          style={{ display: 'none' }} onChange={e => pickFiles(e.target.files)} />
+        <button className="attach" onClick={() => fileRef.current?.click()} disabled={busy} title="파일 첨부 (PDF·이미지·텍스트)">📎</button>
         <textarea value={text} placeholder="질문 입력…  (Enter 전송, Shift+Enter 줄바꿈)"
           onChange={e => setText(e.target.value)}
+          onPaste={e => { const fs = Array.from(e.clipboardData?.files || []); if (fs.length) { e.preventDefault(); pickFiles(fs) } }}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
         <button className="send" onClick={send} disabled={busy}>전송</button>
       </div>

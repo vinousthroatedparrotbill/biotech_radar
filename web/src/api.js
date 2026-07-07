@@ -49,7 +49,35 @@ export const autoGet = (id) => fetch(`/api/auto/orders/${id}`).then(j)
 export const autoCancel = (id) => post(`/api/auto/orders/${id}/cancel`, {})
 export const autoEvaluate = () => post('/api/auto/evaluate', {})
 export const getDailyNews = (country, days = 1) => fetch(`/api/daily_news?country=${country}&days=${days}`).then(j)
-export const postChat = (message, history) => post('/api/chat', { message, history })
+export const postChat = (message, history, attachments) => post('/api/chat', { message, history, attachments })
+
+// File → 첨부 객체 {kind, data|text, media_type, name}. bot_agent._build_user_content 규격.
+export function fileToAttachment(file) {
+  return new Promise((resolve, reject) => {
+    const name = file.name || 'file'
+    const mt = file.type || ''
+    const isImg = mt.startsWith('image/')
+    const isPdf = mt === 'application/pdf' || /\.pdf$/i.test(name)
+    const isText = mt.startsWith('text/') || /\.(txt|md|csv|tsv|json|log|xml|ya?ml|py|js|ts|html?)$/i.test(name)
+    const r = new FileReader()
+    r.onerror = () => reject(new Error('파일 읽기 실패: ' + name))
+    if (isText) {
+      r.onload = () => resolve({ kind: 'text', name, text: String(r.result || '') })
+      r.readAsText(file)
+    } else if (isImg || isPdf) {
+      r.onload = () => {
+        const s = String(r.result || '')
+        const data = s.slice(s.indexOf(',') + 1)   // "data:...;base64," 접두 제거
+        resolve(isPdf
+          ? { kind: 'pdf', name, data }
+          : { kind: 'image', name, data, media_type: mt || 'image/png' })
+      }
+      r.readAsDataURL(file)
+    } else {
+      reject(new Error('지원하지 않는 형식: ' + name + ' (PDF·이미지·텍스트만)'))
+    }
+  })
+}
 export const getChatHistory = () => fetch('/api/chat/history').then(j)
 export const clearChat = () => post('/api/chat/clear', {})
 export const sendToTelegram = (text) => post('/api/chat/telegram', { text })
