@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 
 import anthropic
 
@@ -332,6 +333,8 @@ def run_agent(user_msg: str, history: list[dict] | None = None,
             log.exception("forced final 실패: %s", e)
             final_text = f"(응답 생성 실패: {e})"
 
+    # web_search 인용 태그(<cite index=…>) 제거 — 텔레·웹 챗 가독성
+    final_text = re.sub(r"</?cite\b[^>]*>", "", final_text or "")
     new_history = history + [
         {"role": "user", "content": user_msg},
         {"role": "assistant", "content": final_text or "(응답 없음)"},

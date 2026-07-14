@@ -436,6 +436,8 @@ def generate(ticker: str, max_tool_calls: int = 15) -> str:
                     final_text += b.text
             break
         log.info("%s 메모 생성 완료 — tool_call %d step", ticker, step)
+        # web_search 인용 태그(<cite index=…>) 제거 — 본문 가독성
+        final_text = re.sub(r"</?cite\b[^>]*>", "", final_text)
         return final_text or "(메모 생성 실패 — 응답 없음)"
     except Exception as e:
         log.exception("Claude 리포트 실패: %s", e)

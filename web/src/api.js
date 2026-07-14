@@ -131,6 +131,7 @@ export const opsTelegram = (country) => post('/api/ops/telegram', { country })
 // 아주 가벼운 마크다운 → HTML (이유분석 카드/챗에 사용)
 export function mdToHtml(md) {
   if (!md) return ''
+  md = md.replace(/<\/?cite\b[^>]*>/gi, '')   // web_search 인용 태그 제거(가독성)
   const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const inline = (s) =>
     esc(s)
