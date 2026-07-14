@@ -50,6 +50,20 @@ def load_universe(min_mcap_m: float = MIN_MCAP_M) -> int:
         "Market Cap": "market_cap", "P/E": "pe_ratio", "Price": "price",
     })
     df["market_cap"] = pd.to_numeric(df["market_cap"], errors="coerce")
+    # 신규 IPO 등 Finviz가 시총을 아직 안 채운(NaN) 종목 → yfinance로 백필.
+    # (이걸 안 하면 dropna로 통째 버려져 신규 상장주가 신고가를 찍어도 보드에 안 뜸.)
+    # 보통 몇 종목뿐이라 비용 미미. 백필 실패분만 최종 dropna로 제외.
+    missing = df.index[df["market_cap"].isna()]
+    if len(missing):
+        import yfinance as yf
+        for idx in missing:
+            tk = str(df.at[idx, "ticker"]).strip()
+            try:
+                mc = (yf.Ticker(tk).info or {}).get("marketCap")
+                if mc:
+                    df.at[idx, "market_cap"] = float(mc) / 1e6   # USD → $M (Finviz 단위)
+            except Exception:
+                pass
     df = df.dropna(subset=["market_cap"])
     df = df[df["market_cap"] >= min_mcap_m]
 
