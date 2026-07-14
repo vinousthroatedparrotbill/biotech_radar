@@ -22,8 +22,9 @@ def _is_kr(t: str) -> bool:
     return t.isdigit() and len(t) == 6
 
 
-def _universe_pool(country: str | None, limit: int = 500) -> list[dict]:
-    """peer 후보 풀 — 같은 시장 우선. (ticker, name, industry)."""
+def _universe_pool(country: str | None, limit: int = 600) -> list[dict]:
+    """peer 후보 풀 — 같은 시장 우선. (ticker, name, industry).
+    소형주도 넓게 포함(예: Forte $903M). 풀 밖 종목도 web_search로 발굴 후 검증됨."""
     with connect() as c:
         if country == "KOR":
             rows = c.execute(
@@ -42,7 +43,8 @@ def _universe_pool(country: str | None, limit: int = 500) -> list[dict]:
 def _target_context(ticker: str) -> dict:
     """대상 종목 맥락 — 이름/산업 + 상승이유(있으면) + 최근 뉴스 제목."""
     tk = (ticker or "").strip()
-    ctx: dict = {"ticker": tk, "name": tk, "industry": None, "thesis": "", "news": []}
+    ctx: dict = {"ticker": tk, "name": tk, "industry": None,
+                 "thesis": "", "pipeline": "", "news": []}
     try:
         with connect() as c:
             r = c.execute("SELECT name, industry, country FROM ticker_master WHERE ticker=?",
@@ -51,6 +53,15 @@ def _target_context(ticker: str) -> dict:
             ctx["name"] = r.get("name") or tk
             ctx["industry"] = r.get("industry")
             ctx["country"] = r.get("country")
+    except Exception:
+        pass
+    # 파이프라인 페이지 본문 — 대상의 실제 자산·적응증·기전. peer 판단의 핵심 신호.
+    # (신규 IPO/틈새 종목은 산업='Biotechnology'만으론 celiac 같은 적응증을 알 수 없음)
+    try:
+        import bot_tools as bt
+        pi = bt.get_pipeline_info(tk)
+        if isinstance(pi, dict) and pi.get("text"):
+            ctx["pipeline"] = pi["text"][:2500]
     except Exception:
         pass
     # 상승이유 캐시에서 이 종목 블록 추출(있으면 thesis로)
@@ -115,10 +126,16 @@ _TOOL = {
 _SYS = (
     "너는 fund manager의 biotech 애널리스트다. 주어진 대상 종목의 투자포인트(상승 동인)·적응증·"
     "기전·핵심 에셋을 파악하고, 그것을 **공유하는 peer 종목**을 제시하라. 예: 사이키델릭/MDD 테마 "
-    "종목이면 COMPASS(CMPS)·GH Research(GHRS) 등. 각 peer에 공유 근거(basis)와 **간단한 판단**"
-    "(왜 peer인지 + 핵심 차이/주의)을 한 줄로. 제공된 유니버스 목록의 ticker를 우선 사용(투자 가능). "
-    "유니버스에 없어도 명백한 표준치료/대표 peer면 포함하되 ticker를 정확히. 5~8개. 한국어 note. "
-    "buy/sell 추천 단정 금지, 아이디어·관찰 위주. 반드시 suggest_peers 도구로만 답하라."
+    "종목이면 COMPASS(CMPS)·GH Research(GHRS) 등.\n"
+    "[리서치 먼저 — 매우 중요] 제공된 [파이프라인/적응증]에서 대상의 **리드 에셋·분자 타깃·기전·핵심 "
+    "적응증**을 먼저 특정하라. 그런 뒤 **web_search로 같은 타깃/기전/적응증의 경쟁사를 반드시 검색**하라"
+    "(예: 'anti-CD122 celiac antibody company', '<적응증> <기전> competitor pipeline'). 신규 상장·소형·"
+    "비주류·전임상 경쟁사는 학습지식만으론 놓치므로 **검색으로 발굴**해야 한다. 같은 분자 타깃(예: 둘 다 "
+    "anti-CD122)이나 같은 적응증(예: 둘 다 celiac)을 공유하면 시총이 작아도 반드시 후보에 넣어라.\n"
+    "각 peer에 공유 근거(basis)와 **간단한 판단**(왜 peer인지 + 핵심 차이/주의)을 한 줄로. 제공된 "
+    "유니버스 목록의 ticker를 우선 사용(투자 가능), 목록에 없어도 검색으로 찾은 명백한 peer면 포함하되 "
+    "ticker를 정확히. 5~8개. 한국어 note. buy/sell 추천 단정 금지, 아이디어·관찰 위주. "
+    "리서치를 마치면 **반드시 suggest_peers 도구로 최종 답**을 내라."
 )
 
 
@@ -132,25 +149,46 @@ def suggest(ticker: str) -> dict:
     ctx = _target_context(tk)
     country = "KOR" if _is_kr(tk) else "USA"
     pool = _universe_pool(country)
-    pool_str = "\n".join(f"{p['ticker']} {p['name']} [{p.get('industry') or ''}]" for p in pool[:400])
+    pool_str = "\n".join(f"{p['ticker']} {p['name']} [{p.get('industry') or ''}]" for p in pool)
     user = (
         f"[대상] {ctx['name']} ({tk}) · 산업: {ctx.get('industry') or '-'}\n"
-        f"[상승이유/투자포인트]\n{ctx.get('thesis') or '(캐시 없음 — 네 지식+뉴스로 파악)'}\n"
+        f"[파이프라인/적응증 — 회사 페이지 본문]\n"
+        f"{ctx.get('pipeline') or '(파이프라인 페이지 없음 — 뉴스·네 지식으로 적응증 파악)'}\n\n"
+        f"[상승이유/투자포인트]\n{ctx.get('thesis') or '(캐시 없음)'}\n"
         f"[최근 뉴스 제목]\n" + "\n".join(f"- {t}" for t in ctx.get('news', [])) + "\n\n"
         f"[투자 가능 유니버스 후보(ticker name [industry])]\n{pool_str}\n\n"
-        "위 대상과 투자포인트/적응증/기전/에셋을 공유하는 peer를 제시해."
+        "먼저 위 [파이프라인/적응증]에서 대상의 **핵심 적응증·기전·리드 에셋**을 파악한 뒤, "
+        "그 적응증/기전을 공유하는 peer를 제시해. 후보 목록엔 산업만 표기돼 있으니 "
+        "같은 적응증(예: celiac) peer는 네 지식으로 판단해 정확한 ticker로 지목하라."
     )
     import anthropic
+    # 웹 서버도구 — 같은 타깃/기전/적응증의 소형·비주류 경쟁사를 검색으로 발굴(예: anti-CD122 celiac)
+    web_tools = [
+        {"type": "web_search_20250305", "name": "web_search"},
+        {"type": "web_fetch_20250910", "name": "web_fetch", "max_uses": 5},
+    ]
     try:
         cl = anthropic.Anthropic(api_key=key)
-        r = cl.messages.create(
-            model=CLAUDE_MODEL, max_tokens=2000, system=_SYS,
-            tools=[_TOOL], tool_choice={"type": "tool", "name": "suggest_peers"},
-            messages=[{"role": "user", "content": user}])
-        tu = next((b for b in r.content if b.type == "tool_use"), None)
-        if not tu:
-            return {"error": "도구 응답 없음"}
-        out = tu.input
+        messages = [{"role": "user", "content": user}]
+        out = None
+        for _step in range(6):        # 리서치(검색) 후 suggest_peers로 마무리
+            r = cl.messages.create(
+                model=CLAUDE_MODEL, max_tokens=3000, system=_SYS,
+                tools=[_TOOL] + web_tools, messages=messages)
+            sp = next((b for b in r.content
+                       if b.type == "tool_use" and b.name == "suggest_peers"), None)
+            if sp:                    # 최종 답
+                out = sp.input
+                break
+            if r.stop_reason == "pause_turn":      # 웹 검색 진행 중 → 재개
+                messages.append({"role": "assistant", "content": r.content})
+                continue
+            # 텍스트/기타로 끝남 → suggest_peers 재촉
+            messages.append({"role": "assistant", "content": r.content})
+            messages.append({"role": "user",
+                             "content": "이제 suggest_peers 도구로 최종 peer 목록을 제시하라."})
+        if not out:
+            return {"error": "peer 생성 실패(도구 응답 없음)"}
     except Exception as e:
         return {"error": f"{type(e).__name__}: {e}"}
 
