@@ -242,6 +242,57 @@ function _buildNameIndex(map) {
   return idx
 }
 
+// 리포트 본문에서 '용어 설명(Glossary)' 섹션을 분리 + 용어→정의 Map 파싱.
+// return { map: Map(term→def), body: 용어섹션 제외 본문, glossary: 용어섹션 md }
+export function parseGlossary(md) {
+  const empty = { map: new Map(), body: md || '', glossary: '' }
+  if (!md) return empty
+  const lines = md.split('\n')
+  let gi = -1
+  for (let i = 0; i < lines.length; i++) {
+    if (/^#{1,6}\s+.*(용어\s*설명|glossary)/i.test(lines[i])) { gi = i; break }
+  }
+  if (gi < 0) return empty
+  const map = new Map()
+  for (const ln of lines.slice(gi + 1)) {
+    // 형식: - **약어/용어** = 정의   (또는 **용어**: 정의)
+    const m = ln.match(/\*\*(.+?)\*\*\s*[=:]\s*(.+)/)
+    if (m) {
+      const term = m[1].trim()
+      const def = m[2].replace(/\*\*/g, '').trim()
+      if (term && def && term.length <= 40) map.set(term, def)
+    }
+  }
+  return { map, body: lines.slice(0, gi).join('\n'), glossary: lines.slice(gi).join('\n') }
+}
+
+// 본문 HTML에서 glossary 용어를 <span class="gloss" data-def="정의">로 래핑(hover 툴팁).
+// linkify와 동일하게 텍스트 노드만 처리(태그/앵커/기존 span 내부는 건너뜀).
+export function glossify(html, map) {
+  if (!html || !map || map.size === 0) return html || ''
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const terms = [...map.keys()].sort((a, b) => b.length - a.length)   // 최장일치 우선
+  const re = new RegExp('(?<![\\w])(' + terms.map(esc).join('|') + ')(?![\\w])', 'g')
+  const escAttr = (s) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const tag = /(<[^>]+>)/g
+  let depth = 0   // <a>/<span> 등 인라인 태그 내부 추적 — 중복 래핑 방지
+  return html.split(tag).map(seg => {
+    if (!seg) return seg
+    if (seg[0] === '<') {
+      const t = seg.slice(0, 5).toLowerCase()
+      if (t.startsWith('<a ') || t.startsWith('<a>') || t.startsWith('<span')) depth++
+      else if (t.startsWith('</a') || t.startsWith('</spa')) depth = Math.max(0, depth - 1)
+      return seg
+    }
+    if (depth > 0) return seg
+    return seg.replace(re, (m) => {
+      const def = map.get(m)
+      return def ? `<span class="gloss" data-def="${escAttr(def)}">${m}</span>` : m
+    })
+  }).join('')
+}
+
 export function linkify(html, map) {
   if (!html || !map) return html || ''
   const { nameMap, re } = _buildNameIndex(map)

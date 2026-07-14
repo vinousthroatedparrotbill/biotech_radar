@@ -1206,20 +1206,32 @@ function splitCompetitive(md) {
 function AiReport({ ticker, onPick, tickerMap }) {
   const [rep, setRep] = useState(undefined)
   const [busy, setBusy] = useState(false)
+  const [tip, setTip] = useState(null)   // 용어 hover 툴팁 {def,x,y}
   useEffect(() => { api.getReport(ticker).then(d => setRep(d.cached ? d : null)).catch(() => setRep(null)) }, [ticker])
   const gen = async () => { setBusy(true); try { const d = await api.genReport(ticker); if (d.ok) setRep(d); else alert(d.error || '생성 실패') } finally { setBusy(false) } }
   if (rep === undefined) return <p className="muted">…</p>
   if (!rep) return <button className="btn" onClick={gen} disabled={busy}>{busy ? '생성 중… (1–3분)' : '리포트 생성'}</button>
-  // 리포트 본문 중 '경쟁 파이프라인' 섹션만 linkify(경쟁사명 클릭) → 나머지는 오탐 방지로 plain 렌더
-  const { before, comp, after } = splitCompetitive(rep.body)
+  // 용어 설명(Glossary)을 분리해 맵으로 만들고, 본문 용어에 hover 툴팁(gloss) 부여.
+  const { map: glossMap, body: mainMd, glossary: glossMd } = api.parseGlossary(rep.body)
+  // 본문 중 '경쟁 파이프라인' 섹션만 linkify(경쟁사명 클릭) → 나머지는 오탐 방지로 plain 렌더
+  const { before, comp, after } = splitCompetitive(mainMd)
+  const gloss = (md) => api.glossify(api.mdToHtml(md), glossMap)
+  // 용어 hover → 커서 위치에 정의 박스(fixed, 스크롤 컨테이너에 안 잘림)
+  const onGlossOver = (e) => {
+    const el = e.target.closest && e.target.closest('.gloss')
+    if (el) setTip({ def: el.getAttribute('data-def'), x: e.clientX, y: e.clientY })
+    else if (tip) setTip(null)
+  }
   return (
-    <>
+    <div onMouseOver={onGlossOver} onMouseLeave={() => setTip(null)}>
       <div className="muted small">{(rep.generated_at || '').slice(0, 16).replace('T', ' ')} · {rep.model || ''}</div>
-      {before && <div className="md" dangerouslySetInnerHTML={{ __html: api.mdToHtml(before) }} />}
+      {before && <div className="md" dangerouslySetInnerHTML={{ __html: gloss(before) }} />}
       {comp && <Linkified md={comp} map={tickerMap} onPick={onPick} />}
-      {after && <div className="md" dangerouslySetInnerHTML={{ __html: api.mdToHtml(after) }} />}
+      {after && <div className="md" dangerouslySetInnerHTML={{ __html: gloss(after) }} />}
+      {glossMd && <div className="md glossary-sec" dangerouslySetInnerHTML={{ __html: api.mdToHtml(glossMd) }} />}
       <button className="btn ghost sm" onClick={gen} disabled={busy}>{busy ? '재생성 중… (1–3분)' : '재생성'}</button>
-    </>
+      {tip && <div className="gloss-pop" style={{ left: Math.min(tip.x + 12, window.innerWidth - 330), top: tip.y + 16 }}>{tip.def}</div>}
+    </div>
   )
 }
 

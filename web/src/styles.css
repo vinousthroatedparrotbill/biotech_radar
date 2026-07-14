@@ -111,6 +111,12 @@ tbody tr:hover { background: #f7faf9; }
 .chat .att-chip { display: inline-flex; align-items: center; gap: 0.3rem; max-width: 200px; background: #eef3f2; border: 1px solid #d5dedc; border-radius: 999px; padding: 0.15rem 0.5rem; font-size: 0.78rem; color: #234; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .chat .att-chip button { border: 0; background: transparent; color: #789; cursor: pointer; font-size: 0.8rem; padding: 0; line-height: 1; }
 .chat .att-chip button:hover { color: #c0392b; }
+/* 리포트 용어(glossary) hover 툴팁 */
+.gloss { border-bottom: 1px dotted var(--green); cursor: help; }
+.gloss:hover { background: rgba(63, 174, 155, 0.12); }
+.gloss-pop { position: fixed; z-index: 4000; max-width: 320px; background: #1f2937; color: #f3f4f6;
+  padding: 8px 11px; border-radius: 8px; font-size: 0.8rem; line-height: 1.45;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.28); pointer-events: none; }
 .chat .grip { position: absolute; right: 2px; bottom: 2px; width: 18px; height: 18px; cursor: nwse-resize;
   background: linear-gradient(135deg, transparent 45%, var(--green) 45%, var(--green) 72%, transparent 72%); }
 .spin { color: var(--muted); font-size: 0.85rem; }
