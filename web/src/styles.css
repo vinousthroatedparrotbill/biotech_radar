@@ -123,7 +123,9 @@ tbody tr:hover { background: #f7faf9; }
 .md-table { border-collapse: collapse; min-width: 100%; font-size: 0.78rem; line-height: 1.45; }
 .md-table th, .md-table td { border: 1px solid #d5dedc; padding: 6px 9px; text-align: left;
   vertical-align: top; min-width: 84px; overflow-wrap: anywhere; word-break: break-word; }
-.md-table th { background: #eef3f2; font-weight: 700; white-space: nowrap; }
+/* position: static — 전역 'thead th { position: sticky }'가 리포트 표에 새어들어
+   스크롤 시 헤더가 중간에 붙어 보이던 버그 차단 */
+.md-table th { background: #eef3f2; font-weight: 700; white-space: nowrap; position: static; top: auto; text-align: left; }
 /* 마지막 열(핵심 데이터 등 긴 설명)은 넉넉히 */
 .md-table td:last-child, .md-table th:last-child { min-width: 180px; }
 .md-table tbody tr:nth-child(even) { background: #f7faf9; }
