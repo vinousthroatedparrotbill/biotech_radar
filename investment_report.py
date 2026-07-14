@@ -292,10 +292,20 @@ get_valuation_metrics(ticker) 호출 후 다음 표 또는 bullet:
 - 자산별 peak revenue × 합리적 multiple (성숙 pharma 3-5x EV/Rev, 성장 biotech
   5-10x) 적용한 EV 가정 → 현 EV 대비 implied upside %.
 - 예: "Plozasiran peak $4B × 5x = $20B EV → 현 EV $11B 대비 +80%."
+- **에셋별 EV 기여도(SOTP)**: 자산별 implied EV를 합산하고, 각 자산이 **미래 EV에서
+  차지하는 비중(%)**을 산출·명시하라(최상위 = 밸류 드라이버). risk-adjust(PoS) 가정 시 명시.
+- **★밸류 드라이버 플래그**: 단일 자산이 **미래 EV의 50% 이상**을 차지하면
+  "★밸류 드라이버: <자산명> (EV의 XX%)"로 명확히 표기하라. 이 자산은
+  **§4 경쟁분석·§6 카탈리스트·§8 리스크에서 반드시 최우선·심층 대상**으로 다뤄야 하며
+  얕게 넘어가면 안 된다(회사 가치의 절반 이상이 이 자산에 걸려 있으므로).
 - 도구 조사로 컨센서스 못 찾으면 "공개 컨센서스 부족 — 자체 가정 명시" 후 추정.
 
 ## 4) 경쟁 파이프라인 — head-to-head 차별 분석 ★ 가장 중요 ★
-메인 자산 각각에 대해 같은 target / 같은 적응증의 경쟁 약물 조사·비교:
+**§3에서 미래 EV의 50%+를 차지한 밸류 드라이버 자산은 절대 누락 금지 — 최우선·심층 대상.**
+각 자산(특히 밸류 드라이버)에 대해 같은 target / 같은 기전 / 같은 적응증의 경쟁 약물을
+**web_search로 적극 조사**하라 — 대형사뿐 아니라 소형·비주류·신규 상장·비상장 경쟁사까지.
+**같은 분자 타깃이면 시총 무관 반드시 포함**(예: 둘 다 anti-CD122 → Forte 같은 소형주도).
+학습지식만으론 틈새 경쟁사를 놓치므로("<타깃> <적응증> competitor pipeline" 등으로) 검색으로 발굴.
 - 표 권장: 자산 | 회사 | MOA | Phase | 핵심 데이터 | readout 일정
 - **차별 포인트 토론**: efficacy, safety, dosing, ROA, 환자 segment 분할,
   manufacturing/COGS, 가격, first-mover timing 등 다각도.
