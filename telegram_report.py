@@ -853,7 +853,7 @@ def daily_run() -> dict:
     # 3) ① 52주 신고가 목록 + ② 최대 상승폭 목록 (각 1 메시지)
     from collectors.high_low import fetch_new_highs, fetch_top_movers, latest_run_date
     highs = fetch_new_highs("high", limit=40)
-    movers = fetch_top_movers(limit=40, min_mcap=1500.0, min_perf=5.0)
+    movers = fetch_top_movers(limit=40, min_mcap=1000.0, min_perf=5.0)
     header = (
         f"🧬 <b>Biotech Radar — {datetime.now().strftime('%Y-%m-%d')}</b>\n"
         f"<i>auto-run: universe={n_uni}, snapshot={n_hl} · 기준일 {latest_run_date() or '—'}</i>"
@@ -916,8 +916,8 @@ def daily_run() -> dict:
     try:
         import reason_cache as _rc
         _snap = latest_run_date("USA") or datetime.now().strftime("%Y-%m-%d")
-        _hi = fetch_new_highs("high", limit=100, country="USA", min_mcap=1500.0)
-        _mv = fetch_top_movers(limit=100, min_mcap=1500.0, min_perf=5.0, country="USA")
+        _hi = fetch_new_highs("high", limit=100, country="USA", min_mcap=1000.0)
+        _mv = fetch_top_movers(limit=100, min_mcap=1000.0, min_perf=5.0, country="USA")
         main_result["reason_high"] = len(_rc.refresh("USA", "high",
                                                      _hi.to_dict("records"), _snap))
         main_result["reason_movers"] = len(_rc.refresh("USA", "movers",

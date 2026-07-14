@@ -411,7 +411,7 @@ def _board_scope():
             return c, _ku.kr_min_mcap_usd_m()
         except Exception:
             return c, 324.0
-    return c, 1500.0
+    return c, 1000.0   # US 하한 $1B (2026-07-14 하향)
 
 
 # ── 운영용 상태 값 (우하단 ⚙ 위젯 + 본문에서 사용) ──

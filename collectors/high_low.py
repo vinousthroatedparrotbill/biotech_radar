@@ -237,7 +237,7 @@ def _recent_dates(country: str | None, n: int = 1) -> list[str]:
 
 
 def fetch_new_highs(direction: str = "high", limit: int = 500,
-                    country: str | None = None, min_mcap: float = 1500.0) -> pd.DataFrame:
+                    country: str | None = None, min_mcap: float = 1000.0) -> pd.DataFrame:
     """오늘 52w 신고가/신저가 종목 — ticker_master와 join하여 회사명 포함."""
     with connect() as conn:
         dates = _recent_dates(country, 1)
@@ -308,7 +308,7 @@ def latest_run_date(country: str | None = None) -> str | None:
 
 
 def fetch_new_today_highs(limit: int = 200, country: str | None = None,
-                          min_mcap: float = 1500.0) -> pd.DataFrame:
+                          min_mcap: float = 1000.0) -> pd.DataFrame:
     """오늘 새로 52주 신고가를 찍은 종목들 (전일 대비 high_52w 상승).
     조건:
       - 오늘 today_high >= high_52w * 0.999 (오늘 신고가)

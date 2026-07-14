@@ -60,7 +60,7 @@ def _min_mcap(country: str) -> float:
             return ku.kr_min_mcap_usd_m()
         except Exception:
             return 324.0
-    return 1500.0
+    return 1000.0   # US 하한 $1B (2026-07-14 $1.5B→$1B로 하향)
 
 
 def _clean(v):

@@ -77,12 +77,31 @@ PIPELINE_PATTERNS: list[tuple[re.Pattern, int]] = [
     (re.compile(r"\bour\s*pipeline\b", re.I), 10),
     (re.compile(r"\bpipeline\b", re.I), 8),
     (re.compile(r"\bour\s*medicines?\b", re.I), 9),
+    (re.compile(r"\bproduct\s*(?:candidates?|pipeline)\b", re.I), 8),
     (re.compile(r"\bour\s*research\b", re.I), 7),
     (re.compile(r"\bour\s*science\b", re.I), 6),
+    (re.compile(r"\b(?:our\s*)?programs?\b", re.I), 6),
     (re.compile(r"\bproduct\s*portfolio\b", re.I), 7),
     (re.compile(r"\bportfolio\b", re.I), 4),
     (re.compile(r"\btherapeutic\s*areas?\b", re.I), 5),
     (re.compile(r"\bclinical\s*(?:program|pipeline|trials?)\b", re.I), 6),
+]
+
+# pipeline root 위에 직접 시도할 경로 (홈페이지 앵커 못 찾을 때 — SPA/JS 메뉴 대응).
+# 구체적·빈도 높은 순. IR과 동일하게 _url_alive로 200 확인.
+PIPELINE_PATH_CANDIDATES = [
+    "/pipeline", "/pipeline/",
+    "/our-pipeline", "/our-pipeline/",
+    "/product-pipeline", "/products-pipeline",
+    "/development-pipeline", "/clinical-pipeline",
+    "/our-science/pipeline", "/science/pipeline", "/research/pipeline",
+    "/programs", "/our-programs",
+    "/our-medicines", "/medicines",
+    "/product-portfolio", "/portfolio",
+    "/therapeutic-areas", "/therapeutics",
+    "/our-science", "/science",
+    "/our-products", "/products",
+    "/our-research", "/research",
 ]
 
 # 한국 홈페이지 IR/보도자료 앵커 (한국어 + 영문) — investor relations · IR자료 · 보도자료
@@ -272,8 +291,13 @@ def discover(ticker: str) -> dict[str, str]:
 
     out: dict[str, str] = {"website": web}
 
-    # Pipeline은 회사 홈페이지에서 직접
+    # === Pipeline 탐색 (2-tier cascade — IR과 동일한 견고함) ===
+    # tier 1: 홈페이지 anchor 매칭
     pl = _extract_best_link(html, web, PIPELINE_PATTERNS)
+    # tier 2: 못 찾으면 /pipeline, /our-pipeline 등 경로 직접 프로빙
+    #   (홈페이지가 SPA/JS 메뉴라 정적 HTML에 앵커가 없는 경우 대응)
+    if not pl:
+        pl = _try_paths(web, PIPELINE_PATH_CANDIDATES)
     if pl:
         out["pipeline_url"] = pl
 

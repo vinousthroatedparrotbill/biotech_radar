@@ -1326,12 +1326,12 @@ def count_52w_highs(date: str = "") -> dict:
         n = c.execute(
             f"""SELECT count(*) AS n FROM high_low_cache h
                 LEFT JOIN ticker_master t ON t.ticker = h.ticker
-                WHERE h.computed_date = ? AND h.market_cap >= 1500
+                WHERE h.computed_date = ? AND h.market_cap >= 1000
                   AND {BIOTECH_INDUSTRY_FILTER} AND {_excluded_ticker_filter('h')}
                   AND h.today_high >= h.high_52w * 0.999""",
             (date,),
         ).fetchone()["n"]
-    return {"date": date, "count_52w_high": int(n), "universe": "biotech, 시총≥$1.5B"}
+    return {"date": date, "count_52w_high": int(n), "universe": "biotech, 시총≥$1B"}
 
 
 # ───────────────────────── Tool 스키마 (Claude API용) ─────────────────────────
