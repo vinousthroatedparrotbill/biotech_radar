@@ -104,7 +104,8 @@ tbody tr:hover { background: #f7faf9; }
 .chat .input { display: flex; gap: 0.4rem; padding: 0.6rem; border-top: 1px solid #e0e6e5; background: #fff; }
 .chat textarea { flex: 1; resize: none; border: 1px solid #cfd3da; border-radius: 9px; padding: 0.5rem; font: inherit; height: 46px; }
 .chat .send { border: 0; background: var(--green); color: #fff; border-radius: 9px; padding: 0 0.9rem; font-weight: 700; cursor: pointer; }
-.chat .attach { border: 1px solid #cfd3da; background: #fff; border-radius: 9px; padding: 0 0.55rem; font-size: 1.05rem; cursor: pointer; align-self: stretch; }
+.chat .attach { border: 1px solid #cfd3da; background: #fff; border-radius: 9px; padding: 0 0.6rem; cursor: pointer; align-self: stretch; display: flex; align-items: center; justify-content: center; color: #667; }
+.chat .attach:hover { color: var(--green); }
 .chat .attach:hover { background: #f2f5f4; }
 .chat .attach:disabled { opacity: 0.5; cursor: default; }
 .chat .att-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; padding: 0.4rem 0.6rem 0; }

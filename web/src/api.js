@@ -152,7 +152,11 @@ export function mdToHtml(md) {
       const header = cells(line)
       const body = []
       let j = i + 2
-      while (j < lines.length && lines[j].trim().includes('|')) { body.push(cells(lines[j])); j++ }
+      while (j < lines.length && lines[j].trim().includes('|')) {
+        if (isDelim(lines[j])) break                 // 구분행 → 표 종료
+        if (isDelim(lines[j + 1] || '')) break        // 이 줄이 다음 표의 헤더(빈 줄 없이 인접) → 종료
+        body.push(cells(lines[j])); j++
+      }
       let t = '<div class="md-table-wrap"><table class="md-table"><thead><tr>'
       t += header.map(h => `<th>${inline(h)}</th>`).join('') + '</tr></thead><tbody>'
       for (const r of body) t += '<tr>' + header.map((_, k) => `<td>${inline(r[k] || '')}</td>`).join('') + '</tr>'

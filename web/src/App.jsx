@@ -1479,7 +1479,9 @@ function Chat() {
       <div className="input">
         <input ref={fileRef} type="file" multiple accept="image/*,application/pdf,.txt,.md,.csv,.tsv,.json,.log,.xml,.yml,.yaml,.py,.js,.ts,.html"
           style={{ display: 'none' }} onChange={e => pickFiles(e.target.files)} />
-        <button className="attach" onClick={() => fileRef.current?.click()} disabled={busy} title="파일 첨부 (PDF·이미지·텍스트)">📎</button>
+        <button className="attach" onClick={() => fileRef.current?.click()} disabled={busy} title="파일 첨부 (PDF·이미지·텍스트)" aria-label="파일 첨부">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+        </button>
         <textarea value={text} placeholder="질문 입력…  (Enter 전송, Shift+Enter 줄바꿈)"
           onChange={e => setText(e.target.value)}
           onPaste={e => { const fs = Array.from(e.clipboardData?.files || []); if (fs.length) { e.preventDefault(); pickFiles(fs) } }}
