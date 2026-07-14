@@ -117,6 +117,12 @@ tbody tr:hover { background: #f7faf9; }
 .gloss-pop { position: fixed; z-index: 4000; max-width: 320px; background: #1f2937; color: #f3f4f6;
   padding: 8px 11px; border-radius: 8px; font-size: 0.8rem; line-height: 1.45;
   box-shadow: 0 8px 24px rgba(0,0,0,0.28); pointer-events: none; }
+/* 리포트 마크다운 표 */
+.md-table-wrap { overflow-x: auto; margin: 0.55rem 0; -webkit-overflow-scrolling: touch; }
+.md-table { border-collapse: collapse; width: 100%; font-size: 0.8rem; line-height: 1.4; }
+.md-table th, .md-table td { border: 1px solid #d5dedc; padding: 5px 9px; text-align: left; vertical-align: top; }
+.md-table th { background: #eef3f2; font-weight: 700; white-space: nowrap; }
+.md-table tbody tr:nth-child(even) { background: #f7faf9; }
 .chat .grip { position: absolute; right: 2px; bottom: 2px; width: 18px; height: 18px; cursor: nwse-resize;
   background: linear-gradient(135deg, transparent 45%, var(--green) 45%, var(--green) 72%, transparent 72%); }
 .spin { color: var(--muted); font-size: 0.85rem; }

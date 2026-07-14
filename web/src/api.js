@@ -137,11 +137,29 @@ export function mdToHtml(md) {
     esc(s)
       .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
       .replace(/\[(.+?)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+  // markdown 표 셀 분해 / 구분행(---) 판정
+  const cells = (l) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim())
+  const isDelim = (l) => !!l && l.includes('|') && cells(l).every(c => /^:?-{1,}:?$/.test(c))
+  const lines = md.split('\n')
   const out = []
   let inList = false
-  for (const raw of md.split('\n')) {
-    const line = raw.trimEnd()
-    const close = () => { if (inList) { out.push('</ul>'); inList = false } }
+  const close = () => { if (inList) { out.push('</ul>'); inList = false } }
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trimEnd()
+    // 표: 헤더행 다음이 구분행(|---|---|)이면 <table>로 렌더 (좁은 모달 대비 가로 스크롤)
+    if (line.includes('|') && isDelim(lines[i + 1] || '')) {
+      close()
+      const header = cells(line)
+      const body = []
+      let j = i + 2
+      while (j < lines.length && lines[j].trim().includes('|')) { body.push(cells(lines[j])); j++ }
+      let t = '<div class="md-table-wrap"><table class="md-table"><thead><tr>'
+      t += header.map(h => `<th>${inline(h)}</th>`).join('') + '</tr></thead><tbody>'
+      for (const r of body) t += '<tr>' + header.map((_, k) => `<td>${inline(r[k] || '')}</td>`).join('') + '</tr>'
+      out.push(t + '</tbody></table></div>')
+      i = j - 1
+      continue
+    }
     if (/^#{1,6}\s/.test(line)) { close(); const lv = line.match(/^#+/)[0].length; out.push(`<h${Math.min(lv + 2, 6)}>${inline(line.replace(/^#+\s/, ''))}</h${Math.min(lv + 2, 6)}>`) }
     else if (/^\s*[-*]\s+/.test(line)) { if (!inList) { out.push('<ul>'); inList = true } out.push(`<li>${inline(line.replace(/^\s*[-*]\s+/, ''))}</li>`) }
     else if (line === '') { close(); out.push('') }
