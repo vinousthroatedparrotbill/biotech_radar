@@ -57,10 +57,12 @@ IR_PATH_CANDIDATES = [
     "/company/investors",
 ]
 
-# IR root 위에 직접 시도할 발표자료 경로
+# IR root 위에 직접 시도할 발표자료 경로 (더 구체적인 경로를 앞에)
 PRESENTATIONS_PATH_CANDIDATES = [
     "/events-and-presentations", "/events-and-presentations/",
     "/events-presentations",
+    "/news-events/presentations", "/news-event/presentations",
+    "/news-and-events/presentations",
     "/investor-presentations",
     "/news-events/events-presentations",
     "/news-and-events/events-and-presentations",
@@ -70,6 +72,18 @@ PRESENTATIONS_PATH_CANDIDATES = [
     "/events", "/events/",
     "/news-events", "/news-and-events",
 ]
+
+# 직접 파일 링크(개별 발표자료 PDF/PPT 등)는 '브라우징 페이지'가 아니므로 IR/pipeline URL에서 제외.
+# (예: IR 페이지 대신 Q2-Corporate-Presentation.pdf로 바로 걸리는 것 방지 — 개별 PDF는 ir_pdfs가 별도 처리)
+_FILE_EXT = (".pdf", ".ppt", ".pptx", ".doc", ".docx", ".xls", ".xlsx",
+             ".zip", ".csv", ".mp4", ".mp3", ".jpg", ".jpeg", ".png", ".webp")
+
+# 확장자 없이 파일을 서빙하는 경로 패턴 — Q4/Investis 등 IR CDN의 문서 링크.
+# 예: ir.foo.com/static-files/<UUID> (확장자 없지만 개별 PDF), /getmedia/, /-/media/(AEM),
+#     경로에 UUID가 있으면 대개 서빙된 개별 파일.
+_FILE_PATH_RE = re.compile(
+    r"/static-files?/|/getmedia/|/-/media/|/content/dam/|/download(?:/|$|\?)"
+    r"|/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:/|$)", re.I)
 
 # 호환성 유지 — 기존 호출 코드 깨지지 않게
 IR_PATTERNS = IR_ROOT_PATTERNS
@@ -202,6 +216,10 @@ def _extract_best_link(html: str, base_url: str, patterns: list[tuple[re.Pattern
             continue
         abs_url = urljoin(base_url, href)
         if not abs_url.startswith(("http://", "https://")):
+            continue
+        # 직접 파일 링크(개별 발표자료 PDF/PPT, 확장자 없는 CDN 서빙 파일)는 페이지가 아니므로 제외
+        _pth = urlparse(abs_url).path
+        if _pth.lower().rstrip("/").endswith(_FILE_EXT) or _FILE_PATH_RE.search(_pth):
             continue
         # 외부 도메인은 제외 (단, 같은 회사의 *.investors.foo.com 같은 서브도메인은 OK)
         href_host = urlparse(abs_url).netloc
