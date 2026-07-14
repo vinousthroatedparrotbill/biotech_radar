@@ -237,7 +237,7 @@ SYSTEM_PROMPT = """당신은 Goldman Sachs / Morgan Stanley / Cowen / Leerink급
 
 # {회사명} ({TICKER}) — 투자 메모
 
-## TL;DR (5-10줄 요약)
+## 요약
 - 한 줄당 한 가지 핵심. 마크다운 list 형식.
 - 메인 자산·핵심 카탈리스트 일자·시그널·리스크 가장 본질만.
 - "Bottom line"이나 추측 표현 금지. 사실/일자/숫자 위주.
@@ -499,7 +499,8 @@ def split_tldr_and_body(text: str) -> tuple[str, str]:
     body = 전체 (TL;DR 포함). PDF에는 body 전체 들어감."""
     if not text:
         return "", ""
-    m = re.search(r"##\s*TL;DR[^\n]*\n(.+?)(?=\n##\s)", text, re.DOTALL | re.IGNORECASE)
+    # '요약'(신규) 또는 'TL;DR'(구 저장분) 헤딩 모두 인식
+    m = re.search(r"##\s*(?:요약|TL;DR)[^\n]*\n(.+?)(?=\n##\s)", text, re.DOTALL | re.IGNORECASE)
     if m:
         return m.group(1).strip(), text.strip()
     # fallback: 첫 200자
