@@ -257,36 +257,187 @@ def _extract_drugs(text: str) -> set[str]:
     return found
 
 
-# ───────────────────────── TOP 3 + 기전 ─────────────────────────
+# ─────────────── TOP 파이프라인 (A1: 자사 자산 Claude+web_search 검증, DB 캐시) ───────────────
+import threading as _threading
+
+_OWN_TOOL = {
+    "name": "own_pipeline_assets",
+    "description": "이 회사가 직접 보유·개발하는 파이프라인 자산만(경쟁사·비교약·타사 도입 제외).",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "assets": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string",
+                                 "description": "대표 명칭(가장 널리 쓰이는 것 — INN 또는 브랜드 우선)"},
+                        "aliases": {"type": "array", "items": {"type": "string"},
+                                    "description": "같은 자산의 **다른 모든 명칭** — 코드명·INN·브랜드 "
+                                                   "전부(예: name=daraxonrasib면 aliases=[RMC-6236]). "
+                                                   "뉴스가 어느 형태로 부르든 매칭되도록 빠짐없이."},
+                    },
+                    "required": ["name"],
+                },
+            },
+        },
+        "required": ["assets"],
+    },
+}
+_own_inflight: set[str] = set()
+_own_lock = _threading.Lock()
+
+
+def _ensure_own_cache():
+    from db import connect
+    with connect() as c:
+        c.execute("CREATE TABLE IF NOT EXISTS own_assets_cache "
+                  "(ticker TEXT PRIMARY KEY, assets TEXT, updated_at TEXT)")
+        c.commit()
+
+
+def _own_cache_get(ticker: str, ttl_days: int = 30):
+    """캐시된 자사 자산 → set(빈 set도 유효=자산없음 확정). 없거나 만료면 None(재추출 필요)."""
+    import datetime as dt
+    import json as _json
+    try:
+        _ensure_own_cache()
+        from db import connect
+        with connect() as c:
+            r = c.execute("SELECT assets, updated_at FROM own_assets_cache WHERE ticker=?",
+                          (ticker.upper(),)).fetchone()
+        if not r:
+            return None
+        if (dt.datetime.now() - dt.datetime.fromisoformat(r["updated_at"])).days > ttl_days:
+            return None
+        return _json.loads(r["assets"])           # list[{name, aliases}] (빈 list=자산없음 확정)
+    except Exception:
+        return None
+
+
+def _own_cache_put(ticker: str, assets: set):
+    import datetime as dt
+    import json as _json
+    try:
+        _ensure_own_cache()
+        from db import connect
+        with connect() as c:
+            c.execute("INSERT INTO own_assets_cache (ticker, assets, updated_at) VALUES (?,?,?) "
+                      "ON CONFLICT (ticker) DO UPDATE SET assets=excluded.assets, "
+                      "updated_at=excluded.updated_at",
+                      (ticker.upper(), _json.dumps(assets, ensure_ascii=False),
+                       dt.datetime.now().isoformat(timespec="seconds")))
+            c.commit()
+    except Exception:
+        pass
+
+
+def _extract_own_via_claude(ticker: str, name: str):
+    """Claude+web_search로 자사 파이프라인 자산만 추출. 성공 시 set(빈 set 포함), 실패 시 None."""
+    import os
+    key = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+    if not key:
+        return None
+    import anthropic
+    web = [{"type": "web_search_20250305", "name": "web_search"}]
+    sys_p = (
+        f"'{name}'({ticker})의 **자사** 임상/전임상 파이프라인 자산만 정확히 파악하라. "
+        "web_search로 회사 파이프라인 페이지·최신 IR을 확인해 약물을 수집하라. "
+        "경쟁사 약물, 비교·comparator, 타사 도입(in-license)이라 자사 개발이 아닌 것, "
+        "이미 out-license해 자사 개발이 아닌 것은 **제외**. 확실한 자사 자산만. "
+        "**각 자산은 name(대표명)과 aliases(코드·INN·브랜드 등 다른 모든 명칭)로 나눠 담아라** — "
+        "뉴스가 코드로 부르든 INN으로 부르든 매칭돼야 하므로 별칭을 빠짐없이. "
+        "파악 후 own_pipeline_assets 도구로 답하라."
+    )
+    try:
+        cl = anthropic.Anthropic(api_key=key)
+        messages = [{"role": "user", "content": f"{name}({ticker})의 자사 파이프라인 자산을 나열해."}]
+        for _ in range(5):
+            r = cl.messages.create(model="claude-opus-4-8", max_tokens=1500,
+                                   system=sys_p, tools=[_OWN_TOOL] + web, messages=messages)
+            tu = next((b for b in r.content
+                       if b.type == "tool_use" and b.name == "own_pipeline_assets"), None)
+            if tu:
+                return tu.input.get("assets") or []   # list[{name, aliases}]
+            if r.stop_reason == "pause_turn":
+                messages.append({"role": "assistant", "content": r.content})
+                continue
+            messages.append({"role": "assistant", "content": r.content})
+            messages.append({"role": "user", "content": "own_pipeline_assets 도구로 답하라."})
+    except Exception as e:
+        log.warning("own asset 추출 실패 %s: %s", ticker, e)
+    return None
+
+
+def _trigger_own_async(ticker: str, name: str):
+    """자사 자산 추출을 백그라운드로(모달 응답 블로킹 방지). 중복 실행 방지."""
+    tk = ticker.upper()
+    with _own_lock:
+        if tk in _own_inflight:
+            return
+        _own_inflight.add(tk)
+
+    def _run():
+        try:
+            assets = _extract_own_via_claude(ticker, name)
+            if assets is not None:          # 성공(빈 set 포함) → 캐시. 실패(None) → 재시도 위해 캐시 안 함
+                _own_cache_put(ticker, assets)
+        finally:
+            with _own_lock:
+                _own_inflight.discard(tk)
+    _threading.Thread(target=_run, daemon=True).start()
+
+
+def _asset_mentioned(asset: str, low_text: str) -> bool:
+    """뉴스 본문(소문자)에 자산명이 단어 경계로 등장하는지."""
+    a = (asset or "").lower()
+    if len(a) < 3:
+        return False
+    return re.search(r"(?<![a-z0-9])" + re.escape(a) + r"(?![a-z0-9])", low_text) is not None
+
+
 def top_pipelines(ticker: str, name: str, days: int) -> list[dict]:
-    """Returns [{drug, mentions, moa, sample_link}] (top 3, by mention count).
-    파이프라인 페이지에서 검증 — 회사 자체 파이프라인에 없는 약물(타사 임상 등) 거름."""
+    """**자사** 파이프라인 자산(Claude+web_search 검증, 캐시)을 최근 뉴스 언급 빈도순으로.
+    캐시 미스면 즉시 빈 결과 + 백그라운드 추출(다음 열람 시 표시) — /api/stock 블로킹 방지."""
+    own = _own_cache_get(ticker)
+    if own is None:                 # 캐시 없음/만료 → 백그라운드 추출 트리거 후 이번엔 빈 결과
+        _trigger_own_async(ticker, name)
+        return []
+    if not own:                     # 자산 없음 확정(캐시된 빈 list)
+        return []
+    # 자산별 매칭 폼(대표명 + 별칭) — 문자열/구형 캐시도 호환
+    assets = []
+    for a in own:
+        if isinstance(a, str):
+            nm, aliases = a, []
+        else:
+            nm, aliases = (a.get("name") or ""), (a.get("aliases") or [])
+        nm = nm.strip()
+        if not nm:
+            continue
+        forms = {f.lower() for f in ([nm] + list(aliases)) if f and len(f) >= 3}
+        assets.append((nm, forms))
     items = fetch_combined(ticker, name, days)
-    drug_counter: Counter[str] = Counter()
-    drug_context: dict[str, str] = {}
-    drug_links: dict[str, str] = {}
+    counter: Counter[str] = Counter()
+    ctx: dict[str, str] = {}
+    links: dict[str, str] = {}
     for it in items:
         text = f"{it['title']}. {it['summary']}"
-        drugs = _extract_drugs(text)
-        for d in drugs:
-            drug_counter[d] += 1
-            if len(text) > len(drug_context.get(d, "")):
-                drug_context[d] = text
-                drug_links[d] = it.get("link", "")
-
-    # 파이프라인 검증 — 회사 페이지에 있는 약물만 통과
-    if drug_counter:
-        valid = _validate_against_pipeline(ticker, set(drug_counter.keys()))
-        drug_counter = Counter({d: c for d, c in drug_counter.items() if d in valid})
-
+        low = text.lower()
+        for nm, forms in assets:
+            if any(_asset_mentioned(f, low) for f in forms):
+                counter[nm] += 1
+                if len(text) > len(ctx.get(nm, "")):
+                    ctx[nm] = text
+                    links[nm] = it.get("link", "")
     out = []
-    for drug, cnt in drug_counter.most_common(3):
-        moa = classify(drug, context=drug_context.get(drug, ""))
+    for drug, cnt in counter.most_common(5):   # 언급된 자사 자산만 (most_common은 count>0)
         out.append({
             "drug": drug,
             "mentions": cnt,
-            "moa": moa or "—",
-            "sample_link": drug_links.get(drug, ""),
+            "moa": classify(drug, context=ctx.get(drug, "")) or "—",
+            "sample_link": links.get(drug, ""),
         })
     return out
 
