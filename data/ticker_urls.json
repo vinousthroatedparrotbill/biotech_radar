@@ -1102,5 +1102,8 @@
   "SEPN": {
     "ir_url": "https://ir.septerna.com/events-presentations",
     "pipeline_url": "https://www.septerna.com/pipeline/"
+  },
+  "TRAX": {
+    "pipeline_url": "https://www.firsttracksbio.com/our-pipeline/"
   }
 }
