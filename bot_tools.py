@@ -723,9 +723,11 @@ def fetch_url(url: str, max_chars: int = 8000) -> dict:
             r_text, r_title = _clean_html_text(rendered)
             if len(r_text) > len(text):
                 text, title = r_text, r_title
-        except Exception as e:
+        except Exception:
+            # Playwright 미설치/실패 — raw 에러를 사용자에게 노출하지 않는다. 정적 본문이라도
+            # 있으면 그걸 쓰고, 없으면 web_fetch(서버도구)로 재시도하라는 힌트만 남긴다.
             if not text:
-                err = f"playwright: {type(e).__name__}: {e}"
+                err = "JS 렌더 페이지라 정적 크롤이 비었음 — web_fetch 도구로 이 URL 재시도 권장"
 
     out: dict = {
         "url": url,
