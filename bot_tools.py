@@ -665,11 +665,15 @@ def _clean_html_text(html: str) -> tuple[str, str]:
     return text, title
 
 
+_PW_AVAILABLE = None   # None=미확인, True=사용가능, False=브라우저 없음(이후 재시도 안 함)
+
+
 def fetch_url(url: str, max_chars: int = 8000) -> dict:
     """임의 URL 본문 텍스트 fetch — 뉴스 article, 학회 abstract, 회사 발표문 등.
     검색 도구로 URL을 찾았으면 이 도구로 본문 직접 읽기.
     Google News redirect / JS-rendered 페이지는 Playwright 자동 fallback."""
     from curl_cffi import requests as crq
+    global _PW_AVAILABLE
 
     text, title, final_url = "", "", url
     err: str | None = None
@@ -699,8 +703,13 @@ def fetch_url(url: str, max_chars: int = 8000) -> dict:
         if not err:
             err = f"{type(e).__name__}: {e}"
 
-    # 3) 본문 부족하면 Playwright fallback (JS-rendered 페이지)
-    if len(text) < 400:
+    # 3) 본문 부족하면 Playwright fallback (JS-rendered 페이지).
+    #    브라우저 미설치(클라우드)로 한 번 실패하면 _PW_AVAILABLE=False로 캐시 →
+    #    이후 호출은 Playwright 시도 자체를 건너뛰어 '반복 실패'를 막고 즉시 폴백 힌트 반환.
+    if len(text) < 400 and _PW_AVAILABLE is False:
+        if not text:
+            err = "JS 렌더 페이지라 정적 크롤이 비었음 — 이 URL은 web_fetch 도구로 읽어라(fetch_url 재시도 금지)"
+    elif len(text) < 400:
         try:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
@@ -720,14 +729,15 @@ def fetch_url(url: str, max_chars: int = 8000) -> dict:
                 final_url = page.url
                 rendered = page.content()
                 browser.close()
+            _PW_AVAILABLE = True
             r_text, r_title = _clean_html_text(rendered)
             if len(r_text) > len(text):
                 text, title = r_text, r_title
         except Exception:
-            # Playwright 미설치/실패 — raw 에러를 사용자에게 노출하지 않는다. 정적 본문이라도
-            # 있으면 그걸 쓰고, 없으면 web_fetch(서버도구)로 재시도하라는 힌트만 남긴다.
+            # Playwright 미설치/실패(클라우드) — 이후 재시도 안 하도록 캐시. raw 에러 노출 금지.
+            _PW_AVAILABLE = False
             if not text:
-                err = "JS 렌더 페이지라 정적 크롤이 비었음 — web_fetch 도구로 이 URL 재시도 권장"
+                err = "JS 렌더 페이지라 정적 크롤이 비었음 — 이 URL은 web_fetch 도구로 읽어라(fetch_url 재시도 금지)"
 
     out: dict = {
         "url": url,

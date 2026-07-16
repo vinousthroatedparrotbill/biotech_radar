@@ -24,8 +24,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 # 챗봇 원문 크롤링(JS 렌더 페이지) fallback용 — Playwright chromium + 시스템 의존성.
-# 이게 없으면 fetch_url의 JS 페이지 fallback이 'playwright 실행파일 없음'으로 실패.
-RUN python -m playwright install --with-deps chromium
+# 설치 실패해도 배포는 진행(fetch_url이 web_fetch로 우아하게 폴백). '||true'로 빌드 비차단.
+RUN python -m playwright install --with-deps chromium || echo "playwright chromium install 실패 — web_fetch 폴백 사용"
 
 # 앱 코드 (.dockerignore가 .venv/web/node_modules/로그/.env 등 제외)
 COPY . .
