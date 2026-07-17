@@ -34,6 +34,25 @@ def _setup_logging() -> None:
     )
 
 
+def _kr_traded_today():
+    """오늘 KRX가 실제 거래했나. True=개장 / False=휴장(주말·공휴일) / None=판정불가(→진행).
+    독립 판정: 주말이면 휴장, 그 외엔 KOSPI 지수(KS11)의 마지막 거래일이 오늘인지로 확인.
+    (휴장일엔 토스/스냅샷이 직전 종가를 '오늘'로 찍어 이틀 전 데이터가 올라오는 것 방지.)"""
+    from datetime import timedelta
+    d = date.today()
+    if d.weekday() >= 5:          # 토(5)/일(6)
+        return False
+    try:
+        import FinanceDataReader as fdr
+        import pandas as pd
+        df = fdr.DataReader("KS11", (d - timedelta(days=10)).isoformat())
+        if df is None or df.empty:
+            return None
+        return pd.Timestamp(df.index[-1]).date() == d
+    except Exception:
+        return None
+
+
 def main() -> int:
     _setup_logging()
     today = date.today().isoformat()
@@ -42,6 +61,12 @@ def main() -> int:
         if last == today:
             print(f"kr_daily_runner: already ran today ({today}). skip.")
             return 0
+
+    # 한국장 휴장(주말/공휴일)이면 stale(직전 종가) 데이터 발송 방지 — 실제 거래일 아니면 skip.
+    # 마커는 안 남긴다(FDR 지연에 의한 오판이면 catch-up 트리거가 재확인해 정상 발송).
+    if _kr_traded_today() is False:
+        print(f"kr_daily_runner: 오늘({today}) KRX 휴장 — 발송 skip (stale 데이터 방지).")
+        return 0
 
     # 중복 실행 방지 락 — 긴 런 도중 다음 트리거(16:30/18:00)가 떠도 중복 실행 안 함
     if not run_lock.acquire(LOCK):
