@@ -102,6 +102,20 @@ export const getValuation = (ticker) => fetch(`/api/valuation/${enc(ticker)}`).t
 // AI 리포트 / 기사
 export const getReport = (ticker) => fetch(`/api/report/${enc(ticker)}`).then(j)
 export const genReport = (ticker) => post(`/api/report/${enc(ticker)}`, {})
+
+// 진행 중인 리포트 생성을 모듈 레벨에 보존 — 모달을 닫았다 다시 열어도 '생성 중' 유지 + 결과 이어받기
+const _reportRuns = {}
+const _rk = (t) => String(t || '').toUpperCase()
+export function runReport(ticker) {
+  const k = _rk(ticker)
+  if (!_reportRuns[k]) {
+    _reportRuns[k] = genReport(ticker)
+      .then(d => { delete _reportRuns[k]; return d })
+      .catch(e => { delete _reportRuns[k]; throw e })
+  }
+  return _reportRuns[k]
+}
+export const pendingReport = (ticker) => _reportRuns[_rk(ticker)] || null
 export const getArticles = (ticker, name) => fetch(`/api/articles/${enc(ticker)}?name=${enc(name || '')}`).then(j)
 
 // 관심종목 / 제외

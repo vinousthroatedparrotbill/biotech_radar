@@ -1207,8 +1207,18 @@ function AiReport({ ticker, onPick, tickerMap }) {
   const [rep, setRep] = useState(undefined)
   const [busy, setBusy] = useState(false)
   const [tip, setTip] = useState(null)   // 용어 hover 툴팁 {def,x,y}
-  useEffect(() => { api.getReport(ticker).then(d => setRep(d.cached ? d : null)).catch(() => setRep(null)) }, [ticker])
-  const gen = async () => { setBusy(true); try { const d = await api.genReport(ticker); if (d.ok) setRep(d); else alert(d.error || '생성 실패') } finally { setBusy(false) } }
+  useEffect(() => {
+    api.getReport(ticker).then(d => setRep(d.cached ? d : null)).catch(() => setRep(null))
+    // 모달을 닫았다 다시 열었을 때 진행 중인 생성이 있으면 '생성 중' 이어받기
+    const p = api.pendingReport(ticker)
+    if (p) { setBusy(true); p.then(d => { if (d && d.ok) setRep(d) }).catch(() => { }).finally(() => setBusy(false)) }
+  }, [ticker])
+  const gen = async () => {
+    setBusy(true)
+    try { const d = await api.runReport(ticker); if (d.ok) setRep(d); else alert(d.error || '생성 실패') }
+    catch (e) { alert('생성 실패: ' + e) }
+    finally { setBusy(false) }
+  }
   if (rep === undefined) return <p className="muted">…</p>
   if (!rep) return <button className="btn" onClick={gen} disabled={busy}>{busy ? '생성 중… (1–3분)' : '리포트 생성'}</button>
   // 용어 설명(Glossary)을 분리해 맵으로 만들고, 본문 용어에 hover 툴팁(gloss) 부여.
