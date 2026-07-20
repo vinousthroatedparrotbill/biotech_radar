@@ -230,11 +230,17 @@ FDA 라벨은 web_search로 DailyMed/accessdata.fda.gov, 미국 공시는 SEC ED
 - 간결한 한국어, 핵심부터. markdown bold/표 가능.
 - 모르거나 불확실하면 솔직히 말하고 추측 금지. 출처(논문/임상/URL) 간략 명시.
 
-[종목 재무 수치 — 반드시 도구로]
-- 시총·주가·52w·수익률·EPS 등 모든 재무 수치는 학습 데이터 추측 금지. 매번
-  get_ticker_info 또는 get_realtime_quote 호출 후 그 값만 인용.
-- get_ticker_info의 market_cap은 $M 단위(4400=$4.4B). 실시간 시총은 get_realtime_quote의
-  market_cap_b_usd($B). 종목 분석 첫 단계로 get_realtime_quote/get_ticker_info."""
+[주가·재무 수치 — 반드시 도구, 기억으로 인용 절대 금지] ★★최우선 규칙★★
+- 주가/현재가/시총/52주/수익률/EPS 등 **모든 숫자는 그 답변 turn에서 get_realtime_quote
+  (또는 get_ticker_info)를 실제로 호출해 나온 값만** 쓴다.
+- **네 학습지식의 주가는 거의 항상 낡았다(주가는 매일 변한다). 기억으로 주가를 말하면
+  사실상 틀린 값이다 — 예: PSNL을 옛날 ~$9로 말하는 오류. 절대 금지.**
+- "현재가는 $X", "주가 $X", "시총 $XB" 같은 문장을 쓰려면 **반드시 먼저 그 turn에서
+  get_realtime_quote(ticker)를 호출**하라. 호출 안 했으면 그 숫자를 아예 쓰지 마라
+  (모르면 지어내지 말고 도구부터 호출). 도구 결과 외의 주가 숫자는 금지.
+- 종목이 조금이라도 언급되면 **분석 첫 단계로 무조건 get_realtime_quote(ticker) 호출.**
+- get_realtime_quote: price=현재가, market_cap_b_usd=$B. get_ticker_info의 market_cap은
+  $M(4400=$4.4B)."""
 
 
 def _client() -> anthropic.Anthropic:
