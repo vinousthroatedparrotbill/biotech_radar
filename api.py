@@ -859,27 +859,65 @@ def valuation(ticker: str) -> dict:
 
 
 # ───────────────────────── AI 리포트 ─────────────────────────
-@app.get("/api/report/{ticker}")
-def report_get(ticker: str) -> dict:
-    """캐시된 AI 리포트 조회 (없으면 cached=False)."""
+# 리포트 생성은 Claude opus 도구 호출로 1-3분 걸린다. 동기 POST로 처리하면 Render
+# 프록시 타임아웃에 걸려 HTML 502가 반환되고, 프론트가 JSON.parse에서 "Unexpected
+# token"으로 죽는다. → POST는 백그라운드 스레드로 생성만 '시작'하고 즉시 반환하며,
+# 프론트는 GET을 폴링해 완료를 감지한다(결과는 DB에 저장되므로 재시작에도 안전).
+import threading as _threading
+
+_report_jobs: dict = {}          # ticker(upper) -> {"status": generating|done|error, "error"?: str}
+_report_jobs_lock = _threading.Lock()
+
+
+def _run_report_job(tk: str) -> None:
     import investment_report as ir
     try:
-        rep = ir.get_cached_report(ticker)
-        if not rep:
-            return {"cached": False}
-        return {"cached": True, **rep}
+        ir.generate_and_save(tk)
+        with _report_jobs_lock:
+            _report_jobs[tk] = {"status": "done"}
     except Exception as e:
-        return {"cached": False, "error": f"{type(e).__name__}: {e}"}
+        with _report_jobs_lock:
+            _report_jobs[tk] = {"status": "error", "error": f"{type(e).__name__}: {e}"}
+
+
+@app.get("/api/report/{ticker}")
+def report_get(ticker: str) -> dict:
+    """캐시된 AI 리포트 + 생성 상태 조회 (프론트 폴링 대상)."""
+    tk = ticker.upper()
+    with _report_jobs_lock:
+        job = dict(_report_jobs.get(tk) or {})
+    generating = job.get("status") == "generating"
+    import investment_report as ir
+    try:
+        rep = ir.get_cached_report(tk)
+    except Exception as e:
+        if not job:
+            return {"cached": False, "error": f"{type(e).__name__}: {e}"}
+        rep = None
+    if rep:
+        return {"cached": True, **rep, "generating": generating}
+    if generating:
+        return {"cached": False, "generating": True}
+    if job.get("status") == "error":
+        return {"cached": False, "error": job.get("error")}
+    return {"cached": False}
 
 
 @app.post("/api/report/{ticker}")
 def report_generate(ticker: str) -> dict:
-    """AI 리포트 생성+저장 (Claude opus, 1-3분)."""
-    import investment_report as ir
+    """AI 리포트 생성 시작(비동기). 즉시 반환 → 프론트는 GET 폴링으로 완료 감지."""
+    tk = ticker.upper()
+    with _report_jobs_lock:
+        if (_report_jobs.get(tk) or {}).get("status") == "generating":
+            return {"ok": True, "status": "generating"}      # 이미 진행 중 — 중복 시작 방지
+        _report_jobs[tk] = {"status": "generating"}
     try:
-        return {"ok": True, **ir.generate_and_save(ticker)}
+        _threading.Thread(target=_run_report_job, args=(tk,), daemon=True).start()
     except Exception as e:
+        with _report_jobs_lock:
+            _report_jobs[tk] = {"status": "error", "error": f"{type(e).__name__}: {e}"}
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    return {"ok": True, "status": "generating"}
 
 
 # ───────────────────────── 최근 펀더멘탈 기사 ─────────────────────────

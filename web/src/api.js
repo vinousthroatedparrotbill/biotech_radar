@@ -1,5 +1,11 @@
 // 백엔드(FastAPI) 호출 헬퍼 — vite proxy가 /api → :8000 으로 전달
-const j = (r) => r.json()
+// 비-JSON 응답(프록시 502 HTML 등)을 만나도 "Unexpected token" 대신 명확한 에러로.
+const j = async (r) => {
+  const text = await r.text()
+  try { return JSON.parse(text) }
+  catch { throw new Error(`서버 응답 오류 (HTTP ${r.status})`) }
+}
+const _sleep = (ms) => new Promise((res) => setTimeout(res, ms))
 const enc = encodeURIComponent
 const post = (url, body) =>
   fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(j)
@@ -106,12 +112,26 @@ export const genReport = (ticker) => post(`/api/report/${enc(ticker)}`, {})
 // 진행 중인 리포트 생성을 모듈 레벨에 보존 — 모달을 닫았다 다시 열어도 '생성 중' 유지 + 결과 이어받기
 const _reportRuns = {}
 const _rk = (t) => String(t || '').toUpperCase()
+// 생성은 1-3분. 동기 POST는 프록시 타임아웃(→HTML 502→JSON parse 실패)에 걸리므로
+// POST로 생성을 '시작'만 하고 GET을 폴링해 완료를 감지한다.
 export function runReport(ticker) {
   const k = _rk(ticker)
   if (!_reportRuns[k]) {
-    _reportRuns[k] = genReport(ticker)
-      .then(d => { delete _reportRuns[k]; return d })
-      .catch(e => { delete _reportRuns[k]; throw e })
+    _reportRuns[k] = (async () => {
+      const kicked = await genReport(ticker)                 // 즉시 반환 {ok, status:'generating'}
+      if (kicked && kicked.ok === false) throw new Error(kicked.error || '생성 시작 실패')
+      const deadline = Date.now() + 8 * 60 * 1000            // 최대 8분 폴링 (opus 도구 15콜 최악 대비)
+      for (;;) {
+        await _sleep(4000)
+        let d = null
+        try { d = await getReport(ticker) } catch { /* 일시적 오류는 계속 폴링 */ }
+        if (d) {
+          if (d.error) throw new Error(d.error)
+          if (!d.generating && d.cached) return { ok: true, ...d }
+        }
+        if (Date.now() > deadline) throw new Error('생성 시간 초과 (5분) — 잠시 후 다시 시도해주세요.')
+      }
+    })().finally(() => { delete _reportRuns[k] })
   }
   return _reportRuns[k]
 }
