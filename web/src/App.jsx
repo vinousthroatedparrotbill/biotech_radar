@@ -103,6 +103,19 @@ export default function App() {
   const closeModal = useCallback((tk) => setModals(ms => ms.filter(x => x.ticker !== tk)), [])
   const closeAll = useCallback(() => setModals([]), [])
 
+  // 탭(page) 전환 시 열려 있던 도킹 패널 모두 닫기 — 다른 탭으로 넘어가면 이전 모달이 안 남게.
+  useEffect(() => { setModals([]) }, [page])
+
+  // ESC로 패널 닫기 — 복수면 가장 나중에 연 것부터(LIFO). 위에 뜬 다이얼로그(종목추가 등)는
+  // capture 단계에서 먼저 처리 후 stopPropagation 하므로 그쪽이 우선 닫힌다.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') setModals(ms => (ms.length ? ms.slice(0, -1) : ms))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   return (
     <>
       <header className="topbar">
@@ -703,7 +716,7 @@ function Portfolios({ onPick }) {
   const [sel, setSel] = useState(null)
   const [detail, setDetail] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [bench, setBench] = useState(['IBB'])
+  const [bench, setBench] = useState(['XBI'])
   const benchInit = useRef(null)   // 포트폴리오별 기본 벤치마크를 1회만 적용(수동 선택 보존)
   const [txs, setTxs] = useState([])
   const [showTx, setShowTx] = useState(false)
@@ -719,15 +732,14 @@ function Portfolios({ onPick }) {
   }), [sel])
   useEffect(() => { loadList() }, [])
 
-  // 포트폴리오 전환 시 기본 벤치마크: 한국 바이오텍 → TIMEFOLIO K바이오(463050), 그 외(미국) → IBB.
-  // 같은 포트폴리오에선 1회만 적용해 사용자의 수동 선택을 덮어쓰지 않음.
+  // 포트폴리오 전환 시 기본 벤치마크: 한국·미국 공통으로 XBI(글로벌 바이오텍 표준 벤치마크).
+  // 같은 포트폴리오에선 1회만 적용해 사용자의 수동 선택을 덮어쓰지 않음(드롭다운서 Timefolio 등 선택 가능).
   useEffect(() => {
     if (sel == null || benchInit.current === sel) return
     const p = list.find(x => x.id === sel)
     if (!p) return
     benchInit.current = sel
-    const isKR = /바이오|한국|k-?bio|kbio/i.test(p.name || '')
-    setBench([isKR ? '463050' : 'IBB'])
+    setBench(['XBI'])
   }, [sel, list])
 
   const loadId = useRef(0)   // 요청 경합 가드: 최신 요청 결과만 반영(벤치마크 전환 시 stale 응답 무시)
@@ -929,6 +941,12 @@ function AddStockDialog({ onClose, onPick }) {
     const t = setTimeout(() => api.searchUniverse(q, 30).then(d => setRows(d.rows || [])).catch(() => setRows([])), 250)
     return () => clearTimeout(t)
   }, [q])
+  // ESC로 닫기 — capture 단계에서 먼저 처리하고 전파를 막아, 뒤의 도킹 패널 ESC보다 우선.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onClose])
   return (
     <>
       <div className="backdrop" onClick={onClose} />
