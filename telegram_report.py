@@ -14,7 +14,7 @@ import yf_session  # noqa: F401 — yfinance 레이트리밋 패치 (import 부�
 _ENV_PATH = Path(__file__).parent / ".env"
 TG_API = "https://api.telegram.org/bot{token}/sendMessage"
 MAX_MSG_LEN = 4000   # Telegram 4096 limit, leave headroom
-CLAUDE_MODEL_HIGHS = "claude-opus-4-8"   # 신고가 '투자 포인트 & 상승 동인' 요약
+CLAUDE_MODEL_HIGHS = "claude-opus-5"   # 신고가 '투자 포인트 & 상승 동인' 요약
 
 
 def _load_env() -> tuple[str, str]:

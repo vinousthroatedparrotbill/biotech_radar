@@ -23,7 +23,7 @@ import db
 
 log = logging.getLogger(__name__)
 
-CLAUDE_MODEL = "claude-opus-4-8"
+CLAUDE_MODEL = "claude-opus-5"
 
 # app.py와 동일한 펀더멘탈 필터
 _FUND_PAT = re.compile(

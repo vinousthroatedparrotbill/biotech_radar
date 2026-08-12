@@ -21,7 +21,7 @@ from db import connect
 
 log = logging.getLogger(__name__)
 
-CLAUDE_MODEL = "claude-opus-4-8"
+CLAUDE_MODEL = "claude-opus-5"
 _IR_MAX_ATTEMPTS = 8     # ir_readout 자료 미확보 시 재시도 상한(LLM 비용 캡)
 
 

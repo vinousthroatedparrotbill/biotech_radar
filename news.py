@@ -354,7 +354,7 @@ def _extract_own_via_claude(ticker: str, name: str):
         cl = anthropic.Anthropic(api_key=key)
         messages = [{"role": "user", "content": f"{name}({ticker})의 자사 파이프라인 자산을 나열해."}]
         for _ in range(5):
-            r = cl.messages.create(model="claude-opus-4-8", max_tokens=1500,
+            r = cl.messages.create(model="claude-opus-5", max_tokens=1500,
                                    system=sys_p, tools=[_OWN_TOOL] + web, messages=messages)
             tu = next((b for b in r.content
                        if b.type == "tool_use" and b.name == "own_pipeline_assets"), None)

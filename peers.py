@@ -14,7 +14,7 @@ import os
 from db import connect
 
 log = logging.getLogger(__name__)
-CLAUDE_MODEL = "claude-opus-4-8"
+CLAUDE_MODEL = "claude-opus-5"
 
 
 def _is_kr(t: str) -> bool:

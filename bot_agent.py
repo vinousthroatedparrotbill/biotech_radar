@@ -19,7 +19,7 @@ from bot_tools import TOOL_DEFS, run_tool
 
 log = logging.getLogger(__name__)
 
-CLAUDE_MODEL = "claude-opus-4-8"   # 또는 "claude-sonnet-4-6" (저비용)
+CLAUDE_MODEL = "claude-opus-5"   # 또는 "claude-sonnet-4-6" (저비용)
 MAX_STEPS = 15
 
 # Anthropic 서버 실행 도구 (run_tool 미경유 — API가 자동 실행). opus 4.8 지원, beta 헤더 불필요.

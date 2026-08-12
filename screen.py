@@ -16,7 +16,7 @@ from datetime import date, datetime, timedelta
 from db import connect
 
 log = logging.getLogger(__name__)
-CLAUDE_MODEL = "claude-opus-4-8"
+CLAUDE_MODEL = "claude-opus-5"
 RATIO_MAX = 5.0
 WINDOW_MONTHS = 8
 PEAK_TTL_DAYS = 45          # 피크매출 추정 캐시 유효기간
