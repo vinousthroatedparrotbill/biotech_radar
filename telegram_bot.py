@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -237,7 +238,9 @@ _pending_file: dict[int, list] = {}
 async def _ask_claude(user_msg: str, chat_id: int, attachments=None) -> str:
     """공용 run_agent — 대화는 chat_store(웹앱 챗과 공유)에 적재. 텔레↔웹 완전 공유."""
     history = chat_store.recent(MAX_HISTORY_TURNS * 2)
-    text, _ = run_agent(user_msg, history, attachments=attachments)
+    # run_agent은 동기(Claude 도구 루프, 수십초~수분) — 웹서비스 이벤트 루프와 공유될 때
+    # 직접 호출하면 앱 전체가 멈춘다. 스레드로 오프로드(로컬 봇에도 무해).
+    text, _ = await asyncio.to_thread(run_agent, user_msg, history, attachments=attachments)
     chat_store.append("user", user_msg, "telegram")
     chat_store.append("assistant", text, "telegram")
     return text
@@ -352,7 +355,7 @@ async def handle_file(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = msg.chat.id
     try:
         history = chat_store.recent(MAX_HISTORY_TURNS * 2)
-        text, _ = run_agent(caption, history, attachments=att)
+        text, _ = await asyncio.to_thread(run_agent, caption, history, attachments=att)
         chat_store.append("user", f"{caption} [파일: {name}]", "telegram")
         chat_store.append("assistant", text, "telegram")
         _pending_file[chat_id] = att   # 다음 텍스트 후속질문에 재첨부 (그 pdf 분석해줘)
@@ -381,7 +384,9 @@ async def _send_reply(update: Update, text: str) -> None:
 
 
 # ───────────────────────── main ─────────────────────────
-def main() -> None:
+def build_application() -> "Application":
+    """핸들러가 등록된 PTB Application 생성. 로컬 run_polling(main)과
+    클라우드 async 기동(api.py 웹서비스 내장)이 공유하는 단일 소스."""
     token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN이 .env에 없음")
@@ -400,7 +405,11 @@ def main() -> None:
     async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         log.exception("unhandled handler error", exc_info=context.error)
     app.add_error_handler(_on_error)
+    return app
 
+
+def main() -> None:
+    app = build_application()
     log.info("Bot starting (long-polling)...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 

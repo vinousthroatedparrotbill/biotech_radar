@@ -1351,6 +1351,51 @@ async def _auto_eval_loop():
     asyncio.create_task(_loop())
 
 
+@app.on_event("startup")
+async def _telegram_bot_loop():
+    """대화형 텔레그램 챗봇을 웹서비스 안에서 long-polling — PC 꺼져도 폰에서 봇 응답.
+    RENDER(클라우드)에서만 기동(Render가 RENDER 환경변수 자동 설정 → 대시보드 작업 0).
+    ⚠️ 텔레그램은 봇당 폴링 소비자 1개만 허용 → 로컬 BiotechRadarBot은 반드시 꺼야 409 충돌 없음.
+    run_agent은 handler에서 asyncio.to_thread로 오프로드하므로 웹 응답을 막지 않음."""
+    import asyncio
+    import os as _os
+    if not _os.environ.get("RENDER"):
+        return
+    if (_os.environ.get("BOT_IN_APP") or "1").strip() in ("0", "false", "False"):
+        return
+
+    async def _run():
+        await asyncio.sleep(25)            # 웹 기동 안정화 후
+        try:
+            import telegram_bot as _tb
+            from telegram import Update as _Update
+            application = _tb.build_application()
+            await application.initialize()
+            await application.start()
+            await application.updater.start_polling(
+                allowed_updates=_Update.ALL_TYPES, drop_pending_updates=True)
+            globals()["_TG_APP"] = application
+            print("[telegram_bot] cloud long-polling started", flush=True)
+        except Exception as e:
+            print(f"[telegram_bot] start failed: {type(e).__name__}: {e}", flush=True)
+
+    asyncio.create_task(_run())
+
+
+@app.on_event("shutdown")
+async def _telegram_bot_stop():
+    application = globals().get("_TG_APP")
+    if application is None:
+        return
+    try:
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
+        print("[telegram_bot] stopped", flush=True)
+    except Exception as e:
+        print(f"[telegram_bot] stop error: {e}", flush=True)
+
+
 # ───────────────────────── 정적 프론트(React 빌드) 서빙 ─────────────────────────
 # 프로덕션(단일 서비스)에서는 FastAPI가 빌드된 React(web/dist)를 같은 오리진에서 서빙한다.
 # api.js가 상대경로 /api/* 를 쓰므로 CORS·프록시 불필요. 라우트 정의가 모두 끝난 뒤
