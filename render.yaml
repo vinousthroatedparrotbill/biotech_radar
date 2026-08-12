@@ -35,3 +35,29 @@ services:
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
+
+  # ── US 데일리 런 (로컬 노트북 → 클라우드 이전, 2026-08-12) ──
+  # 평일 22:00 UTC = 화~토 07:00 KST → US 월~금 종가를 다음날 아침(KST)에 발송.
+  # 일·월(KST)은 안 돎: 미국장 주말 휴장이라 금요일 종가 중복(토요일에 이미 발송).
+  # ohlcv 차트 백필(토스=한국IP)만 클라우드선 실패→스킵(best-effort). 웹 차트는 on-demand로 정상.
+  - type: cron
+    name: biotech-radar-daily
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python daily_runner.py
+    schedule: "0 22 * * 1-5"
+    region: singapore
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: FINVIZ_AUTH_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: DART_API_KEY
+        sync: false
