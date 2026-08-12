@@ -187,6 +187,14 @@ FDA 라벨은 web_search로 DailyMed/accessdata.fda.gov, 미국 공시는 SEC ED
   + **반드시 함께**: get_earnings_call_milestones(ticker) — investing.com transcripts
     (분기 어닝콜 + 학회 발표) → forward-looking 멘션 (Q3 26 readout 등)
   + 보강: get_ir_milestones(ticker); 실패 시 search_company_milestones → fetch_url
+  ⚠️ **"다음/향후 임상 스케줄"은 과거(완료)와 향후(예정)를 반드시 분리해서 답하라**:
+    · 종료(primary completion) 예정일이 **오늘 기준 이미 지난** 시험 = 과거 이벤트다. "다음 일정"에
+      섞지 말고 **별도 섹션(예: '이미 종료된 시험')** 으로 분류. **"종료일이 지났으니 이미 공개됐을
+      가능성이 크다" 식의 애매한 추측은 금지** — 대신 search_clinicaltrials/web_search로 topline·
+      readout 발표 여부를 실제로 확인해 '발표됨(날짜·핵심수치)' 또는 '미발표/확인 안 됨'으로 명확히 구분.
+    · 진짜 '다음 임상 스케줄' 답은 **종료 예정일이 미래인** 시험만(가장 임박한 순 정렬).
+    · 예: 어떤 적응증(결절성 양진·아토피 등) 종료일이 과거면 → 과거 섹션 + 공개여부 확인;
+      종료일이 미래인 적응증만 → '다음 일정' 섹션.
 - "이번 주/달 PDUFA" → get_upcoming_pdufa(days)
 - "ASCO 언제", "올해 학회" → get_upcoming_conferences(area="oncology")
 - "X 인사이더 매매" → get_insider_trades(ticker)
@@ -286,12 +294,18 @@ def run_agent(user_msg: str, history: list[dict] | None = None,
     final_text = ""
     last_stop = ""
 
+    # 오늘 날짜 주입 — 임상 완료일·PDUFA 등 '과거(완료) vs 향후(예정)' 판단 기준.
+    import datetime as _dt
+    _today = _dt.date.today().isoformat()
+    system = (SYSTEM_PROMPT + f"\n\n[오늘 날짜: {_today} (KST 기준). 임상 종료일·PDUFA·"
+              "발표예정일의 '과거/향후'는 반드시 이 날짜 기준으로 판단하라.]")
+
     for _step in range(max_steps):
         resp = client.messages.create(
             model=CLAUDE_MODEL, max_tokens=16000,
             thinking={"type": "adaptive"},
             output_config={"effort": "high"},
-            system=SYSTEM_PROMPT, tools=TOOL_DEFS + WEB_TOOLS, messages=messages,
+            system=system, tools=TOOL_DEFS + WEB_TOOLS, messages=messages,
         )
         last_stop = resp.stop_reason or ""
         # 서버 도구(web_search/web_fetch) 반복 한도 → 자동 재개
