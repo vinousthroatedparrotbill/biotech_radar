@@ -1388,7 +1388,7 @@ async def _telegram_bot_loop():
 
 # [임시] 클라우드 봇 진단 — 실행상태 + 인증 + run_agent 두뇌 점검. 읽기 전용. 검증 후 제거.
 @app.get("/api/ops/bot_diag")
-def bot_diag(q: str = "'OK'라고만 답해") -> dict:
+def bot_diag(q: str = "'OK'라고만 답해", img: int = 0) -> dict:
     import os as _os
     out: dict = {
         "render": bool(_os.environ.get("RENDER")),
@@ -1422,6 +1422,25 @@ def bot_diag(q: str = "'OK'라고만 답해") -> dict:
         import traceback
         out["run_agent"] = {"ok": False, "error": f"{type(e).__name__}: {e}",
                             "tb": traceback.format_exc()[-600:]}
+    if img:
+        # 클라우드에서 이미지 첨부 분석이 실제로 되는지 (handle_file → run_agent 경로와 동일 포맷)
+        try:
+            import base64 as _b64, io as _io, time as _t
+            from PIL import Image, ImageDraw
+            im = Image.new("RGB", (200, 80), "white")
+            ImageDraw.Draw(im).text((10, 30), "HELLO 42", fill="black")
+            _buf = _io.BytesIO(); im.save(_buf, format="JPEG")
+            att = [{"kind": "image", "name": "photo.jpg", "media_type": "image/jpeg",
+                    "data": _b64.b64encode(_buf.getvalue()).decode()}]
+            from bot_agent import run_agent
+            t0 = _t.time()
+            text, _ = run_agent("이 이미지에 적힌 글자를 그대로 답해.", [], attachments=att)
+            out["image_test"] = {"ok": ("HELLO" in (text or "")), "elapsed_s": round(_t.time() - t0, 1),
+                                 "reply": (text or "")[:120]}
+        except Exception as e:
+            import traceback
+            out["image_test"] = {"ok": False, "error": f"{type(e).__name__}: {e}",
+                                 "tb": traceback.format_exc()[-600:]}
     return out
 
 
