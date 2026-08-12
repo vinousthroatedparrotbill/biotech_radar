@@ -920,6 +920,41 @@ def report_generate(ticker: str) -> dict:
     return {"ok": True, "status": "generating"}
 
 
+# ───────────────────────── [임시] 클라우드 이전 타당성 진단 ─────────────────────────
+# Render IP에서 데이터 수집(Finviz/yfinance)이 되는지 검증. 읽기 전용 — DB쓰기·발송 없음.
+# 검증 완료 후 제거 예정.
+@app.get("/api/ops/cloud_check")
+def cloud_check(sample: int = 15) -> dict:
+    import time as _t
+    out: dict = {}
+    df = None
+    try:
+        import universe
+        t0 = _t.time()
+        df = universe.fetch_csv()
+        out["finviz"] = {"ok": True, "rows": int(len(df)),
+                         "elapsed_s": round(_t.time() - t0, 1)}
+    except Exception as e:
+        out["finviz"] = {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
+    try:
+        from collectors.high_low import compute_snapshot
+        if df is not None and "Ticker" in df.columns:
+            tks = [str(x).strip() for x in df["Ticker"].head(sample).tolist()]
+        else:
+            tks = ["VRTX", "REGN", "GILD", "AMGN", "BIIB", "MRNA",
+                   "ILMN", "ARWR", "EXEL", "INCY"][:sample]
+        t0 = _t.time()
+        snap = compute_snapshot(tks)
+        got = int(len(snap)) if snap is not None else 0
+        out["yfinance"] = {"ok": got > 0, "requested": len(tks), "got": got,
+                           "elapsed_s": round(_t.time() - t0, 1)}
+        if got < len(tks):
+            out["yfinance"]["note"] = "일부/전체 누락 — Yahoo 429/차단 가능성"
+    except Exception as e:
+        out["yfinance"] = {"ok": False, "error": f"{type(e).__name__}: {str(e)[:300]}"}
+    return out
+
+
 # ───────────────────────── 최근 펀더멘탈 기사 ─────────────────────────
 import re as _re
 
