@@ -1353,47 +1353,76 @@ async def _auto_eval_loop():
 
 @app.on_event("startup")
 async def _telegram_bot_loop():
-    """대화형 텔레그램 챗봇을 웹서비스 안에서 long-polling — PC 꺼져도 폰에서 봇 응답.
-    RENDER(클라우드)에서만 기동(Render가 RENDER 환경변수 자동 설정 → 대시보드 작업 0).
-    ⚠️ 텔레그램은 봇당 폴링 소비자 1개만 허용 → 로컬 BiotechRadarBot은 반드시 꺼야 409 충돌 없음.
-    run_agent은 handler에서 asyncio.to_thread로 오프로드하므로 웹 응답을 막지 않음."""
-    import asyncio
+    """대화형 텔레그램 챗봇을 전용 스레드(자체 이벤트 루프)에서 run_polling으로 기동.
+    웹 이벤트 루프와 완전 격리 → 업데이트 dispatch가 안정적(수동 lifecycle의 미전달 문제 회피).
+    stop_signals=None: 비메인 스레드라 시그널 핸들러 미설치. RENDER(클라우드)에서만.
+    ⚠️ 텔레그램은 봇당 폴링 소비자 1개 → 로컬 BiotechRadarBot 비활성 필수(409 충돌 방지)."""
     import os as _os
     if not _os.environ.get("RENDER"):
         return
     if (_os.environ.get("BOT_IN_APP") or "1").strip() in ("0", "false", "False"):
         return
+    import threading
 
-    async def _run():
-        await asyncio.sleep(25)            # 웹 기동 안정화 후
+    def _bot_thread():
+        import asyncio as _a
         try:
+            loop = _a.new_event_loop()
+            _a.set_event_loop(loop)
             import telegram_bot as _tb
             from telegram import Update as _Update
             application = _tb.build_application()
-            await application.initialize()
-            await application.start()
-            await application.updater.start_polling(
-                allowed_updates=_Update.ALL_TYPES, drop_pending_updates=True)
             globals()["_TG_APP"] = application
-            print("[telegram_bot] cloud long-polling started", flush=True)
+            globals()["_TG_STATE"] = "run_polling"
+            print("[telegram_bot] run_polling starting (dedicated thread)", flush=True)
+            application.run_polling(allowed_updates=_Update.ALL_TYPES,
+                                    drop_pending_updates=True, stop_signals=None)
         except Exception as e:
-            print(f"[telegram_bot] start failed: {type(e).__name__}: {e}", flush=True)
+            import traceback
+            globals()["_TG_START_ERR"] = f"{type(e).__name__}: {e}\n{traceback.format_exc()[-600:]}"
+            print(f"[telegram_bot] thread failed: {e}", flush=True)
 
-    asyncio.create_task(_run())
+    threading.Thread(target=_bot_thread, daemon=True, name="tg-bot").start()
+    print("[telegram_bot] bot thread launched", flush=True)
 
 
-@app.on_event("shutdown")
-async def _telegram_bot_stop():
-    application = globals().get("_TG_APP")
-    if application is None:
-        return
+# [임시] 클라우드 봇 진단 — 실행상태 + 인증 + run_agent 두뇌 점검. 읽기 전용. 검증 후 제거.
+@app.get("/api/ops/bot_diag")
+def bot_diag(q: str = "'OK'라고만 답해") -> dict:
+    import os as _os
+    out: dict = {
+        "render": bool(_os.environ.get("RENDER")),
+        "tg_state": globals().get("_TG_STATE"),
+        "start_error": globals().get("_TG_START_ERR"),
+        "has_token": bool((_os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()),
+        "has_chat_id": bool((_os.environ.get("TELEGRAM_CHAT_ID") or "").strip()),
+        "has_authorized_users": bool((_os.environ.get("TELEGRAM_AUTHORIZED_USERS") or "").strip()),
+    }
+    app_obj = globals().get("_TG_APP")
+    out["bot_app_alive"] = app_obj is not None
+    if app_obj is not None:
+        try:
+            out["app_running"] = bool(app_obj.running)
+            out["updater_running"] = bool(app_obj.updater.running)
+        except Exception as e:
+            out["state_err"] = f"{type(e).__name__}: {e}"
     try:
-        await application.updater.stop()
-        await application.stop()
-        await application.shutdown()
-        print("[telegram_bot] stopped", flush=True)
+        import telegram_bot as _tb
+        out["allowed_user_ids"] = sorted(_tb._allowed_user_ids())
     except Exception as e:
-        print(f"[telegram_bot] stop error: {e}", flush=True)
+        out["allowed_err"] = f"{type(e).__name__}: {e}"
+    try:
+        from bot_agent import run_agent
+        import time as _t
+        t0 = _t.time()
+        text, _ = run_agent(q, [])
+        out["run_agent"] = {"ok": True, "len": len(text or ""),
+                            "elapsed_s": round(_t.time() - t0, 1), "head": (text or "")[:150]}
+    except Exception as e:
+        import traceback
+        out["run_agent"] = {"ok": False, "error": f"{type(e).__name__}: {e}",
+                            "tb": traceback.format_exc()[-600:]}
+    return out
 
 
 # ───────────────────────── 정적 프론트(React 빌드) 서빙 ─────────────────────────
