@@ -220,6 +220,16 @@ function Board({ country, view, onPick, tickerMap, modals = [], onCloseModal, on
     return () => { ro.disconnect(); window.removeEventListener('resize', measure) }
   }, [leftW, rightW])
 
+  // ESC로 오른쪽 상세(picked) 닫기 — 보드 메인 리스트 클릭 시 열리는 인라인 상세.
+  // capture 단계+stopPropagation: picked가 열려 있으면 App의 도킹패널 ESC보다 먼저 처리(가장 위 것부터).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape' && picked) { e.stopPropagation(); setPicked(null) }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [picked])
+
   const apiView = isHigh ? (sub === 'new' ? 'new' : 'high') : 'movers'
   const reasonKind = view === 'movers' ? 'movers' : 'high'
   useEffect(() => {
