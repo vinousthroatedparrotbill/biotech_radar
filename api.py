@@ -1462,5 +1462,10 @@ if _os.path.isdir(_DIST):
         candidate = _os.path.normpath(_os.path.join(_DIST, full_path))
         # 경로 탈출 방지 + 실제 파일이면 그대로, 아니면 SPA index.html
         if candidate.startswith(_DIST) and full_path and _os.path.isfile(candidate):
-            return FileResponse(candidate)
-        return FileResponse(_os.path.join(_DIST, "index.html"))
+            # 해시된 자산(assets/index-*.js/css)은 내용불변 → 장기 immutable 캐시
+            hdr = ({"Cache-Control": "public, max-age=31536000, immutable"}
+                   if full_path.startswith("assets/") else None)
+            return FileResponse(candidate, headers=hdr)
+        # SPA 진입점 index.html은 항상 최신 번들을 참조하도록 no-cache (stale 번들 방지)
+        return FileResponse(_os.path.join(_DIST, "index.html"),
+                            headers={"Cache-Control": "no-cache"})
