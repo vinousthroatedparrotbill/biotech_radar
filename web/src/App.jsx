@@ -85,6 +85,35 @@ const NAV = [
   { k: 'watchlist', label: '관심종목', kind: 'wl' },
 ]
 
+// ── 전역 ESC 스택 — 가장 나중에 연 오버레이(모달·상세·채팅 등)가 가장 먼저 닫힘(LIFO) ──
+const _escStack = []
+let _escBound = false
+function _bindEsc() {
+  if (_escBound || typeof window === 'undefined') return
+  _escBound = true
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !_escStack.length) return
+    e.stopPropagation()
+    _escStack[_escStack.length - 1].close()   // 맨 위(=가장 나중에 연 것)부터
+  }, true)   // capture 단계 — 다른 개별 리스너보다 먼저 처리
+}
+let _escSeq = 0
+// isOpen이 true인 동안 close를 스택에 등록. 언마운트/닫힘 시 자동 제거.
+function useEscClose(isOpen, close) {
+  const ref = useRef(close)
+  ref.current = close
+  useEffect(() => {
+    if (!isOpen) return
+    _bindEsc()
+    const entry = { id: ++_escSeq, close: () => ref.current && ref.current() }
+    _escStack.push(entry)
+    return () => {
+      const i = _escStack.indexOf(entry)
+      if (i >= 0) _escStack.splice(i, 1)
+    }
+  }, [isOpen])
+}
+
 export default function App() {
   const [country, setCountry] = useState('USA')
   const [page, setPage] = useState('high')
@@ -106,15 +135,7 @@ export default function App() {
   // 탭(page) 전환 시 열려 있던 도킹 패널 모두 닫기 — 다른 탭으로 넘어가면 이전 모달이 안 남게.
   useEffect(() => { setModals([]) }, [page])
 
-  // ESC로 패널 닫기 — 복수면 가장 나중에 연 것부터(LIFO). 위에 뜬 다이얼로그(종목추가 등)는
-  // capture 단계에서 먼저 처리 후 stopPropagation 하므로 그쪽이 우선 닫힌다.
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'Escape') setModals(ms => (ms.length ? ms.slice(0, -1) : ms))
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  // (ESC 닫기는 전역 스택 useEscClose로 통합 — 각 오버레이가 열릴 때 등록, LIFO로 닫힘)
 
   return (
     <>
@@ -220,15 +241,8 @@ function Board({ country, view, onPick, tickerMap, modals = [], onCloseModal, on
     return () => { ro.disconnect(); window.removeEventListener('resize', measure) }
   }, [leftW, rightW])
 
-  // ESC로 오른쪽 상세(picked) 닫기 — 보드 메인 리스트 클릭 시 열리는 인라인 상세.
-  // capture 단계+stopPropagation: picked가 열려 있으면 App의 도킹패널 ESC보다 먼저 처리(가장 위 것부터).
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'Escape' && picked) { e.stopPropagation(); setPicked(null) }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [picked])
+  // ESC로 오른쪽 상세(picked) 닫기 — 전역 ESC 스택에 등록(LIFO).
+  useEscClose(!!picked, () => setPicked(null))
 
   const apiView = isHigh ? (sub === 'new' ? 'new' : 'high') : 'movers'
   const reasonKind = view === 'movers' ? 'movers' : 'high'
@@ -951,12 +965,7 @@ function AddStockDialog({ onClose, onPick }) {
     const t = setTimeout(() => api.searchUniverse(q, 30).then(d => setRows(d.rows || [])).catch(() => setRows([])), 250)
     return () => clearTimeout(t)
   }, [q])
-  // ESC로 닫기 — capture 단계에서 먼저 처리하고 전파를 막아, 뒤의 도킹 패널 ESC보다 우선.
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose])
+  useEscClose(true, onClose)   // 열려 있는 동안 전역 ESC 스택 등록(LIFO)
   return (
     <>
       <div className="backdrop" onClick={onClose} />
@@ -1105,6 +1114,7 @@ function StockDetail({ row, onClose, onPick, tickerMap }) {
 
 /* 도킹 패널 — 페이지 위 플로팅 오버레이로 가로로 나란히 배치, 오른쪽 경계 Splitter로 너비 조절. 보드 리스트는 뒤에 그대로 보임. */
 function DockPanel({ row, width, onResizeDelta, onClose, onPick, tickerMap }) {
+  useEscClose(true, onClose)   // 열려 있는 동안 전역 ESC 스택 등록(패널마다 하나 → LIFO)
   return (
     <div className="dock-panel" style={width ? { width } : undefined}>
       <div className="dock-body">
@@ -1398,6 +1408,7 @@ function IrPdfs({ ticker }) {
 /* ───────────── 플로팅 운영 위젯 ───────────── */
 function OpsWidget({ country }) {
   const [open, setOpen] = useState(false)
+  useEscClose(open, () => setOpen(false))   // 운영 패널도 ESC로 닫기(전역 LIFO 스택)
   const [stats, setStats] = useState(null)
   const [busy, setBusy] = useState('')
   const [msg, setMsg] = useState('')
@@ -1428,6 +1439,7 @@ function OpsWidget({ country }) {
 /* ───────────── 플로팅 챗 ───────────── */
 function Chat() {
   const [open, setOpen] = useState(false)
+  useEscClose(open, () => setOpen(false))   // 채팅창도 ESC로 닫기(전역 LIFO 스택)
   const [msgs, setMsgs] = useState([])
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
