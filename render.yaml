@@ -35,6 +35,10 @@ services:
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
+      # 컨테이너 시간대 KST — datetime.now()가 한국시간 반환(날짜 라벨 한국 기준).
+      # Render 스케줄(cron expression)은 UTC 그대로라 발화시각엔 영향 없음.
+      - key: TZ
+        value: Asia/Seoul
 
   # ── US 데일리 런 (로컬 노트북 → 클라우드 이전, 2026-08-12) ──
   # 평일 22:00 UTC = 화~토 07:00 KST → US 월~금 종가를 다음날 아침(KST)에 발송.
@@ -61,3 +65,5 @@ services:
         sync: false
       - key: DART_API_KEY
         sync: false
+      - key: TZ                # 컨테이너 KST — datetime.now()가 KST → 스냅샷 날짜 한국 기준(예전 로컬과 동일)
+        value: Asia/Seoul

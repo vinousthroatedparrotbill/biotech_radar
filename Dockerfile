@@ -16,9 +16,9 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# 시스템 빌드 의존성(일부 wheel 폴백 대비) — 최소만.
+# 시스템 빌드 의존성(일부 wheel 폴백 대비) + tzdata(TZ=Asia/Seoul로 날짜 KST 고정).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        gcc libpq5 \
+        gcc libpq5 tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
